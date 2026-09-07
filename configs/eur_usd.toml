@@ -1,0 +1,14 @@
+# EUR-USD daily closing rate, full threshold grid of the original analysis.
+base_config = "quickstart.toml"
+
+[thresholds]
+mode = "linear"
+min = 0.0
+max = 0.954
+step = 0.0005
+
+[algorithm]
+oracle_checks = 3
+
+[output]
+format = "arrow"

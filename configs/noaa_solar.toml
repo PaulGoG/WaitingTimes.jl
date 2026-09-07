@@ -1,0 +1,26 @@
+# NOAA daily solar flare index.
+base_config = "quickstart.toml"
+
+[input]
+path = "../data/raw/solarFlares.csv"
+format = "csv"
+dataset = "noaa-solar_index"
+value_column = 2
+header = true
+quantity_label = "solar flare index"
+unit_label = ""
+
+[quantization]
+digits = 2
+
+[thresholds]
+mode = "linear"
+min = 0.0
+max = 28.0
+step = 0.1
+
+[algorithm]
+oracle_checks = 3
+
+[output]
+format = "arrow"
