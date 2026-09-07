@@ -1,0 +1,8 @@
+[deps]
+StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+WaitingTimes = "78cbc771-1cb5-4db9-b01d-2cca60acb935"
+oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"
+
+[sources]
+WaitingTimes = {path = "../.."}

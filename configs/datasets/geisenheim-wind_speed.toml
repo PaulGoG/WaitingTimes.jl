@@ -1,0 +1,10 @@
+slug = "geisenheim-wind_speed"
+source = "Meteostat, station 10628 (Geisenheim), hourly bulk export"
+url = "https://meteostat.net/en/station/10628"
+retrieved = 2024-11-08
+license = "CC BY-NC 4.0 (Meteostat), underlying data DWD"
+citation = "Gogîță et al., J. Phys. Complex. 7 (2026) 035007"
+quantity = "wind speed"
+unit = "km/h"
+sampling = "hourly rows from 1890 (wind from 1951) to November 2024; no header, column 9"
+sha256 = "7bfb03e1821b080634f613046800b3f07d99b3e3757956d4a50cbd3e13908f99"

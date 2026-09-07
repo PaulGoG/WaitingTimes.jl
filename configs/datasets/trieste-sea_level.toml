@@ -1,0 +1,10 @@
+slug = "trieste-sea_level"
+source = "Port of Trieste tide gauge, hourly sea level above tide-gauge zero"
+url = ""
+retrieved = 2024-09-13
+license = "as published with Pană, Gogîță, Nicolin-Żaczek, Rom. J. Phys. 69, 111 (2024)"
+citation = "Pană, Gogîță, Nicolin-Żaczek, Rom. J. Phys. 69, 111 (2024)"
+quantity = "sea level"
+unit = "cm"
+sampling = "hourly, 1927 to 2023; FLAG column: 0 observed, 1 approximate, 2 interpolated, 5 reconstructed"
+sha256 = "b9a3ce19c9e5a5892bf4ab88d223efe7dcb36da8e62d876f77020f1753f63b1c"

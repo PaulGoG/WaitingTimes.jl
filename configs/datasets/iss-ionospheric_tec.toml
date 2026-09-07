@@ -1,0 +1,10 @@
+slug = "iss-ionospheric_tec"
+source = "Institute of Space Science (INFLPR subsidiary), total electron content over Romania from GNSS"
+url = ""
+retrieved = 2024-06-01
+license = "internal dataset; available from the authors on request"
+citation = "Constantin et al., Rom. J. Phys. 69, 805 (2024); Gogîță et al., J. Phys. Complex. 7 (2026) 035007"
+quantity = "total electron content (mean)"
+unit = "TECU"
+sampling = "one value every 15 minutes; columns index, deltaT, mean, std, var; value column 3"
+sha256 = "cb5e3e0f735d03960008fae4d425b8cc94fd2e67123364f8354434bc1716423e"

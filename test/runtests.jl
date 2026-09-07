@@ -313,6 +313,7 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
             ws_guard = WT.workspace(GuardedSearch(), s)
             ws_tree = WT.workspace(SegmentTreeSearch(), s)
             ws_fenwick = WT.workspace(FenwickSweep(), s)
+            ws_device = WT.workspace(DeviceSearch(), s)
             deltas = [threshold(k * 10.0^-digits, s)
                       for k in (0, 1, 3, 10, 100, 2_000, 10^7)]
             references = [waiting_times(s, δ, NaiveSearch()) for δ in deltas]
@@ -325,6 +326,8 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
                     @test waiting_times(s, δ, FenwickSweep(); workspace = ws_fenwick) ==
                           τ_ref
                     @test waiting_times(s, δ, StreamingSearch()) == τ_ref
+                    @test waiting_times(s, δ, DeviceSearch(); workspace = ws_device) ==
+                          τ_ref
                 end
                 @test waiting_times(s, deltas, FenwickSweep(); workspace = ws_fenwick) ==
                       references
@@ -386,6 +389,15 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         @test only(update!(narrow, 2, Int32(6))) == (1, 1)
     end
 
+    @testset "Device search selection" begin
+        @test device_search(:none) isa DeviceSearch{<:WaitingTimes.Backends.CPU}
+        @test device_search(:auto) isa DeviceSearch{<:WaitingTimes.Backends.CPU}
+        @test_logs (:warn, r"not available") device_search(:cuda)
+        s = QuantizedSeries([1.0, 3.0, 2.0, 5.0], 0)
+        @test waiting_times(s, 2, DeviceSearch()) == [1, 2, 1, 0]
+        @test_throws DimensionMismatch waiting_times!(zeros(Int, 2), s, Threshold(1, 0), DeviceSearch())
+    end
+
     @testset "Synthetic generators" begin
         @test random_walk(StableRNG(1), 100) == random_walk(StableRNG(1), 100)
         @test length(random_walk(StableRNG(1), 10; periods = ((5, 1.0),), tail_alpha = 2.0)) ==
@@ -420,4 +432,6 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
             @test waiting_times(s, δ, NaiveSearch()) == τ
         end
     end
+
+    include("pipeline_tests.jl")
 end

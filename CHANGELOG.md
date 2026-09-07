@@ -27,6 +27,22 @@ Keep a Changelog and the project adheres to Semantic Versioning.
 - `Synthetic` module: random walks with drift, trend, cycles, noise, jumps
   and heavy tails, independent samples, missing runs, irregular time stamps.
 - `bench/` environment with kernel benchmarks and exact cross-checks.
+- Pipeline: validated TOML configuration with overlays (`Config`), identity
+  hashing, git and hardware fingerprints and metadata files (`Provenance`),
+  self-describing file names (`Naming`), ingestion of CSV, DAT, Arrow and
+  tick files with recorded transformations and diagnostics (`Preprocessing`),
+  per-threshold partitions with index, summary and catalogue (`Storage`),
+  and generation with resume, session records and oracle checks
+  (`Orchestrator`); scripts for running, launching, preparing, validating and
+  tracing lineage; example configurations and dataset descriptors.
+- Extensions: `discrete_distribution` (Distributions.jl) and `plot_series`,
+  `plot_distribution`, `save_figure` (CairoMakie).
+- `DeviceSearch`: the naive scan as a KernelAbstractions kernel with a backend
+  registry (`Backends`) filled by the CUDA, oneAPI, AMDGPU and Metal
+  extensions; CPU backend in the default tests, opt-in device tests under
+  `test/device/`.
+- Documentation site (formulation, kernels, pipeline, configuration,
+  provenance, validation, API, references).
 - Test suite: static QA (Aqua, JET, ExplicitImports), unit and invariant
   tests, kernel equivalence on synthetic series, exact regression against
   legacy EUR-USD outputs.

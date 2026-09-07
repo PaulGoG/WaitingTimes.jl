@@ -17,6 +17,8 @@ prefix.
 """
 struct StreamingSearch <: AbstractSearch end
 
+workspace(::StreamingSearch, ::QuantizedSeries) = nothing
+
 """
     StreamingState{Tv,Tt}
 

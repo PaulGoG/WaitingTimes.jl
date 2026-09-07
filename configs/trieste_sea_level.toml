@@ -1,0 +1,36 @@
+# Port of Trieste hourly sea level, detrended over a lunar month and clipped.
+base_config = "quickstart.toml"
+
+[input]
+path = "../data/raw/sealevelTrieste.csv"
+format = "csv"
+dataset = "trieste-sea_level"
+value_column = 3
+header = true
+quantity_label = "sea level"
+unit_label = "cm"
+
+[preprocessing]
+steps = [
+  { op = "trailing_mean_fluctuations", window = 708 },
+  { op = "clip_quantile", q = 0.996 },
+]
+
+[quantization]
+digits = 1
+
+[thresholds]
+mode = "linear"
+min = 0.0
+max = 100.0
+step = 0.5
+
+[algorithm]
+oracle_checks = 3
+
+[limits]
+max_ram_gb = 16.0
+max_naive_work = 1e12
+
+[output]
+format = "arrow"

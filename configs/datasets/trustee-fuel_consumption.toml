@@ -1,0 +1,10 @@
+slug = "trustee-fuel_consumption"
+source = "TRUSTEE Horizon project synthetic driving data (Town 04), instantaneous fuel consumption"
+url = "https://horizon-trustee.eu/"
+retrieved = 2024-10-08
+license = "project internal; shared for research purposes on request"
+citation = "Gogîță et al., J. Phys. Complex. 7 (2026) 035007"
+quantity = "fuel consumption"
+unit = "mg/s"
+sampling = "one value per second; columns timestamp, x, y, angle, velocity, acceleration, fuel consumption; value column 7"
+sha256 = "bf8bf42f14368757f2459196285bfc80cece4bd6348c84dc2713e50707c54893"

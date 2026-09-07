@@ -1,0 +1,10 @@
+slug = "eur_usd-closing_rate"
+source = "investing.com historical data, EUR/USD end-of-day rate"
+url = "https://www.investing.com/currencies/eur-usd-historical-data"
+retrieved = 2024-09-04
+license = "provider terms of use"
+citation = "Gogîță et al., J. Phys. Complex. 7 (2026) 035007"
+quantity = "closing rate"
+unit = "USD"
+sampling = "one value per business day, 1980 to 2024"
+sha256 = "f4238c5d29f2867ba536ab51db8360f7a1e4561e87e3ffb16202418efcabfcac"

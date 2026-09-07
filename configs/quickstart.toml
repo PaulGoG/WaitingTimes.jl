@@ -1,0 +1,52 @@
+# Quickstart: EUR-USD daily closing rate shipped with the tests, ten thresholds.
+
+[input]
+path = "../test/fixtures/fiatEURUSD.dat"   # relative to this file unless absolute
+format = "dat"                              # one of: "csv" | "dat" | "arrow" | "tick"
+dataset = "eur_usd-closing_rate"            # descriptor in configs/datasets/, or ""
+value_column = "Data"                       # column name or 1-based index
+time_column = ""                            # column name or index; "" = sample index
+time_unit = "sample"                        # one of: "sample" | "nanosecond" | "microsecond" | "millisecond" | "second" | "minute" | "hour" | "day"
+missing_policy = "drop"                     # one of: "drop" | "error"
+tie_policy = "error"                        # one of: "error" | "first" | "last" | "mean"
+quantity_label = "closing rate"
+unit_label = "USD"
+
+[preprocessing]
+steps = []                                  # ordered tables with an op key; see docs
+
+[gaps]
+declared = ""                               # TOML with intervals = [[start, stop], ...]; "" = none
+detect = "cadence"                          # one of: "none" | "cadence" | "threshold"
+cadence = 1                                 # >= 1; sample spacing treated as contiguous
+mode = "elapsed"                            # one of: "elapsed" | "exact"
+
+[quantization]
+digits = 4                                  # 0:15; decimal grid 10^-digits
+
+[thresholds]
+mode = "linear"                             # one of: "linear" | "log" | "explicit"
+min = 0.0005                                # >= 0; on the grid
+max = 0.005                                 # > min; on the grid
+step = 0.0005                               # > 0; on the grid
+
+[algorithm]
+search = "segment_tree"                     # one of: "naive" | "guarded" | "segment_tree" | "fenwick_sweep" | "streaming" | "device"
+backend = "none"                            # one of: "none" | "auto" | "cuda" | "oneapi" | "amdgpu" | "metal"
+chunk_size = 4096                           # >= 1
+oracle_checks = 2                           # >= 0; thresholds recomputed with the oracle
+oracle = "naive"                            # one of: "naive" | "guarded" | "device"
+
+[limits]
+max_ram_gb = 8.0                            # >= 0
+max_naive_work = 1e11                       # >= 0; bound on the oracle's sum of tau
+
+[output]
+root = "../data"                            # collections under root/<collection id>
+format = "csv"                              # one of: "csv" | "arrow"
+store_waiting_times = false
+overwrite = false
+
+[run]
+seed = 12345
+log_level = "info"                          # one of: "debug" | "info" | "warn"
