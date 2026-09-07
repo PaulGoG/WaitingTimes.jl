@@ -159,11 +159,11 @@ Allocating form of [`waiting_times!`](@ref). `δ` may be a [`Threshold`](@ref),
 a real value or a decimal string on the grid of `s`.
 """
 function waiting_times(s::QuantizedSeries{Tv, Tt}, δ::Threshold,
-        alg::AbstractSearch = GuardedSearch(); workspace = nothing) where {Tv, Tt}
+        alg::AbstractSearch = SegmentTreeSearch(); workspace = nothing) where {Tv, Tt}
     τ = Vector{Tt}(undef, length(s))
     return waiting_times!(τ, s, δ, alg; workspace = workspace)
 end
 function waiting_times(s::QuantizedSeries, δ::Union{Real, AbstractString},
-        alg::AbstractSearch = GuardedSearch(); kwargs...)
+        alg::AbstractSearch = SegmentTreeSearch(); kwargs...)
     waiting_times(s, threshold(δ, s), alg; kwargs...)
 end

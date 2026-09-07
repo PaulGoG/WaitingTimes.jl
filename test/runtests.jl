@@ -5,6 +5,7 @@ using ExplicitImports
 using JET
 using StableRNGs
 using Statistics: mean
+using WaitingTimes.Synthetic: random_walk, iid_series, insert_missing, irregular_times
 
 const WT = WaitingTimes
 const FIXTURES = joinpath(@__DIR__, "fixtures")
@@ -54,7 +55,7 @@ function read_legacy_table(path)
     return Dict(zip(header, cols))
 end
 
-random_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits)
+rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits)
 
 # --- suite -------------------------------------------------------------------
 
@@ -191,7 +192,7 @@ random_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits)
         rng = StableRNG(20260907)
         for N in (10, 100, 1_000, 10_000), digits in (0, 2)
 
-            x = random_walk(rng, N; digits = digits)
+            x = rounded_walk(rng, N; digits = digits)
             s = QuantizedSeries(x, digits)
             ws = WT.workspace(GuardedSearch(), s)
             q, t = s.values, s.times
@@ -225,7 +226,7 @@ random_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits)
         end
 
         # gaps never change a waiting time, only the classification
-        x = Vector{Union{Missing, Float64}}(random_walk(rng, 2_000))
+        x = Vector{Union{Missing, Float64}}(rounded_walk(rng, 2_000))
         x[rand(rng, 1:2_000, 150)] .= missing
         s = QuantizedSeries(x, 2)
         @test !isempty(s.gaps)
@@ -267,7 +268,7 @@ random_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits)
 
     @testset "Empirical distribution" begin
         rng = StableRNG(7)
-        s = QuantizedSeries(random_walk(rng, 5_000), 2)
+        s = QuantizedSeries(rounded_walk(rng, 5_000), 2)
         δ = threshold(1.0, s)
         τ = waiting_times(s, δ)
         d = empirical_distribution(τ, δ, s)
@@ -285,6 +286,121 @@ random_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits)
         @test occursin("0.10", sprint(show, threshold(0.1, 2)))
         empty = empirical_distribution(zeros(Int64, length(s)), δ, s)
         @test WT.nsamples(empty) == 0 && isnan(mean(empty))
+    end
+
+    @testset "Fast kernels equal the oracle" begin
+        rng = StableRNG(2026)
+        families = [
+            ("random walk", 2, N -> random_walk(rng, N), nothing),
+            ("drifting walk with cycles and jumps", 2,
+                N -> random_walk(
+                    rng, N; drift = 0.01, trend = 0.001, periods = ((24, 3.0),),
+                    noise = 0.2, jump_probability = 0.01, jump_scale = 20.0), nothing),
+            ("heavy-tailed walk", 1, N -> random_walk(rng, N; tail_alpha = 1.5), nothing),
+            ("iid normal", 2, N -> iid_series(rng, N), nothing),
+            ("iid uniform", 3, N -> iid_series(rng, N; distribution = :uniform), nothing),
+            ("few distinct values", 0, N -> Float64.(rand(rng, 0:3, N)), nothing),
+            ("walk with missing runs", 2,
+                N -> insert_missing(rng, random_walk(rng, N), N ÷ 50), nothing),
+            ("walk on irregular times", 2, N -> random_walk(rng, N),
+                N -> irregular_times(rng, N; mean_interval = 7.0))
+        ]
+        for N in (1_000, 10_000, 100_000), (name, digits, make, make_times) in families
+
+            x = make(N)
+            s = make_times === nothing ? QuantizedSeries(x, digits) :
+                QuantizedSeries(x, digits; times = make_times(N), time_unit = :second)
+            ws_guard = WT.workspace(GuardedSearch(), s)
+            ws_tree = WT.workspace(SegmentTreeSearch(), s)
+            ws_fenwick = WT.workspace(FenwickSweep(), s)
+            deltas = [threshold(k * 10.0^-digits, s)
+                      for k in (0, 1, 3, 10, 100, 2_000, 10^7)]
+            references = [waiting_times(s, δ, NaiveSearch()) for δ in deltas]
+            @testset "$name, N = $N" begin
+                for (δ, τ_ref) in zip(deltas, references)
+                    @test waiting_times(s, δ, GuardedSearch(); workspace = ws_guard) ==
+                          τ_ref
+                    @test waiting_times(s, δ, SegmentTreeSearch(); workspace = ws_tree) ==
+                          τ_ref
+                    @test waiting_times(s, δ, FenwickSweep(); workspace = ws_fenwick) ==
+                          τ_ref
+                    @test waiting_times(s, δ, StreamingSearch()) == τ_ref
+                end
+                @test waiting_times(s, deltas, FenwickSweep(); workspace = ws_fenwick) ==
+                      references
+            end
+        end
+        # segment tree on the smallest series
+        s = QuantizedSeries([3.0], 0)
+        @test waiting_times(s, 0, SegmentTreeSearch()) == [0]
+        s = QuantizedSeries([3.0, 3.0], 0)
+        @test waiting_times(s, 0, SegmentTreeSearch()) == [1, 0]
+        @test WT.first_at_least(WT.workspace(SegmentTreeSearch(), s), 3, Int32(0)) == 0
+        @test_throws DimensionMismatch waiting_times!(
+            [zeros(Int, 2)], s, [Threshold(0, 0), Threshold(1, 0)], FenwickSweep())
+    end
+
+    @testset "Streaming evaluation" begin
+        rng = StableRNG(31)
+        x = random_walk(rng, 3_000)
+        s = QuantizedSeries(x, 2)
+        q, t = s.values, s.times
+        δ = threshold(0.5, s)
+        state = StreamingState(s, δ)
+        acc = DistributionAccumulator{Int64}()
+        partial = zeros(Int64, length(s))
+        checkpoints = (1, 2, 3, 50, 999, 3_000)
+        for m in 1:length(s)
+            resolved = update!(state, t[m], q[m])
+            for (n, τ_n) in resolved
+                partial[n] = τ_n
+                push!(acc, τ_n)
+            end
+            if m in checkpoints
+                prefix = QuantizedSeries(q[1:m], t[1:m], 2)
+                τ_prefix = waiting_times(prefix, δ, NaiveSearch())
+                @test partial[1:m] == τ_prefix
+                @test pending(state) == count(==(0), τ_prefix)
+                @test state.n_seen == m
+                d_stream = empirical_distribution(acc, state)
+                d_batch = empirical_distribution(τ_prefix, δ, prefix)
+                @test WT.support(d_stream) == WT.support(d_batch)
+                @test WT.counts(d_stream) == WT.counts(d_batch)
+                @test WT.probabilities(d_stream) ≈ WT.probabilities(d_batch)
+                @test d_stream.n_candidates == d_batch.n_candidates
+                @test d_stream.n_right_censored == d_batch.n_right_censored
+                @test WT.nsamples(acc) == WT.nsamples(d_batch)
+            end
+        end
+        @test partial == waiting_times(s, δ, NaiveSearch())
+        # accumulator-fed update and callback form
+        state2 = StreamingState(s, δ)
+        acc2 = DistributionAccumulator{Int64}()
+        total = sum(update!(acc2, state2, t[m], q[m]) for m in 1:length(s))
+        @test total == state.n_resolved == WT.nsamples(acc2)
+        @test_throws ArgumentError update!(state2, t[end], q[end])
+        @test_throws ArgumentError push!(acc2, 0)
+        narrow = StreamingState{Int32, Int64}(Threshold(5, 0))
+        @test_throws OverflowError update!(narrow, 1, typemax(Int32))
+        @test isempty(update!(narrow, 1, Int32(1)))
+        @test only(update!(narrow, 2, Int32(6))) == (1, 1)
+    end
+
+    @testset "Synthetic generators" begin
+        @test random_walk(StableRNG(1), 100) == random_walk(StableRNG(1), 100)
+        @test length(random_walk(StableRNG(1), 10; periods = ((5, 1.0),), tail_alpha = 2.0)) ==
+              10
+        @test_throws ArgumentError random_walk(StableRNG(1), 0)
+        @test_throws ArgumentError random_walk(StableRNG(1), 5; tail_alpha = 0.0)
+        @test_throws ArgumentError random_walk(StableRNG(1), 5; jump_probability = 2.0)
+        @test length(iid_series(StableRNG(1), 7; distribution = :exponential)) == 7
+        @test_throws ArgumentError iid_series(StableRNG(1), 7; distribution = :cauchy)
+        y = insert_missing(StableRNG(1), ones(100), 5; max_length = 3)
+        @test any(ismissing, y) && count(ismissing, y) <= 15
+        @test_throws ArgumentError insert_missing(StableRNG(1), ones(10), -1)
+        ts = irregular_times(StableRNG(1), 500; mean_interval = 3.0)
+        @test issorted(ts) && allunique(ts) && ts[1] == 1
+        @test_throws ArgumentError irregular_times(StableRNG(1), 5; mean_interval = 0.5)
     end
 
     @testset "Legacy fixtures: EUR-USD daily closing rate" begin

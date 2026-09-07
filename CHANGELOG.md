@@ -20,6 +20,13 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   multithreaded with chunked dynamic scheduling.
 - `WaitingTimeDistribution` and `empirical_distribution` with class accounting
   and elapsed or exact mode.
+- `SegmentTreeSearch` (production kernel, `O(log N)` per index, parallel),
+  `FenwickSweep` (one sweep for many thresholds) and `StreamingSearch` with
+  `StreamingState`, `update!` and `DistributionAccumulator` for online
+  evaluation; all bit-identical to the oracle.
+- `Synthetic` module: random walks with drift, trend, cycles, noise, jumps
+  and heavy tails, independent samples, missing runs, irregular time stamps.
+- `bench/` environment with kernel benchmarks and exact cross-checks.
 - Test suite: static QA (Aqua, JET, ExplicitImports), unit and invariant
   tests, kernel equivalence on synthetic series, exact regression against
   legacy EUR-USD outputs.
