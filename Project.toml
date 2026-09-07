@@ -1,0 +1,7 @@
+name = "WaitingTimes"
+uuid = "78cbc771-1cb5-4db9-b01d-2cca60acb935"
+authors = ["Paul-Adrian Gogîță <gogitapaul@yahoo.ro>"]
+version = "0.1.0"
+
+[compat]
+julia = "1.10"
