@@ -8,7 +8,7 @@ using JET
         Aqua.test_all(WaitingTimes)
     end
     @testset "Code linting (JET.jl)" begin
-        JET.test_package(WaitingTimes; target_defined_modules = true)
+        JET.test_package(WaitingTimes; target_modules = (WaitingTimes,))
     end
     # Write your tests here.
 end
