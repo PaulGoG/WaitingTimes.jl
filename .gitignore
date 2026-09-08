@@ -1,6 +1,7 @@
 /data/
 /docs/build/
 /docs/Manifest*.toml
+/docs/src/generated/
 *.jl.*.cov
 *.jl.cov
 *.jl.mem

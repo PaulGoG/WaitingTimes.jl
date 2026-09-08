@@ -42,7 +42,10 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   extensions; CPU backend in the default tests, opt-in device tests under
   `test/device/`.
 - Documentation site (formulation, kernels, pipeline, configuration,
-  provenance, validation, API, references).
+  provenance, validation, interfacing, an executable downstream example,
+  API, references).
+- `scripts/crosscheck.jl`: index-by-index comparison of every kernel on a
+  configured series, with the GPU kernel when a backend is loaded.
 - Test suite: static QA (Aqua, JET, ExplicitImports), unit and invariant
   tests, kernel equivalence on synthetic series, exact regression against
   legacy EUR-USD outputs.

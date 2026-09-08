@@ -37,6 +37,7 @@ WaitingTimes.jl/
 │   ├── launch_run.jl             # detached run with console log under data/logs/
 │   ├── prepare.jl                # diagnostics and gap table before a run
 │   ├── validate.jl               # configured kernel against the oracle
+│   ├── crosscheck.jl             # every kernel against the segment tree, index by index
 │   └── lineage.jl                # provenance chain of a collection
 ├── configs/
 │   ├── quickstart.toml           # EUR-USD fixture, ten thresholds, minutes on a laptop
@@ -53,7 +54,8 @@ WaitingTimes.jl/
 │   ├── device/                   # opt-in oneAPI tests on a local Intel GPU
 │   └── fixtures/                 # EUR-USD input and legacy outputs for regression
 ├── docs/                         # Documenter site: formulation, kernels, pipeline, configuration,
-│                                 #   provenance, validation, API, references
+│                                 #   provenance, validation, interfacing, downstream example, API
+│   └── src/literate/             # executable downstream example (Literate.jl)
 ├── .github/workflows/            # CI, CompatHelper, TagBot
 ├── CITATION.bib, CHANGELOG.md, LICENSE, .JuliaFormatter.toml
 ```
@@ -94,6 +96,7 @@ julia --threads=auto --project scripts/run_pipeline.jl --config configs/quicksta
 julia --project scripts/launch_run.jl --config configs/geisenheim_wind.toml              # detached run, log in data/logs/
 julia --project scripts/prepare.jl --config configs/geisenheim_wind.toml                 # diagnostics and gap table
 julia --threads=auto --project scripts/validate.jl --config configs/quickstart.toml      # kernel against the oracle
+julia --threads=auto --project=test/device scripts/crosscheck.jl --config configs/quickstart.toml --backend oneapi   # all kernels, index by index
 julia --project scripts/lineage.jl data/<collection>                                     # provenance chain
 julia --project=. -e 'using Pkg; Pkg.test()'                                             # test suite
 julia --threads=auto --project=bench bench/run_benchmarks.jl                              # kernel benchmarks

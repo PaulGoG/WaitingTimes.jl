@@ -294,6 +294,8 @@ function generate(settings::Settings)
         end
 
         alg = make_kernel(settings)
+        settings.threads == 0 || settings.threads == Threads.nthreads() ||
+            @warn "[algorithm] threads is a request recorded for provenance; the process runs with the thread count it was started with" requested=settings.threads running=Threads.nthreads()
         bytes = estimate_memory_bytes(s, alg)
         limit = settings.max_ram_gb * 2^30
         bytes <= limit || throw(ArgumentError(
