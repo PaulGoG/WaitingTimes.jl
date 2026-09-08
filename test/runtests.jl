@@ -5,7 +5,10 @@ using ExplicitImports
 using JET
 using StableRNGs
 using Statistics: mean
-using WaitingTimes.Synthetic: random_walk, iid_series, insert_missing, irregular_times
+using WaitingTimes.Synthetic: random_walk, iid_series, insert_missing, irregular_times,
+                              duty_cycle_mask, bernoulli_mask, gilbert_elliott_mask,
+                              stationary_loss_rate, Disruption, disruption_mask, apply_mask,
+                              gap_scenario
 
 const WT = WaitingTimes
 const FIXTURES = joinpath(@__DIR__, "fixtures")
@@ -413,6 +416,58 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         ts = irregular_times(StableRNG(1), 500; mean_interval = 3.0)
         @test issorted(ts) && allunique(ts) && ts[1] == 1
         @test_throws ArgumentError irregular_times(StableRNG(1), 5; mean_interval = 0.5)
+
+        # gap generators modelled on a duty-cycled telemetry link
+        m = duty_cycle_mask(48; period = 24, on_fraction = 8 / 24)
+        @test count(m) == 16 && m[1:8] == trues(8) && !any(m[9:24]) && m[25:32] == trues(8)
+        @test duty_cycle_mask(10; period = 5, on_fraction = 0.4, phase = 1)[1:5] ==
+              [true, false, false, false, true]
+        @test_throws ArgumentError duty_cycle_mask(10; period = 0, on_fraction = 0.5)
+        @test_throws ArgumentError duty_cycle_mask(10; period = 5, on_fraction = 1.5)
+        b = bernoulli_mask(StableRNG(3), 200_000; p_loss = 0.1)
+        @test isapprox(1 - count(b) / length(b), 0.1; atol = 0.005)
+        @test all(bernoulli_mask(StableRNG(3), 10; p_loss = 0.0)) &&
+              !any(bernoulli_mask(StableRNG(3), 10; p_loss = 1.0))
+        @test_throws ArgumentError bernoulli_mask(StableRNG(3), 10; p_loss = 2.0)
+        ge = (p_good_to_bad = 0.03, p_bad_to_good = 0.25,
+            p_loss_good = 0.01, p_loss_bad = 0.5)
+        g = gilbert_elliott_mask(StableRNG(4), 400_000; ge...)
+        @test isapprox(1 - count(g) / length(g), stationary_loss_rate(; ge...); atol = 0.01)
+        @test stationary_loss_rate(; p_good_to_bad = 0.0, p_bad_to_good = 0.0,
+            p_loss_good = 0.2, p_loss_bad = 0.9) == 0.2
+        @test_throws ArgumentError gilbert_elliott_mask(
+            StableRNG(4), 10; p_good_to_bad = 1.5,
+            p_bad_to_good = 0.5, p_loss_good = 0.0, p_loss_bad = 0.0)
+        rate = stationary_loss_rate(; ge...)
+        runs(mask) = (
+            r = Int[]; len = 0; for v in mask
+                if !v
+                    len += 1
+                elseif len > 0
+                    push!(r, len)
+                    len = 0
+                end
+            end; len > 0 && push!(r, len); r)
+        @test maximum(runs(g)) >
+              maximum(runs(bernoulli_mask(StableRNG(5), 400_000; p_loss = rate)))
+        blackout = Disruption(101, 50, 20, 1.0)
+        dm = disruption_mask(StableRNG(6), 300, [blackout])
+        @test !any(dm[101:150]) && all(dm[1:100]) && all(dm[171:300])
+        @test count(dm[151:170]) >= 1
+        partial = Disruption(1, 100_000, 0, 0.3)
+        pm = disruption_mask(StableRNG(7), 100_000, [partial])
+        @test isapprox(1 - count(pm) / length(pm), 0.3; atol = 0.01)
+        @test_throws ArgumentError Disruption(0, 10, 0, 0.5)
+        @test_throws ArgumentError Disruption(1, 10, 0, 1.5)
+        @test isequal(apply_mask([1.0, 2.0, 3.0], [true, false, true]), [1.0, missing, 3.0])
+        @test_throws DimensionMismatch apply_mask([1.0, 2.0], [true])
+        y, mask = gap_scenario(StableRNG(8), random_walk(StableRNG(8), 2_000); period = 24,
+            on_fraction = 8 / 24, loss = :gilbert_elliott, ge..., disruptions = [Disruption(500, 100, 50, 1.0)])
+        @test count(ismissing, y) == count(!, mask) && !any(mask[500:599])
+        s_gap = QuantizedSeries(y, 2)
+        @test length(s_gap.gaps) >= 80
+        @test_throws ArgumentError gap_scenario(StableRNG(8), [1.0, 2.0]; loss = :cosmic)
+        @test_throws ArgumentError gap_scenario(StableRNG(8), [1.0, 2.0]; loss = :bernoulli, p_loss = 1.0)
     end
 
     @testset "Legacy fixtures: EUR-USD daily closing rate" begin

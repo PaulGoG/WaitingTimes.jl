@@ -44,6 +44,10 @@ Keep a Changelog and the project adheres to Semantic Versioning.
 - Documentation site (formulation, kernels, pipeline, configuration,
   provenance, validation, interfacing, an executable downstream example,
   API, references).
+- Synthetic gap generators modelled on a duty-cycled telemetry link:
+  contact-window duty cycle, Bernoulli and Gilbert-Elliott packet loss with
+  the analytic stationary loss rate, scheduled disruptions with blackout and
+  linear recovery, and `gap_scenario` composing them.
 - `scripts/crosscheck.jl`: index-by-index comparison of every kernel on a
   configured series, with the GPU kernel when a backend is loaded.
 - Test suite: static QA (Aqua, JET, ExplicitImports), unit and invariant

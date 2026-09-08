@@ -131,4 +131,12 @@ WaitingTimes.Synthetic.random_walk
 WaitingTimes.Synthetic.iid_series
 WaitingTimes.Synthetic.insert_missing
 WaitingTimes.Synthetic.irregular_times
+WaitingTimes.Synthetic.duty_cycle_mask
+WaitingTimes.Synthetic.bernoulli_mask
+WaitingTimes.Synthetic.gilbert_elliott_mask
+WaitingTimes.Synthetic.stationary_loss_rate
+WaitingTimes.Synthetic.Disruption
+WaitingTimes.Synthetic.disruption_mask
+WaitingTimes.Synthetic.apply_mask
+WaitingTimes.Synthetic.gap_scenario
 ```

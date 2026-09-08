@@ -65,7 +65,16 @@ S = WaitingTimes.survival(d)
 keep = S .> 0
 kt = k[k .>= x_min]
 fig = Figure(; size = (600, 400), fontsize = 13)
-decade_ticks(lo, hi) = (10.0 .^ (lo:hi), [p == 0 ? "1" : p == 1 ? "10" : "10" * join(get(Dict('-' => '⁻', '0' => '⁰', '1' => '¹', '2' => '²', '3' => '³', '4' => '⁴'), c, c) for c in string(p)) for p in lo:hi])
+function decade_ticks(lo, hi)
+    (10.0 .^ (lo:hi),
+        [p == 0 ? "1" :
+         p == 1 ? "10" :
+         "10" * join(get(
+                  Dict(
+                      '-' => '⁻', '0' => '⁰', '1' => '¹', '2' => '²', '3' => '³', '4' =>
+                          '⁴'), c, c)
+         for c in string(p)) for p in lo:hi])
+end
 ax = Axis(fig[1, 1]; xscale = log10, yscale = log10,
     xticks = decade_ticks(0, 4), yticks = decade_ticks(-4, 0),
     xlabel = "Waiting time k [days]", ylabel = "P(τ > k)",
