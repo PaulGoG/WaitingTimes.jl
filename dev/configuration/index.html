@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Configuration · WaitingTimes.jl</title><meta name="title" content="Configuration · WaitingTimes.jl"/><meta property="og:title" content="Configuration · WaitingTimes.jl"/><meta property="twitter:title" content="Configuration · WaitingTimes.jl"/><meta name="description" content="Documentation for WaitingTimes.jl."/><meta property="og:description" content="Documentation for WaitingTimes.jl."/><meta property="twitter:description" content="Documentation for WaitingTimes.jl."/><meta property="og:url" content="https://PaulGoG.github.io/WaitingTimes.jl/configuration/"/><meta property="twitter:url" content="https://PaulGoG.github.io/WaitingTimes.jl/configuration/"/><link rel="canonical" href="https://PaulGoG.github.io/WaitingTimes.jl/configuration/"/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.63.2/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">WaitingTimes.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li><a class="tocitem" href="../formulation/">Formulation</a></li><li><a class="tocitem" href="../kernels/">Kernels</a></li><li><a class="tocitem" href="../pipeline/">Pipeline</a></li><li class="is-active"><a class="tocitem" href>Configuration</a><ul class="internal"><li><a class="tocitem" href="#Dataset-descriptors"><span>Dataset descriptors</span></a></li></ul></li><li><a class="tocitem" href="../provenance/">Provenance</a></li><li><a class="tocitem" href="../validation/">Validation</a></li><li><a class="tocitem" href="../interfacing/">Interfacing</a></li><li><a class="tocitem" href="../generated/downstream_fit/">Downstream example</a></li><li><a class="tocitem" href="../api/">API</a></li><li><a class="tocitem" href="../references/">References</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Configuration</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Configuration</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/PaulGoG/WaitingTimes.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/PaulGoG/WaitingTimes.jl/blob/main/docs/src/configuration.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Configuration"><a class="docs-heading-anchor" href="#Configuration">Configuration</a><a id="Configuration-1"></a><a class="docs-heading-anchor-permalink" href="#Configuration" title="Permalink"></a></h1><p>One TOML file per run, parsed and validated by <a href="../api/#WaitingTimes.Config.load_settings"><code>load_settings</code></a> into an immutable <a href="../api/#WaitingTimes.Config.Settings"><code>Settings</code></a>. Relative paths resolve against the file&#39;s directory. A top-level <code>base_config = &quot;file.toml&quot;</code> merges the file onto a base (one level), so dataset files can share defaults with <code>configs/quickstart.toml</code>. Unknown keys produce warnings; unusable values raise errors naming the key.</p><pre><code class="language-toml hljs">[input]
+path = &quot;../data/raw/meteostatGeisenheim.csv&quot;   # relative to this file unless absolute
+format = &quot;csv&quot;                    # one of: &quot;csv&quot; | &quot;dat&quot; | &quot;arrow&quot; | &quot;tick&quot;
+dataset = &quot;geisenheim-wind_speed&quot; # descriptor in configs/datasets/, or &quot;&quot;
+value_column = 9                  # column name or 1-based index
+time_column = &quot;&quot;                  # column name or index; &quot;&quot; = sample index
+time_unit = &quot;sample&quot;              # &quot;sample&quot; | &quot;nanosecond&quot; | &quot;microsecond&quot; | &quot;millisecond&quot; | &quot;second&quot; | &quot;minute&quot; | &quot;hour&quot; | &quot;day&quot;
+time_format = &quot;&quot;                  # Dates format for textual stamps; &quot;&quot; = ISO 8601 or numeric
+epoch_unit = &quot;second&quot;             # unit of numeric stamps in the file
+delimiter = &quot;&quot;                    # &quot;&quot; = format default
+header = false                    # first row is a header
+missing_policy = &quot;drop&quot;           # &quot;drop&quot; | &quot;error&quot;
+tie_policy = &quot;error&quot;              # &quot;error&quot; | &quot;first&quot; | &quot;last&quot; | &quot;mean&quot;
+quantity_label = &quot;wind speed&quot;     # plots only
+unit_label = &quot;km/h&quot;               # plots only
+
+[preprocessing]
+steps = [                         # applied in order
+  { op = &quot;trailing_mean_fluctuations&quot;, window = 708 },
+  { op = &quot;clip_quantile&quot;, q = 0.996 },
+]
+# ops: select_range{from,to} | exclude_intervals{intervals,splice} |
+#      trailing_mean_fluctuations{window} | log_returns | differences |
+#      centered_moving_average{window} | clip_quantile{q} | collapse_ties{policy}
+
+[gaps]
+declared = &quot;&quot;                     # TOML with intervals = [[start, stop], ...]; &quot;&quot; = none
+detect = &quot;cadence&quot;                # &quot;none&quot; | &quot;cadence&quot; | &quot;threshold&quot;
+cadence = 1                       # &gt;= 1
+threshold = 0                     # &gt; 0 in time units when detect = &quot;threshold&quot;
+mode = &quot;elapsed&quot;                  # &quot;elapsed&quot; | &quot;exact&quot;
+
+[quantization]
+digits = 1                        # 0:15
+
+[thresholds]
+mode = &quot;linear&quot;                   # &quot;linear&quot; | &quot;log&quot; | &quot;explicit&quot;
+min = 0.0                         # &gt;= 0, on the grid
+max = 50.0                        # &gt; min, on the grid
+step = 0.1                        # &gt; 0, on the grid (linear)
+points_per_decade = 10            # &gt;= 1 (log)
+values = []                       # explicit list, on the grid
+
+[algorithm]
+search = &quot;segment_tree&quot;           # &quot;naive&quot; | &quot;guarded&quot; | &quot;segment_tree&quot; | &quot;fenwick_sweep&quot; | &quot;streaming&quot; | &quot;device&quot;
+backend = &quot;none&quot;                  # &quot;none&quot; | &quot;auto&quot; | &quot;cuda&quot; | &quot;oneapi&quot; | &quot;amdgpu&quot; | &quot;metal&quot;
+threads = 0                       # 0 = all available
+chunk_size = 4096                 # &gt;= 1
+oracle_checks = 2                 # &gt;= 0
+oracle = &quot;naive&quot;                  # &quot;naive&quot; | &quot;guarded&quot; | &quot;device&quot;
+
+[limits]
+max_ram_gb = 16.0                 # &gt;= 0
+max_vram_gb = 8.0                 # &gt;= 0
+max_naive_work = 1e12             # &gt;= 0; bound on the oracle&#39;s sum of tau
+
+[output]
+root = &quot;../data&quot;                  # collections under root/&lt;collection id&gt;
+format = &quot;arrow&quot;                  # &quot;csv&quot; | &quot;arrow&quot;
+store_waiting_times = false
+overwrite = false
+
+[run]
+seed = 12345
+log_level = &quot;info&quot;                # &quot;debug&quot; | &quot;info&quot; | &quot;warn&quot;
+monitor = false</code></pre><p>Thresholds are generated on the grid: a linear grid from <code>min</code> to <code>max</code> by <code>step</code>; a logarithmic grid with <code>points_per_decade</code> between <code>min &gt; 0</code> and <code>max</code>, snapped to the grid and de-duplicated; or the explicit <code>values</code>. <a href="../api/#WaitingTimes.Config.threshold_list"><code>threshold_list</code></a> returns them sorted and distinct.</p><h2 id="Dataset-descriptors"><a class="docs-heading-anchor" href="#Dataset-descriptors">Dataset descriptors</a><a id="Dataset-descriptors-1"></a><a class="docs-heading-anchor-permalink" href="#Dataset-descriptors" title="Permalink"></a></h2><p><code>configs/datasets/&lt;slug&gt;.toml</code> records the source, retrieval date, licence, citation, quantity, unit, sampling and SHA-256 of a raw file. When <code>[input].dataset</code> names one, the checksum is verified before the run and the descriptor is copied into the collection&#39;s metadata.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../pipeline/">« Pipeline</a><a class="docs-footer-nextpage" href="../provenance/">Provenance »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Tuesday 8 September 2026 11:57">Tuesday 8 September 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
