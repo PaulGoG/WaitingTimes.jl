@@ -1,7 +1,7 @@
 name = "WaitingTimes"
 uuid = "78cbc771-1cb5-4db9-b01d-2cca60acb935"
 version = "0.1.0"
-authors = ["Paul-Adrian Gogîță <gogitapaul@yahoo.ro>"]
+authors = ["Paul-Adrian Gogîță"]
 
 [deps]
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
@@ -67,7 +67,7 @@ OhMyThreads = "0.8"
 Printf = "1"
 ProgressMeter = "1"
 Random = "1"
-SHA = "0.7"
+SHA = "0.7, 1"
 Statistics = "1"
 TOML = "1"
 TerminalLoggers = "0.1"

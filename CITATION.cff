@@ -1,0 +1,41 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "WaitingTimes.jl: exact waiting-time distributions of scalar time series"
+type: software
+authors:
+  - family-names: "Gogîță"
+    given-names: "Paul-Adrian"
+    affiliation: "Faculty of Physics, University of Bucharest; Institute of Space Science, Măgurele"
+version: 0.1.0
+date-released: 2026-09-26
+license: MIT
+repository-code: "https://github.com/PaulGoG/WaitingTimes.jl"
+keywords:
+  - waiting times
+  - time series
+  - first-passage times
+  - scale-free distributions
+  - Julia
+references:
+  - type: article
+    title: "Scale-free to Pareto-Tsallis transitions in the distributions of waiting times: weather, sea-level, currency trading and automotive datasets"
+    authors:
+      - family-names: "Gogîță"
+        given-names: "Paul-Adrian"
+      - family-names: "Dumitru"
+        given-names: "Teodor-Gabriel"
+      - family-names: "Constantin"
+        given-names: "Florin-Ionuț"
+      - family-names: "Diac"
+        given-names: "Tudor-Alexandru"
+      - family-names: "Neagoe"
+        given-names: "Andrei-Florin"
+      - family-names: "Raportaru"
+        given-names: "Mihaela-Carina"
+      - family-names: "Nicolin-Żaczek"
+        given-names: "Alexandru"
+    journal: "Journal of Physics: Complexity"
+    volume: 7
+    start: 035007
+    year: 2026
+    doi: "10.1088/2632-072X/ae8aa5"

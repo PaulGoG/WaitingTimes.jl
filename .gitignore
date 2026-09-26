@@ -1,8 +1,9 @@
+Manifest.toml
+Manifest-v*.toml
 /data/
 /docs/build/
-/docs/Manifest*.toml
 /docs/src/generated/
+/plots/
 *.jl.*.cov
 *.jl.cov
 *.jl.mem
-/plots/
