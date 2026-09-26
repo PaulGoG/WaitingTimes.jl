@@ -19,7 +19,8 @@ using ..Provenance: file_sha256, read_toml
 
 export RawSeries, read_series, select_range, exclude_intervals, round_values,
        trailing_mean_fluctuations, log_returns, differences, centered_moving_average,
-       clip_quantile, clip_sigma, collapse_ties, sampling_summary, value_summary,
+       clip_quantile, clip_sigma, clip_extremes, collapse_ties, sampling_summary,
+       value_summary,
        resolution_digits, terminal_overview, quantized_series, apply_steps,
        read_gap_intervals
 
@@ -495,13 +496,14 @@ end
 $(TYPEDSIGNATURES)
 
 Remove the rows selected by `remove` (a mask over the rows of `rs`). With
+`splice = false` the value is set to `missing` and its time position remains:
+the measurement is discarded as invalid but the time passed, so the cut is a
+recorded gap; this is what the 2024 analysis did (its time column kept the
+original row indices) and what reproduces the published results. With
 `splice = true` the row and its slot vanish: for a sample-indexed series the
 later indices close up, for an explicit time axis every later time moves
 back by the span from the removed row's predecessor to the removed row, so no
-elapsed time is counted for it (a pruned value is an anomaly that should not
-have happened, not time that passed unobserved). With `splice = false` the
-value is set to `missing` and its time position remains, so the cut is a
-recorded gap.
+elapsed time is counted for it.
 """
 function remove_rows(rs::RawSeries, remove::AbstractVector{Bool}, op::Symbol, parameters,
         summary; splice::Bool)
@@ -543,11 +545,11 @@ end
 $(TYPEDSIGNATURES)
 
 Prune observations whose magnitude exceeds the `q` quantile of ``|x|``, the
-extreme-value pruning of the original analysis (`q = 0.9996` removes the
-extreme 0.04 % of both signs). Rows are deleted and the clock closes over them
-by default (`splice = true`); see [`remove_rows`](@ref).
+extreme-value pruning as the papers state it (`q = 0.9996` removes the
+extreme 0.04 % of both signs). The pruned values become missing with their
+slots kept by default (`splice = false`); see [`remove_rows`](@ref).
 """
-function clip_quantile(rs::RawSeries; q::Real, splice::Bool = true)
+function clip_quantile(rs::RawSeries; q::Real, splice::Bool = false)
     0 < q <= 1 || throw(ArgumentError("q must lie in (0, 1], got $q"))
     idx, x = observed(rs)
     isempty(x) && throw(ArgumentError("the series has no observed value"))
@@ -563,16 +565,65 @@ end
 """
 $(TYPEDSIGNATURES)
 
+The pruning loop of the 2024 analysis code, reproduced for continuity with
+the published results: while more than `1 - fraction` of the rows remain,
+every observation with magnitude at least the current cut is removed, where
+the cut is the integer floor of the largest magnitude on the first pass and
+its floor at `digits` decimals afterwards. The batches remove whole magnitude
+levels at once, so the removed share exceeds `fraction` by up to one level.
+`fraction = 0.004` is the value of the 2024 code (its paper states 0.04 %,
+which [`clip_quantile`](@ref) with `q = 0.9996` applies exactly). With
+`splice = false` (the default, as the 2024 code) this step reproduces the
+published Table 1 entries of the pruned series; see [`remove_rows`](@ref).
+"""
+function clip_extremes(rs::RawSeries; fraction::Real = 0.004, digits::Integer,
+        splice::Bool = false)
+    0 < fraction < 1 || throw(ArgumentError("fraction must lie in (0, 1), got $fraction"))
+    0 <= digits <= MAX_DIGITS ||
+        throw(ArgumentError("digits must lie in 0:$(MAX_DIGITS), got $digits"))
+    idx, x = observed(rs)
+    isempty(x) && throw(ArgumentError("the series has no observed value"))
+    n_initial = length(rs)
+    remove = falses(length(rs))
+    alive = trues(length(x))
+    remaining = n_initial
+    cut = floor(maximum(abs, x))
+    passes = 0
+    while remaining / n_initial > 1 - fraction
+        hit = false
+        for (j, i) in enumerate(idx)
+            alive[j] || continue
+            if abs(x[j]) >= cut
+                alive[j] = false
+                remove[i] = true
+                remaining -= 1
+                hit = true
+            end
+        end
+        passes += 1
+        hit || throw(ArgumentError("clip_extremes made no progress at cut $cut"))
+        any(alive) || throw(ArgumentError("clip_extremes removes every observation"))
+        cut = floor(maximum(abs(x[j]) for j in eachindex(x) if alive[j]); digits = digits)
+    end
+    return remove_rows(rs, remove, :clip_extremes,
+        Dict("fraction" => Float64(fraction), "digits" => Int(digits)),
+        Dict("passes" => passes, "final_cut" => cut); splice = splice)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Prune observations farther than `k` scale units from the centre of the
 observed values: `center = :mean` with `scale = :std`, or the robust pair
 `center = :median` with `scale = :mad` (median absolute deviation scaled by
 1.4826 to estimate the standard deviation of a normal sample). `k = 3` keeps
-the central 99.73 % of a normal sample. Rows are deleted and the clock closes
-over them by default (`splice = true`); see [`remove_rows`](@ref).
+the central 99.73 % of a normal sample. The pruned values become missing
+with their slots kept by default (`splice = false`); see
+[`remove_rows`](@ref).
 """
 function clip_sigma(
         rs::RawSeries; k::Real = 3, center::Symbol = :mean, scale::Symbol = :std,
-        splice::Bool = true)
+        splice::Bool = false)
     k > 0 || throw(ArgumentError("k must be positive, got $k"))
     center in (:mean, :median) ||
         throw(ArgumentError("center must be :mean or :median, got :$center"))
@@ -624,10 +675,13 @@ function apply_steps(rs::RawSeries, steps::AbstractVector)
         elseif op == "centered_moving_average"
             rs = centered_moving_average(rs; window = step["window"])
         elseif op == "clip_quantile"
-            rs = clip_quantile(rs; q = step["q"], splice = get(step, "splice", true))
+            rs = clip_quantile(rs; q = step["q"], splice = get(step, "splice", false))
+        elseif op == "clip_extremes"
+            rs = clip_extremes(rs; fraction = get(step, "fraction", 0.004),
+                digits = step["digits"], splice = get(step, "splice", false))
         elseif op == "clip_sigma"
             rs = clip_sigma(rs; k = get(step, "k", 3), center = symbol("center", "mean"),
-                scale = symbol("scale", "std"), splice = get(step, "splice", true))
+                scale = symbol("scale", "std"), splice = get(step, "splice", false))
         elseif op == "collapse_ties"
             rs = collapse_ties(rs, Symbol(step["policy"]))
         else

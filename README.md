@@ -14,6 +14,7 @@ WaitingTimes.jl/
 ├── bench/                        # kernel benchmarks (own environment)
 ├── test/                         # test suite, fixtures, opt-in device tests
 ├── docs/                         # Documenter site with an executable example
+├── examples/                     # worked consumers against MarketTickStreamer.jl and DeepSpaceTelemetry.jl
 ├── data/                         # gitignored: raw inputs, collections, logs
 ├── CITATION.cff, CHANGELOG.md, LICENSE, .JuliaFormatter.toml
 ```
@@ -66,6 +67,9 @@ julia --threads=auto test/runtests.jl                                          #
 julia --threads=auto bench/run_benchmarks.jl                                   # kernel benchmarks
 julia --threads=auto test/device/runtests.jl                                   # opt-in GPU tests (oneAPI)
 julia docs/make.jl                                                             # documentation site into docs/build/
+JULIA_PKG_USE_CLI_GIT=true julia examples/check_environment.jl                 # instantiate the examples environment (clones two packages)
+julia --threads=auto examples/tick_stream.jl                                   # online estimator on a tick stream, checked against batch
+julia --threads=3 examples/telemetry_run.jl                                    # telemetry run directory → gaps → collection
 julia -e 'using Pkg; Pkg.activate("JuliaFormatter"; shared = true); Pkg.add("JuliaFormatter"); using JuliaFormatter; format(".")'   # formatting
 ```
 
@@ -79,7 +83,9 @@ and `catalog.csv`. Rerunning with a wider threshold grid adds partitions and
 appends a session; existing partitions are never rewritten unless
 `[output].overwrite = true`, in which case they are backed up first.
 
-Library use:
+Every collection directory carries a `README.md` describing its own files.
+
+Library use, in memory:
 
 ```julia
 using WaitingTimes
@@ -88,6 +94,17 @@ s = QuantizedSeries(values, 4)                 # values::Vector{Union{Missing,Fl
 τ == waiting_times(s, 0.0005, NaiveSearch())   # every kernel is bit-identical to the reference kernel
 d = empirical_distribution(τ, threshold(0.0005, s), s)
 WaitingTimes.support(d), WaitingTimes.probabilities(d), WaitingTimes.cumulative(d)
+```
+
+From a collection on disk, and in real time:
+
+```julia
+c = load_collection("data/<collection id>")   # overview when shown; thresholds(c), summary_table(c)
+d = distribution(c, "0.0005")                  # one WaitingTimeDistribution
+export_legacy(c, "outputData/<id>")           # WTS_<slug>_deltais<δ>.dat files of the 2024 analysis
+
+est = OnlineWaitingTimes([0.5, 5.0], 2; time_unit = :nanosecond, late_policy = :skip)
+push!(est, t_ns, price)                        # one sample; snapshot(est) gives the distributions so far
 ```
 
 ## Status
@@ -104,6 +121,10 @@ WaitingTimes.support(d), WaitingTimes.probabilities(d), WaitingTimes.cumulative(
 | Configuration, storage, provenance, preprocessing, scripts | done; quickstart end to end in the tests |
 | Distributions.jl and CairoMakie extensions | done |
 | KernelAbstractions device kernel | done; CPU backend in the default tests, oneAPI verified on an Intel Arc GPU |
+| Preprocessing after the published treatment (round, fluctuations with denominator and offset, pruning with row deletion, `clip_sigma`) | done; Table 1 of the paper reproduced for the raw datasets |
+| Collection read side (`load_collection`, `distribution`, `summary_table`, `export_legacy`), per-collection README | done |
+| Online estimator for live streams (`OnlineWaitingTimes`) | done; equal to the batch result on every prefix |
+| Worked consumers against MarketTickStreamer.jl and DeepSpaceTelemetry.jl | `examples/` |
 | Documentation site | done |
 
 ## How to cite
@@ -181,6 +202,10 @@ WaitingTimes.jl/
 │   ├── Project.toml, activate.jl, make.jl
 │   └── src/                      # formulation, kernels, pipeline, configuration, provenance,
 │       └── literate/             #   validation, interfacing, API, references; executable example
+├── examples/                     # own environment: the two public packages from GitHub
+│   ├── Project.toml, activate.jl, check_environment.jl
+│   ├── tick_stream.jl            # Channel{Trade} of MarketTickStreamer.jl → OnlineWaitingTimes, batch check
+│   └── telemetry_run.jl          # DeepSpaceTelemetry.jl run directory → series with gaps → collection
 ├── .github/                      # CI and Dependabot templates, dormant until public launch
 ├── CITATION.cff, CHANGELOG.md, LICENSE, .JuliaFormatter.toml
 ```

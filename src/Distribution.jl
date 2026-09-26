@@ -61,7 +61,7 @@ function empirical_distribution(
     support, counts = run_lengths(sample)
     K = length(sample)
     pmf = K == 0 ? Float64[] : counts ./ K
-    cdf = cumsum(pmf)
+    cdf = K == 0 ? Float64[] : cumsum(counts) ./ K
     return WaitingTimeDistribution{Tt}(Threshold{Int64}(δ.d, δ.digits), s.time_unit, mode,
         support, counts, pmf, cdf, acc.n_candidates, acc.n_exact, acc.n_gap_crossing,
         acc.n_right_censored)
@@ -108,6 +108,25 @@ end
 Statistics.mean(d::WaitingTimeDistribution) = mean_waiting_time(d)
 
 Base.length(d::WaitingTimeDistribution) = length(d.support)
+
+"""
+$(TYPEDSIGNATURES)
+
+Two distributions are equal when their thresholds, units, modes, supports,
+counts and accounting agree (the probability columns follow from the counts).
+"""
+function Base.:(==)(a::WaitingTimeDistribution, b::WaitingTimeDistribution)
+    return a.delta == b.delta && a.time_unit === b.time_unit && a.mode === b.mode &&
+           a.support == b.support && a.counts == b.counts &&
+           a.n_candidates == b.n_candidates && a.n_exact == b.n_exact &&
+           a.n_gap_crossing == b.n_gap_crossing && a.n_right_censored == b.n_right_censored
+end
+function Base.hash(d::WaitingTimeDistribution, h::UInt)
+    return hash(
+        (d.delta, d.time_unit, d.mode, d.support, d.counts, d.n_candidates,
+            d.n_exact, d.n_gap_crossing, d.n_right_censored),
+        h)
+end
 
 function Base.show(io::IO, d::WaitingTimeDistribution)
     print(io, "WaitingTimeDistribution(δ = ", format_threshold(d.delta), ", ", nsamples(d),

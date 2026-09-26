@@ -29,6 +29,7 @@ include("SegmentTree.jl")
 include("FenwickSweep.jl")
 include("Distribution.jl")
 include("Streaming.jl")
+include("Online.jl")
 include("Synthetic.jl")
 include("Backends.jl")
 include("DeviceKernels.jl")
@@ -93,6 +94,8 @@ include("Orchestrator.jl")
 
 using .Config: Settings, load_settings, threshold_list
 using .Orchestrator: CollectionHandle, generate, prepare, run_pipeline, validate
+using .Storage: Collection, load_collection, list_collections, distribution, thresholds,
+                summary_table, load_series, export_legacy
 using .Provenance: effective_config
 
 export Threshold, threshold, quantize, format_threshold, parse_threshold
@@ -101,9 +104,12 @@ export detect_gaps, declare_gaps, gap_table, classify, class_counts
 export AbstractSearch, NaiveSearch, GuardedSearch, SegmentTreeSearch, FenwickSweep,
        StreamingSearch, DeviceSearch, device_search, waiting_times, waiting_times!
 export StreamingState, DistributionAccumulator, update!, pending
+export OnlineWaitingTimes, snapshot, status
 export WaitingTimeDistribution, empirical_distribution
 export Settings, load_settings, threshold_list, effective_config
 export CollectionHandle, generate, prepare, run_pipeline, validate
+export Collection, load_collection, list_collections, distribution, thresholds,
+       summary_table, load_series, export_legacy
 
 public CLASS_EXACT, CLASS_GAP_CROSSING, CLASS_RIGHT_CENSORED, TIME_UNITS
 public narrow_integer, suffix_maximum, SearchWorkspace, MaxTree, FenwickWorkspace,

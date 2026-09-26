@@ -7,3 +7,4 @@ Manifest-v*.toml
 *.jl.*.cov
 *.jl.cov
 *.jl.mem
+/examples/output/

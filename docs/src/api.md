@@ -42,13 +42,16 @@ WaitingTimes.suffix_maximum
 WaitingTimes.scan_work
 ```
 
-## Streaming
+## Streaming and online estimation
 
 ```@docs
 StreamingState
 update!
 pending
 DistributionAccumulator
+OnlineWaitingTimes
+snapshot
+status
 ```
 
 ## Distributions
@@ -94,6 +97,7 @@ WaitingTimes.Preprocessing.differences
 WaitingTimes.Preprocessing.centered_moving_average
 WaitingTimes.Preprocessing.clip_quantile
 WaitingTimes.Preprocessing.clip_sigma
+WaitingTimes.Preprocessing.clip_extremes
 WaitingTimes.Preprocessing.remove_rows
 WaitingTimes.Preprocessing.collapse_ties
 WaitingTimes.Preprocessing.quantized_series
@@ -116,6 +120,15 @@ WaitingTimes.Naming.artefact_name
 WaitingTimes.Naming.parse_artefact_name
 WaitingTimes.Storage.partition_path
 WaitingTimes.Storage.load_distributions
+Collection
+load_collection
+list_collections
+distribution
+thresholds
+summary_table
+load_series
+export_legacy
+WaitingTimes.Storage.write_collection_readme
 ```
 
 ## Backends and figures

@@ -1,7 +1,8 @@
-# Port of Trieste hourly sea level, preprocessed as in Pană, Gogîță,
-# Nicolin-Żaczek, Rom. J. Phys. 69, 111 (2024): rounding, percentage
-# fluctuations from a lunar-month trailing mean with the automatic shift,
-# pruning of the extreme 0.04 % with row deletion.
+# Port of Trieste hourly sea level, preprocessed as published (Pană, Gogîță,
+# Nicolin-Żaczek, Rom. J. Phys. 69, 111 (2024); Gogîță et al., J. Phys.
+# Complex. 7 (2026) 035007, Table 1): rounding, percentage fluctuations from
+# a lunar-month trailing mean with the automatic shift, the pruning loop of
+# the 2024 code with the pruned slots kept.
 base_config = "quickstart.toml"
 
 [input]
@@ -17,7 +18,7 @@ unit_label = "cm"
 steps = [
   { op = "round", digits = 1 },
   { op = "trailing_mean_fluctuations", window = 708, denominator = "mean", offset = "auto" },
-  { op = "clip_quantile", q = 0.9996, splice = true },
+  { op = "clip_extremes", fraction = 0.004, digits = 1 },
 ]
 
 [quantization]

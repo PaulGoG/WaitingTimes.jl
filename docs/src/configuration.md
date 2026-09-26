@@ -28,7 +28,7 @@ unit_label = "km/h"               # plots only
 steps = [                         # applied in order; see Preprocessing steps below
   { op = "round", digits = 1 },
   { op = "trailing_mean_fluctuations", window = 708, denominator = "mean", offset = "auto" },
-  { op = "clip_quantile", q = 0.9996, splice = true },
+  { op = "clip_extremes", fraction = 0.004, digits = 1 },
 ]
 
 [gaps]
@@ -86,22 +86,27 @@ when the configuration is loaded.
 | `log_returns` | | `100 log(x_k / x_{k-1})` |
 | `differences` | | `x_k - x_{k-1}` |
 | `centered_moving_average` | `window` (odd) | subtract the centred moving average |
-| `clip_quantile` | `q`, `splice = true` | prune the observations with magnitude above the `q` quantile of the magnitudes (`q = 0.9996`: the extreme 0.04 % of both signs, as in the papers) |
-| `clip_sigma` | `k = 3`, `center = "mean"`, `scale = "std"`, `splice = true` | prune the observations farther than `k` scale units from the centre; `"median"` with `"mad"` is the robust pair |
+| `clip_quantile` | `q`, `splice = false` | prune the observations with magnitude above the `q` quantile of the magnitudes (`q = 0.9996`: the extreme 0.04 % of both signs, as in the papers) |
+| `clip_extremes` | `fraction = 0.004`, `digits`, `splice = false` | the pruning loop of the 2024 code: remove whole magnitude levels from the top until at most `1 - fraction` of the rows remain |
+| `clip_sigma` | `k = 3`, `center = "mean"`, `scale = "std"`, `splice = false` | prune the observations farther than `k` scale units from the centre; `"median"` with `"mad"` is the robust pair |
 | `collapse_ties` | `policy` | resolve equal time stamps (`"error"`, `"first"`, `"last"`, `"mean"`) |
 
-Pruning deletes rows: with `splice = true` (the default) the removed
-observation's slot vanishes and the clock closes over it, as in the original
-analysis, because a pruned value is an anomaly that should not have happened;
-`splice = false` keeps the slot as a recorded gap instead. After every step
-the observed values must be finite; a non-finite value aborts the run naming
-the step and the row.
+Pruning discards a measurement as invalid. With `splice = false` (the
+default) the value becomes missing and its slot remains, so the time passed
+and the cut is a recorded gap; this is what the 2024 code did, whose time
+column kept the original row indices, and what reproduces the published
+results. With `splice = true` the row and its slot are deleted and the clock
+closes over it. After every step the observed values must be finite; a
+non-finite value aborts the run naming the step and the row.
 
-The published treatment of the Trieste series is the sequence shown above:
-`round` to the grid, percentage fluctuations from a 708-hour (lunar month)
-trailing mean with the automatic shift, pruning of the extreme 0.04 %. The
-2024 code pruned 0.4 % in integer-valued batches; `q = 0.996` approximates
-that variant.
+The published treatment of the Trieste series is `round` to the grid,
+percentage fluctuations from a 708-hour (lunar month) trailing mean with the
+automatic shift, and `clip_extremes` with `fraction = 0.004`: the paper
+states the pruning as 0.04 % of both signs (`clip_quantile` with
+`q = 0.9996` applies that literally), but the 2024 code that produced the
+published tables pruned 0.4 % in whole magnitude levels, and only that rule
+reproduces Table 1 of the paper for the Trieste and fuel-consumption series.
+The shipped `trieste_sea_level.toml` and `trustee_fuel.toml` state it.
 
 Thresholds are generated on the grid: a linear grid from `min` to `max` by
 `step`; a logarithmic grid with `points_per_decade` between `min > 0` and

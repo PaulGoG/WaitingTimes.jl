@@ -408,6 +408,57 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         @test only(update!(narrow, 2, Int32(6))) == (1, 1)
     end
 
+    @testset "Online estimation at several thresholds" begin
+        rng = StableRNG(41)
+        x = random_walk(rng, 4_000)
+        s = QuantizedSeries(x, 2)
+        deltas = [0.0, 0.5, 5.0]
+        est = OnlineWaitingTimes(deltas, 2)
+        @test est.time_unit === :sample && length(est.thresholds) == 3
+        resolved = sum(push!(est, v) for v in x)
+        @test est.n_seen == length(x) && est.n_late == 0
+        snaps = snapshot(est)
+        for (δ, d_online) in zip(deltas, snaps)
+            thr = threshold(δ, s)
+            τ = waiting_times(s, thr, NaiveSearch())
+            d_batch = empirical_distribution(τ, thr, s)
+            @test WT.support(d_online) == WT.support(d_batch)
+            @test WT.counts(d_online) == WT.counts(d_batch)
+            @test WT.cumulative(d_online) ≈ WT.cumulative(d_batch)
+            @test d_online.n_right_censored == d_batch.n_right_censored
+            @test d_online.delta == Threshold{Int64}(thr.d, 2)
+        end
+        @test resolved == sum(WT.nsamples(d) for d in snaps)
+        # pending includes the latest sample, which is never a candidate
+        @test pending(est) == [d.n_right_censored + 1 for d in snaps]
+        st = status(est)
+        @test length(st) == 3 && st[2].delta == "0.50" && st[2].pending == pending(est)[2]
+        @test st[1].mean_waiting_time ≈ mean(snaps[1])
+        @test occursin("3 thresholds", sprint(show, est))
+        # explicit times, append!, and the late policy
+        timed = OnlineWaitingTimes([0.5], 2; time_unit = :second, late_policy = :skip)
+        t = irregular_times(rng, 500; mean_interval = 3.0)
+        append!(timed, t, x[1:500])
+        @test timed.n_seen == 500 && timed.n_late == 0
+        @test push!(timed, t[end], 1.0) == 0 && timed.n_late == 1
+        s_timed = QuantizedSeries(x[1:500], 2; times = t, time_unit = :second)
+        d_timed = snapshot(timed)[1]
+        @test WT.support(d_timed) == WT.support(empirical_distribution(
+            waiting_times(s_timed, 0.5), threshold(0.5, s_timed), s_timed))
+        @test d_timed.time_unit === :second
+        strict = OnlineWaitingTimes([0.5], 2; time_unit = :second)
+        push!(strict, 10, 1.0)
+        @test_throws ArgumentError push!(strict, 10, 2.0)
+        @test_throws ArgumentError push!(strict, 3.0)
+        @test_throws ArgumentError OnlineWaitingTimes(Float64[], 2)
+        @test_throws ArgumentError OnlineWaitingTimes([0.5, 0.5], 2)
+        @test_throws ArgumentError OnlineWaitingTimes([0.5], 2; late_policy = :drop)
+        @test_throws ArgumentError OnlineWaitingTimes([0.5], 2; time_unit = :fortnight)
+        @test_throws ArgumentError push!(OnlineWaitingTimes([1.0], 0), NaN)
+        @test_throws OverflowError push!(OnlineWaitingTimes([1.0], 0; value_type = Int8), 1000.0)
+        @test_throws ArgumentError OnlineWaitingTimes([0.25], 1)
+    end
+
     @testset "Device search selection" begin
         @test device_search(:none) isa DeviceSearch{<:WaitingTimes.Backends.CPU}
         @test device_search(:auto) isa DeviceSearch{<:WaitingTimes.Backends.CPU}

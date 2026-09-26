@@ -148,7 +148,7 @@ function empirical_distribution(
     counts = [acc.counts[k] for k in support]
     K = sum(counts; init = 0)
     pmf = K == 0 ? Float64[] : counts ./ K
-    cdf = cumsum(pmf)
+    cdf = K == 0 ? Float64[] : cumsum(counts) ./ K
     n_candidates = max(state.n_seen - 1, 0)
     n_pending = n_candidates - state.n_resolved
     return WaitingTimeDistribution{Tt}(

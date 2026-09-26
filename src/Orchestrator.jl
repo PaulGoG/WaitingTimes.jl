@@ -24,8 +24,9 @@ using ..Provenance: artefact_id, backup_existing!, content_hash, file_sha256, gi
                     toml_ready, write_hardware_fingerprint, write_toml
 using ..Preprocessing: apply_steps, quantized_series, read_gap_intervals, read_series,
                        resolution_digits
-using ..Storage: partition_path, read_index, write_catalog, write_distribution, write_index,
-                 write_series_files, write_summary, write_waiting_times
+using ..Storage: partition_path, read_index, write_catalog, write_collection_readme,
+                 write_distribution, write_index, write_series_files, write_summary,
+                 write_waiting_times
 using ..Monitoring: run_progress, with_run_logging
 using ..Backends: backend_name, device_fingerprint
 using KernelAbstractions: CPU
@@ -139,6 +140,7 @@ function step_tag(step::AbstractDict)
     op == "centered_moving_average" ? "cma" * string(step["window"]) :
     op == "clip_quantile" ? "clip" * string(step["q"]) :
     op == "clip_sigma" ? "sigma" * string(get(step, "k", 3)) :
+    op == "clip_extremes" ? "prune" * string(get(step, "fraction", 0.004)) :
     op == "log_returns" ? "logret" :
     op == "differences" ? "diff" :
     op == "select_range" ? "range" :
@@ -390,6 +392,7 @@ function generate(settings::Settings)
                     length(computed),
                 "n_skipped" => length(skipped), "n_reference_checks" => length(checks)))
         write_toml(meta_path, meta)
+        write_collection_readme(dir, meta, entries, settings.output_format)
         @info "session complete" computed=length(computed) skipped=length(skipped) reference_checks=length(checks) seconds=round(
             TimerOutputs.tottime(timer)/1e9; digits = 2)
     end

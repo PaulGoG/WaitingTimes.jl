@@ -147,6 +147,7 @@ const STEP_KEYS = Dict(
     "centered_moving_average" => ["window"],
     "clip_quantile" => ["q", "splice"],
     "clip_sigma" => ["k", "center", "scale", "splice"],
+    "clip_extremes" => ["fraction", "digits", "splice"],
     "collapse_ties" => ["policy"]
 )
 
@@ -187,6 +188,11 @@ function validate_step(step::AbstractDict, op::AbstractString, k::Integer)
     elseif op == "clip_quantile"
         q = as_float(require(step, where_, "q"), where_, "q"; min = 0.0, max = 1.0)
         q > 0 || throw(ArgumentError("[$where_] q must be positive"))
+        haskey(step, "splice") && as_bool(step["splice"], where_, "splice")
+    elseif op == "clip_extremes"
+        f = as_float(fetch(step, where_, "fraction", 0.004), where_, "fraction")
+        0 < f < 1 || throw(ArgumentError("[$where_] fraction must lie in (0, 1), got $f"))
+        as_int(require(step, where_, "digits"), where_, "digits"; min = 0, max = 15)
         haskey(step, "splice") && as_bool(step["splice"], where_, "splice")
     elseif op == "clip_sigma"
         k_ = as_float(fetch(step, where_, "k", 3.0), where_, "k")

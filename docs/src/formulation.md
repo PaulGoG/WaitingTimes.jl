@@ -54,15 +54,15 @@ and is not a default anywhere.
 
 ## Pruning versus gaps
 
-Two operations remove observations and they mean different things. A
-recorded gap is time that passed unobserved: the observation is absent, its
-slot remains, the clock runs through it, and the classification reports which
-waiting times crossed it. A pruned observation is an anomaly that should not
-have happened: `clip_quantile` and `clip_sigma` delete the row together with
-its slot (the span from its predecessor to itself), so later times move back
-and no elapsed time is counted for it, exactly as the original analysis
-deleted rows before re-indexing. The same distinction holds for
-`exclude_intervals`, whose `splice` flag chooses between the two readings.
+A recorded gap is time that passed unobserved: the observation is absent,
+its slot remains, the clock runs through it, and the classification reports
+which waiting times crossed it. Pruning (`clip_quantile`, `clip_sigma`,
+`clip_extremes`) discards a measurement as invalid; by default the value
+becomes missing and its slot remains, so a pruned value is treated exactly
+like a gap, which is what the 2024 analysis did and what reproduces its
+published results. With `splice = true` the slot is deleted as well and the
+clock closes over it, for rows that never corresponded to an instant of the
+record; `exclude_intervals` offers the same choice for whole intervals.
 
 ## Empirical distribution
 

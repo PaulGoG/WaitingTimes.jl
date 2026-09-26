@@ -6,7 +6,8 @@ using WaitingTimes.Provenance: artefact_id, backup_existing!, canonical_toml, co
                                toml_ready, write_toml
 using WaitingTimes.Naming: artefact_name, parse_artefact_name
 using WaitingTimes.Preprocessing: RawSeries, apply_steps, centered_moving_average,
-                                  clip_quantile, clip_sigma, collapse_ties, differences,
+                                  clip_extremes, clip_quantile, clip_sigma, collapse_ties,
+                                  differences,
                                   exclude_intervals, log_returns, quantized_series,
                                   read_series, resolution_digits, round_values,
                                   sampling_summary, select_range, terminal_overview,
@@ -212,36 +213,57 @@ end
     cma = centered_moving_average(raw_from([1.0, 2.0, 3.0, 4.0, 5.0]); window = 3)
     @test cma.values[3] == 0.0 && cma.values[1] ≈ 1 - 1.5
     @test_throws ArgumentError centered_moving_average(rs; window = 2)
-    # pruning deletes the row and its slot; splice = false keeps the slot as a gap
-    cq = clip_quantile(raw_from([1.0, 2.0, 3.0, 100.0]); q = 0.75)
-    @test cq.values == [1.0, 2.0, 3.0] && cq.times === nothing
-    @test cq.record.steps[end].summary["n_removed"] == 1 &&
-          cq.record.steps[end].summary["positions"] == [4]
-    cq2 = clip_quantile(raw_from([1.0, 2.0, 3.0, 100.0]); q = 0.75, splice = false)
+    # pruning keeps the slot by default (the 2024 semantics); splice deletes it
+    cq2 = clip_quantile(raw_from([1.0, 2.0, 3.0, 100.0]); q = 0.75)
     @test isequal(cq2.values, [1.0, 2.0, 3.0, missing])
+    @test cq2.record.steps[end].summary["n_removed"] == 1 &&
+          cq2.record.steps[end].summary["positions"] == [4] &&
+          cq2.record.steps[end].parameters["splice"] == false
+    cq = clip_quantile(raw_from([1.0, 2.0, 3.0, 100.0]); q = 0.75, splice = true)
+    @test cq.values == [1.0, 2.0, 3.0] && cq.times === nothing
     timed = raw_from([1.0, 50.0, 2.0, 3.0, 60.0, 4.0]; times = [1, 2, 4, 7, 11, 16], unit = :second)
-    ct = clip_quantile(timed; q = 0.6)
+    ct = clip_quantile(timed; q = 0.6, splice = true)
     @test ct.values == [1.0, 2.0, 3.0, 4.0] && ct.times == [1, 3, 6, 11]
     # consecutive removals close their slots cumulatively
     ct2 = clip_quantile(
         raw_from([1.0, 50.0, 60.0, 2.0]; times = [1, 2, 4, 8], unit = :second);
-        q = 0.5)
+        q = 0.5, splice = true)
     @test ct2.values == [1.0, 2.0] && ct2.times == [1, 5]
     # removing the first row drops it without shifting
-    ct3 = clip_quantile(raw_from([50.0, 1.0, 2.0]; times = [1, 3, 4], unit = :second); q = 0.6)
+    ct3 = clip_quantile(
+        raw_from([50.0, 1.0, 2.0]; times = [1, 3, 4], unit = :second); q = 0.6,
+        splice = true)
     @test ct3.values == [1.0, 2.0] && ct3.times == [3, 4]
-    # a spanning waiting time shortens by the removed slots
-    spliced = quantized_series(clip_quantile(raw_from([1.0, 2.0, 9.0, 9.0, 3.0]); q = 0.6), 0)
+    # a spanning waiting time shortens by the removed slots when spliced, and keeps
+    # its elapsed length when the slot stays
+    spliced = quantized_series(
+        clip_quantile(raw_from([1.0, 2.0, 9.0, 9.0, 3.0]); q = 0.6,
+            splice = true), 0)
     @test spliced.times == [1, 2, 3] && waiting_times(spliced, 2) == [2, 0, 0]
+    kept = quantized_series(clip_quantile(raw_from([1.0, 2.0, 9.0, 9.0, 3.0]); q = 0.6), 0)
+    @test kept.times == [1, 2, 5] && kept.gaps == [(3, 5)] &&
+          waiting_times(kept, 2) == [4, 0, 0]
     @test_throws ArgumentError clip_quantile(raw_from([1.0, 2.0]); q = 0.0)
-    cs = clip_sigma(raw_from([0.0, 0.1, -0.1, 0.05, 100.0]); k = 1)
+    cs = clip_sigma(raw_from([0.0, 0.1, -0.1, 0.05, 100.0]); k = 1, splice = true)
     @test cs.values == [0.0, 0.1, -0.1, 0.05]
     cs_robust = clip_sigma(
         raw_from([0.0, 0.1, -0.1, 0.05, 100.0]); k = 3, center = :median,
         scale = :mad)
-    @test cs_robust.values == [0.0, 0.1, -0.1, 0.05] &&
+    @test isequal(cs_robust.values, [0.0, 0.1, -0.1, 0.05, missing]) &&
           cs_robust.record.steps[end].parameters["center"] == "median"
     @test_throws ArgumentError clip_sigma(raw_from([1.0, 1.0]); k = 3)
+    # the 2024 pruning loop removes whole magnitude levels until the fraction is reached
+    ce = clip_extremes(raw_from([1.0, 9.7, 2.0, 9.2, -9.9, 3.0, 4.0, 5.0, 6.0, 7.0]);
+        fraction = 0.25, digits = 0, splice = true)
+    @test ce.values == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]
+    @test ce.record.steps[end].summary["passes"] == 1 &&
+          ce.record.steps[end].summary["n_removed"] == 3
+    ce2 = clip_extremes(raw_from([1.0, 9.7, 2.0, 9.2, -9.9, 3.0, 4.0, 5.0, 6.0, 7.0]);
+        fraction = 0.35, digits = 1)
+    @test isequal(ce2.values, [
+        1.0, missing, 2.0, missing, missing, 3.0, 4.0, 5.0, 6.0, missing]) &&
+          ce2.record.steps[end].summary["passes"] == 2
+    @test_throws ArgumentError clip_extremes(raw_from([1.0, 2.0]); fraction = 1.0, digits = 0)
     @test_throws ArgumentError clip_sigma(raw_from([1.0, 2.0]); k = 0)
     @test_throws ArgumentError clip_sigma(raw_from([1.0, 2.0]); center = :mode)
     sr = select_range(raw_from([1.0, 2.0, 3.0, 4.0]); from = 2, to = 3)
@@ -271,7 +293,8 @@ end
             Dict("op" => "trailing_mean_fluctuations",
                 "window" => 1, "denominator" => "mean",
                 "offset" => "auto"),
-            Dict("op" => "clip_sigma", "k" => 1.0, "center" => "median", "scale" => "mad")])
+            Dict("op" => "clip_sigma", "k" => 1.0, "center" => "median", "scale" => "mad",
+                "splice" => true)])
     @test [st.op for st in paper.record.steps] ==
           [:round, :trailing_mean_fluctuations, :clip_sigma]
     @test_throws ArgumentError apply_steps(raw_from([1.0, 2.0]), [Dict("op" => "warp")])
@@ -417,6 +440,36 @@ end
             fourth = run_pipeline(cfg)
             @test length(fourth.computed) == 2
             @test isfile(joinpath(handle.dir, "distributions", "delta=0.0005#1.csv"))
+        end
+        # the read side: collection object, distributions, legacy export
+        @test isfile(joinpath(handle.dir, "README.md")) &&
+              occursin("delta=", read(joinpath(handle.dir, "README.md"), String))
+        c = load_collection(handle.dir)
+        @test c.id == handle.id && c.digits == 4 && c.time_unit === :sample &&
+              c.mode === :elapsed && c.n_observations == 11572 && isempty(c.steps)
+        @test length(thresholds(c)) == 12 && first(thresholds(c)) == Threshold(5, 4)
+        d = distribution(c, "0.0005")
+        @test d == distribution(c, 0.0005) == distribution(c, Threshold(5, 4))
+        @test WaitingTimes.support(d) == parse.(Int, legacy["time"]) &&
+              d.n_candidates == 11571 && d.delta == Threshold{Int64}(5, 4)
+        @test_throws ArgumentError distribution(c, "0.0007")
+        @test_throws ArgumentError distribution(c, Threshold(5, 3))
+        st = summary_table(c)
+        @test nrow(st) == 12 && st.delta[1] == "0.0005"
+        loaded = load_series(c)
+        @test length(loaded) == 11572 && loaded.digits == 4
+        listing = list_collections(dir)
+        @test nrow(listing) == 1 && listing.id[1] == handle.id &&
+              listing.n_thresholds[1] == 12
+        @test isempty(list_collections(joinpath(dir, "absent")))
+        @test occursin("thresholds  12", sprint(show, MIME("text/plain"), c))
+        @test_throws ArgumentError load_collection(dir)
+        mktempdir() do out
+            paths = export_legacy(c, out; slug = "ftEURUSD_clsng_raw")
+            @test length(paths) == 12
+            exported = joinpath(out, "WTS_ftEURUSD_clsng_raw_deltais0.0005.dat")
+            @test read(exported, String) ==
+                  read(joinpath(FIXTURES, "legacy", "WTS_ftEURUSD_clsng_raw_deltais0.0005.dat"), String)
         end
         report = validate(settings; deltas = [0.001, 0.005])
         @test report["all_equal"] && length(report["results"]) == 2
