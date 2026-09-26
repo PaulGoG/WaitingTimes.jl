@@ -87,11 +87,14 @@ WaitingTimes.Preprocessing.RawSeries
 WaitingTimes.Preprocessing.read_series
 WaitingTimes.Preprocessing.select_range
 WaitingTimes.Preprocessing.exclude_intervals
+WaitingTimes.Preprocessing.round_values
 WaitingTimes.Preprocessing.trailing_mean_fluctuations
 WaitingTimes.Preprocessing.log_returns
 WaitingTimes.Preprocessing.differences
 WaitingTimes.Preprocessing.centered_moving_average
 WaitingTimes.Preprocessing.clip_quantile
+WaitingTimes.Preprocessing.clip_sigma
+WaitingTimes.Preprocessing.remove_rows
 WaitingTimes.Preprocessing.collapse_ties
 WaitingTimes.Preprocessing.quantized_series
 WaitingTimes.Preprocessing.sampling_summary

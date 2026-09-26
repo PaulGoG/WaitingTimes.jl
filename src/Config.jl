@@ -140,13 +140,66 @@ const KNOWN_KEYS = Dict(
 const STEP_KEYS = Dict(
     "select_range" => ["from", "to"],
     "exclude_intervals" => ["intervals", "splice"],
-    "trailing_mean_fluctuations" => ["window"],
+    "round" => ["digits"],
+    "trailing_mean_fluctuations" => ["window", "denominator", "offset", "on_nonpositive"],
     "log_returns" => String[],
     "differences" => String[],
     "centered_moving_average" => ["window"],
-    "clip_quantile" => ["q"],
+    "clip_quantile" => ["q", "splice"],
+    "clip_sigma" => ["k", "center", "scale", "splice"],
     "collapse_ties" => ["policy"]
 )
+
+"""
+Validate the parameters of preprocessing step `k` (types, choices, bounds) so
+that a run cannot start from a step it cannot execute.
+"""
+function validate_step(step::AbstractDict, op::AbstractString, k::Integer)
+    where_ = "preprocessing.steps[$k]"
+    if op == "select_range"
+        haskey(step, "from") && as_float(step["from"], where_, "from")
+        haskey(step, "to") && as_float(step["to"], where_, "to")
+    elseif op == "exclude_intervals"
+        ivs = require(step, where_, "intervals")
+        ivs isa AbstractVector &&
+        all(iv -> iv isa AbstractVector && length(iv) == 2, ivs) ||
+            throw(ArgumentError("[$where_] intervals must be an array of [start, stop] pairs"))
+        haskey(step, "splice") && as_bool(step["splice"], where_, "splice")
+    elseif op == "round"
+        as_int(require(step, where_, "digits"), where_, "digits"; min = 0, max = 15)
+    elseif op == "trailing_mean_fluctuations"
+        as_int(require(step, where_, "window"), where_, "window"; min = 1)
+        denominator = as_symbol(fetch(step, where_, "denominator", "mean"), where_,
+            "denominator", (:mean, :scale, :none))
+        offset = fetch(step, where_, "offset", "none")
+        if offset isa AbstractString
+            as_symbol(offset, where_, "offset", (:none, :auto))
+        else
+            as_float(offset, where_, "offset")
+        end
+        (offset == "none" || denominator === :mean) ||
+            throw(ArgumentError("[$where_] offset applies to denominator = \"mean\" only"))
+        as_symbol(fetch(step, where_, "on_nonpositive", "error"), where_, "on_nonpositive",
+            (:error, :missing))
+    elseif op == "centered_moving_average"
+        w = as_int(require(step, where_, "window"), where_, "window"; min = 1)
+        isodd(w) || throw(ArgumentError("[$where_] window must be odd, got $w"))
+    elseif op == "clip_quantile"
+        q = as_float(require(step, where_, "q"), where_, "q"; min = 0.0, max = 1.0)
+        q > 0 || throw(ArgumentError("[$where_] q must be positive"))
+        haskey(step, "splice") && as_bool(step["splice"], where_, "splice")
+    elseif op == "clip_sigma"
+        k_ = as_float(fetch(step, where_, "k", 3.0), where_, "k")
+        k_ > 0 || throw(ArgumentError("[$where_] k must be positive, got $k_"))
+        as_symbol(fetch(step, where_, "center", "mean"), where_, "center", (:mean, :median))
+        as_symbol(fetch(step, where_, "scale", "std"), where_, "scale", (:std, :mad))
+        haskey(step, "splice") && as_bool(step["splice"], where_, "splice")
+    elseif op == "collapse_ties"
+        as_symbol(require(step, where_, "policy"), where_, "policy",
+            (:error, :first, :last, :mean))
+    end
+    return nothing
+end
 
 function warn_unknown_keys(table::AbstractDict, section::AbstractString)
     known = get(KNOWN_KEYS, section, String[])
@@ -270,6 +323,7 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
             key == "op" || key in STEP_KEYS[op] ||
                 @warn "unknown preprocessing step key ignored" op key
         end
+        validate_step(step, op, k)
         push!(steps, Dict{String, Any}(step))
     end
 

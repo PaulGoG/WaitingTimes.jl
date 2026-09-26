@@ -32,6 +32,14 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   stationary loss rate, scheduled disruptions with blackout and linear
   recovery, `gap_scenario` composing them).
 - `bench/` environment with kernel benchmarks and exact cross-checks.
+- Preprocessing after the published treatment, configurable: a `round` step;
+  `trailing_mean_fluctuations` with `denominator` (`"mean"`, the percentage
+  fluctuation of the papers; `"scale"`; `"none"`), `offset` (`"auto"`, the
+  papers' shift to a minimum of 1, or a number) and `on_nonpositive`
+  (`"error"` or `"missing"`); `clip_quantile` and the new `clip_sigma`
+  (`k`, `center`, `scale`) delete rows and close the clock over their slots
+  (`splice = true`) or keep the slot as a recorded gap; a finite-value check
+  after every step; step parameters validated when the configuration loads.
 - Pipeline: validated TOML configuration with overlays (`Config`), identity
   hashing, git and hardware fingerprints and metadata files (`Provenance`),
   self-describing file names (`Naming`), ingestion of CSV, DAT, Arrow and

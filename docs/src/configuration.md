@@ -25,13 +25,11 @@ quantity_label = "wind speed"     # plots only
 unit_label = "km/h"               # plots only
 
 [preprocessing]
-steps = [                         # applied in order
-  { op = "trailing_mean_fluctuations", window = 708 },
-  { op = "clip_quantile", q = 0.996 },
+steps = [                         # applied in order; see Preprocessing steps below
+  { op = "round", digits = 1 },
+  { op = "trailing_mean_fluctuations", window = 708, denominator = "mean", offset = "auto" },
+  { op = "clip_quantile", q = 0.9996, splice = true },
 ]
-# ops: select_range{from,to} | exclude_intervals{intervals,splice} |
-#      trailing_mean_fluctuations{window} | log_returns | differences |
-#      centered_moving_average{window} | clip_quantile{q} | collapse_ties{policy}
 
 [gaps]
 declared = ""                     # TOML with intervals = [[start, stop], ...]; "" = none
@@ -73,6 +71,37 @@ overwrite = false
 seed = 12345
 log_level = "info"                # "debug" | "info" | "warn"
 ```
+
+## Preprocessing steps
+
+Each entry of `steps` is a table with an `op` key; parameters are validated
+when the configuration is loaded.
+
+| `op` | Parameters | Effect |
+|---|---|---|
+| `select_range` | `from`, `to` | keep the rows with time (or index) in `[from, to]` |
+| `exclude_intervals` | `intervals = [[a, b], ...]`, `splice = true` | remove the rows in `[a, b)`; with `splice` the time axis closes over the cut, otherwise the rows become missing (a recorded gap) |
+| `round` | `digits` | round the values to `digits` decimals (the original analysis rounded before detrending) |
+| `trailing_mean_fluctuations` | `window`, `denominator = "mean"`, `offset = "none"`, `on_nonpositive = "error"` | deviation from the mean of the previous `window` observations: `"mean"` is the percentage fluctuation of the papers, `"scale"` divides by the standard deviation of the deviations, `"none"` keeps data units; `offset = "auto"` shifts the series so that its minimum is 1 before a `"mean"` computation (the papers' rule), a number is added as given; `on_nonpositive = "missing"` records a non-positive trailing mean as a missing observation instead of aborting |
+| `log_returns` | | `100 log(x_k / x_{k-1})` |
+| `differences` | | `x_k - x_{k-1}` |
+| `centered_moving_average` | `window` (odd) | subtract the centred moving average |
+| `clip_quantile` | `q`, `splice = true` | prune the observations with magnitude above the `q` quantile of the magnitudes (`q = 0.9996`: the extreme 0.04 % of both signs, as in the papers) |
+| `clip_sigma` | `k = 3`, `center = "mean"`, `scale = "std"`, `splice = true` | prune the observations farther than `k` scale units from the centre; `"median"` with `"mad"` is the robust pair |
+| `collapse_ties` | `policy` | resolve equal time stamps (`"error"`, `"first"`, `"last"`, `"mean"`) |
+
+Pruning deletes rows: with `splice = true` (the default) the removed
+observation's slot vanishes and the clock closes over it, as in the original
+analysis, because a pruned value is an anomaly that should not have happened;
+`splice = false` keeps the slot as a recorded gap instead. After every step
+the observed values must be finite; a non-finite value aborts the run naming
+the step and the row.
+
+The published treatment of the Trieste series is the sequence shown above:
+`round` to the grid, percentage fluctuations from a 708-hour (lunar month)
+trailing mean with the automatic shift, pruning of the extreme 0.04 %. The
+2024 code pruned 0.4 % in integer-valued batches; `q = 0.996` approximates
+that variant.
 
 Thresholds are generated on the grid: a linear grid from `min` to `max` by
 `step`; a logarithmic grid with `points_per_decade` between `min > 0` and

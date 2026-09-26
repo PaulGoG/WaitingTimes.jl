@@ -11,16 +11,17 @@ using CSV: CSV
 using DataFrames: DataFrame
 using Dates: DateTime, DateFormat, Dates, unix2datetime
 using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
-using Statistics: mean, median, quantile
+using Statistics: mean, median, quantile, std
 using UnicodePlots: UnicodePlots
 using ..WaitingTimes: MAX_DIGITS, PreparationRecord, QuantizedSeries, TIME_UNITS,
                       declare_gaps, record!
 using ..Provenance: file_sha256, read_toml
 
-export RawSeries, read_series, select_range, exclude_intervals, trailing_mean_fluctuations,
-       log_returns, differences, centered_moving_average, clip_quantile, collapse_ties,
-       sampling_summary, value_summary, resolution_digits, terminal_overview,
-       quantized_series, apply_steps, read_gap_intervals
+export RawSeries, read_series, select_range, exclude_intervals, round_values,
+       trailing_mean_fluctuations, log_returns, differences, centered_moving_average,
+       clip_quantile, clip_sigma, collapse_ties, sampling_summary, value_summary,
+       resolution_digits, terminal_overview, quantized_series, apply_steps,
+       read_gap_intervals
 
 """
     RawSeries
@@ -333,32 +334,107 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Fluctuation of every observation from the mean of the previous `window`
-observations, in percent; the first observation is set to zero. Baselines
-must be positive (use `differences` or `log_returns` otherwise).
+Round the observed values to `digits` decimals (half to even). The original
+analysis rounded the raw data before detrending and again after; placing
+this step before a transformation reproduces that order, while the final
+quantisation always rounds once more at the end of the pipeline.
 """
-function trailing_mean_fluctuations(rs::RawSeries; window::Integer)
+function round_values(rs::RawSeries; digits::Integer)
+    0 <= digits <= MAX_DIGITS ||
+        throw(ArgumentError("digits must lie in 0:$(MAX_DIGITS), got $digits"))
+    values = Union{Missing, Float64}[ismissing(v) ? missing : round(v; digits = digits)
+                                     for v in rs.values]
+    return with_values(rs, values, :round, Dict("digits" => Int(digits)),
+        Dict("n_rows" => length(values)))
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Deviation of every observation from the mean of the previous `window`
+observations (the trailing mean ``\\mathrm{RA}_k``); the first observation is
+set to zero. `denominator` selects the normalisation:
+
+- `:mean`, the percentage fluctuation ``(x_k - \\mathrm{RA}_k) \\cdot 100 / \\mathrm{RA}_k``
+  of the original analysis (Pană, Gogîță, Nicolin-Żaczek, Rom. J. Phys. 69,
+  111 (2024), eq. 6), undefined where the trailing mean is not positive;
+- `:scale`, the deviation divided by the standard deviation of all
+  deviations, dimensionless and defined for any series;
+- `:none`, the deviation in data units.
+
+`offset` shifts the series before the computation and applies to `:mean`
+only: `:auto` shifts so that the smallest value equals 1 (the rule of the
+original analysis, which avoids a division by zero when the trailing mean
+crosses zero), a number is added as given, `:none` shifts nothing.
+`on_nonpositive` decides what happens at a non-positive trailing mean under
+`:mean`: `:error` aborts naming the observation, `:missing` records the
+observation as missing (a recorded gap) and continues, for live pipelines.
+"""
+function trailing_mean_fluctuations(rs::RawSeries; window::Integer,
+        denominator::Symbol = :mean, offset::Union{Symbol, Real} = :none,
+        on_nonpositive::Symbol = :error)
     window >= 1 || throw(ArgumentError("window must be at least 1, got $window"))
+    denominator in (:mean, :scale, :none) ||
+        throw(ArgumentError("denominator must be :mean, :scale or :none, got :$denominator"))
+    on_nonpositive in (:error, :missing) ||
+        throw(ArgumentError("on_nonpositive must be :error or :missing, got :$on_nonpositive"))
+    offset isa Symbol && offset ∉ (:none, :auto) &&
+        throw(ArgumentError("offset must be :none, :auto or a number, got :$offset"))
+    offset === :none || denominator === :mean ||
+        throw(ArgumentError("offset applies to denominator = :mean only"))
     idx, x = observed(rs)
     isempty(x) && throw(ArgumentError("the series has no observed value"))
-    y = similar(x)
+    shift = offset === :none ? 0.0 :
+            offset === :auto ? max(0.0, 1.0 - minimum(x)) : Float64(offset)
+    isfinite(shift) || throw(ArgumentError("offset must be finite, got $offset"))
+    x = x .+ shift
+    y = Vector{Union{Missing, Float64}}(undef, length(x))
     y[1] = 0.0
     running = x[1]
+    n_nonpositive = 0
     for k in 2:length(x)
         first_in = max(1, k - window)
         count_in = k - first_in
         baseline = running / count_in
-        baseline > 0 || throw(ArgumentError(
-            "non-positive baseline $baseline before observation $k; percentage fluctuations are undefined",
-        ))
-        y[k] = (x[k] - baseline) * 100 / baseline
+        deviation = x[k] - baseline
+        if denominator === :mean
+            if baseline > 0
+                y[k] = deviation * 100 / baseline
+            elseif on_nonpositive === :error
+                throw(ArgumentError(
+                    "non-positive trailing mean $baseline before observation $k; " *
+                    "percentage fluctuations are undefined (set offset or on_nonpositive)",
+                ))
+            else
+                y[k] = missing
+                n_nonpositive += 1
+            end
+        else
+            y[k] = deviation
+        end
         running += x[k]
         k - window >= 1 && (running -= x[k - window])
     end
+    scale = NaN
+    if denominator === :scale
+        deviations = Float64[v for v in view(y, 2:length(y)) if !ismissing(v)]
+        scale = length(deviations) >= 2 ? std(deviations) : NaN
+        (isfinite(scale) && scale > 0) || throw(ArgumentError(
+            "the deviations have no positive standard deviation; denominator = :scale is undefined",
+        ))
+        for k in 2:length(y)
+            ismissing(y[k]) || (y[k] = y[k] / scale)
+        end
+    end
     values = Vector{Union{Missing, Float64}}(missing, length(rs))
     values[idx] .= y
+    finite = Float64[v for v in values if !ismissing(v)]
     return with_values(rs, values, :trailing_mean_fluctuations,
-        Dict("window" => Int(window)), Dict("min" => minimum(y), "max" => maximum(y)))
+        Dict("window" => Int(window), "denominator" => String(denominator),
+            "offset" => offset isa Symbol ? String(offset) : Float64(offset),
+            "on_nonpositive" => String(on_nonpositive)),
+        Dict("shift" => shift, "scale" => scale, "n_nonpositive" => n_nonpositive,
+            "min" => minimum(finite), "max" => maximum(finite)))
 end
 
 """
@@ -418,40 +494,129 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Set observations whose magnitude exceeds the `q` quantile of `|x|` to
-`missing` (their time positions remain).
+Remove the rows selected by `remove` (a mask over the rows of `rs`). With
+`splice = true` the row and its slot vanish: for a sample-indexed series the
+later indices close up, for an explicit time axis every later time moves
+back by the span from the removed row's predecessor to the removed row, so no
+elapsed time is counted for it (a pruned value is an anomaly that should not
+have happened, not time that passed unobserved). With `splice = false` the
+value is set to `missing` and its time position remains, so the cut is a
+recorded gap.
 """
-function clip_quantile(rs::RawSeries; q::Real)
-    0 < q <= 1 || throw(ArgumentError("q must lie in (0, 1], got $q"))
-    idx, x = observed(rs)
-    cut = quantile(abs.(x), q)
-    values = copy(rs.values)
-    removed = 0
-    for (k, i) in enumerate(idx)
-        if abs(x[k]) > cut
-            values[i] = missing
-            removed += 1
-        end
+function remove_rows(rs::RawSeries, remove::AbstractVector{Bool}, op::Symbol, parameters,
+        summary; splice::Bool)
+    length(remove) == length(rs) ||
+        throw(DimensionMismatch("mask ($(length(remove))) and series ($(length(rs))) differ"))
+    n_removed = count(remove)
+    positions = findall(remove)
+    summary = Dict{String, Any}(summary)
+    summary["n_removed"] = n_removed
+    summary["fraction_removed"] = n_removed / length(rs)
+    summary["positions"] = positions
+    parameters = Dict{String, Any}(parameters)
+    parameters["splice"] = splice
+    if !splice
+        values = copy(rs.values)
+        values[remove] .= missing
+        return with_values(rs, values, op, parameters, summary)
     end
-    return with_values(rs, values, :clip_quantile, Dict("q" => Float64(q)),
-        Dict("cut" => cut, "n_removed" => removed))
+    keep = .!remove
+    any(keep) || throw(ArgumentError("$op removes every row"))
+    values = rs.values[keep]
+    if rs.times === nothing
+        times = nothing
+    else
+        t = rs.times
+        shifted = similar(t)
+        removed_span = zero(eltype(t))
+        for i in eachindex(t)
+            remove[i] && i > 1 && (removed_span += t[i] - t[i - 1])
+            shifted[i] = t[i] - removed_span
+        end
+        times = shifted[keep]
+    end
+    record!(rs.record, op, parameters, summary)
+    return RawSeries(values, times, rs.time_unit, rs.epoch, rs.record)
 end
 
 """
 $(TYPEDSIGNATURES)
 
-Apply preprocessing `steps` (tables with an `op` key) in order.
+Prune observations whose magnitude exceeds the `q` quantile of ``|x|``, the
+extreme-value pruning of the original analysis (`q = 0.9996` removes the
+extreme 0.04 % of both signs). Rows are deleted and the clock closes over them
+by default (`splice = true`); see [`remove_rows`](@ref).
+"""
+function clip_quantile(rs::RawSeries; q::Real, splice::Bool = true)
+    0 < q <= 1 || throw(ArgumentError("q must lie in (0, 1], got $q"))
+    idx, x = observed(rs)
+    isempty(x) && throw(ArgumentError("the series has no observed value"))
+    cut = quantile(abs.(x), q)
+    remove = falses(length(rs))
+    for (k, i) in enumerate(idx)
+        abs(x[k]) > cut && (remove[i] = true)
+    end
+    return remove_rows(rs, remove, :clip_quantile, Dict("q" => Float64(q)),
+        Dict("cut" => cut); splice = splice)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Prune observations farther than `k` scale units from the centre of the
+observed values: `center = :mean` with `scale = :std`, or the robust pair
+`center = :median` with `scale = :mad` (median absolute deviation scaled by
+1.4826 to estimate the standard deviation of a normal sample). `k = 3` keeps
+the central 99.73 % of a normal sample. Rows are deleted and the clock closes
+over them by default (`splice = true`); see [`remove_rows`](@ref).
+"""
+function clip_sigma(
+        rs::RawSeries; k::Real = 3, center::Symbol = :mean, scale::Symbol = :std,
+        splice::Bool = true)
+    k > 0 || throw(ArgumentError("k must be positive, got $k"))
+    center in (:mean, :median) ||
+        throw(ArgumentError("center must be :mean or :median, got :$center"))
+    scale in (:std, :mad) || throw(ArgumentError("scale must be :std or :mad, got :$scale"))
+    idx, x = observed(rs)
+    length(x) >= 2 || throw(ArgumentError("clip_sigma needs at least two observed values"))
+    c = center === :mean ? mean(x) : median(x)
+    s = scale === :std ? std(x) : 1.4826 * median(abs.(x .- median(x)))
+    (isfinite(s) && s > 0) ||
+        throw(ArgumentError("the observed values have no positive $scale; clip_sigma is undefined"))
+    remove = falses(length(rs))
+    for (j, i) in enumerate(idx)
+        abs(x[j] - c) > k * s && (remove[i] = true)
+    end
+    return remove_rows(rs, remove, :clip_sigma,
+        Dict("k" => Float64(k), "center" => String(center), "scale" => String(scale)),
+        Dict("center_value" => c, "scale_value" => s, "lower" => c - k * s,
+            "upper" => c + k * s); splice = splice)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Apply preprocessing `steps` (tables with an `op` key) in order. After every
+step the observed values must be finite; a non-finite value aborts naming the
+step and the row.
 """
 function apply_steps(rs::RawSeries, steps::AbstractVector)
     for step in steps
         op = String(step["op"])
+        symbol(key, default) = Symbol(get(step, key, default))
         if op == "select_range"
             rs = select_range(rs; from = get(step, "from", -Inf), to = get(step, "to", Inf))
         elseif op == "exclude_intervals"
             rs = exclude_intervals(rs, [Tuple(iv) for iv in step["intervals"]];
                 splice = get(step, "splice", true))
+        elseif op == "round"
+            rs = round_values(rs; digits = step["digits"])
         elseif op == "trailing_mean_fluctuations"
-            rs = trailing_mean_fluctuations(rs; window = step["window"])
+            offset = get(step, "offset", "none")
+            rs = trailing_mean_fluctuations(rs; window = step["window"],
+                denominator = symbol("denominator", "mean"),
+                offset = offset isa AbstractString ? Symbol(offset) : offset,
+                on_nonpositive = symbol("on_nonpositive", "error"))
         elseif op == "log_returns"
             rs = log_returns(rs)
         elseif op == "differences"
@@ -459,14 +624,29 @@ function apply_steps(rs::RawSeries, steps::AbstractVector)
         elseif op == "centered_moving_average"
             rs = centered_moving_average(rs; window = step["window"])
         elseif op == "clip_quantile"
-            rs = clip_quantile(rs; q = step["q"])
+            rs = clip_quantile(rs; q = step["q"], splice = get(step, "splice", true))
+        elseif op == "clip_sigma"
+            rs = clip_sigma(rs; k = get(step, "k", 3), center = symbol("center", "mean"),
+                scale = symbol("scale", "std"), splice = get(step, "splice", true))
         elseif op == "collapse_ties"
             rs = collapse_ties(rs, Symbol(step["policy"]))
         else
             throw(ArgumentError("unknown preprocessing op $(repr(op))"))
         end
+        check_finite(rs, op)
     end
     return rs
+end
+
+"abort when an observed value is not finite after `op`"
+function check_finite(rs::RawSeries, op::AbstractString)
+    for (i, v) in enumerate(rs.values)
+        ismissing(v) && continue
+        isfinite(v) || throw(ArgumentError(
+            "step $op produced the non-finite value $v at row $i",
+        ))
+    end
+    return nothing
 end
 
 """

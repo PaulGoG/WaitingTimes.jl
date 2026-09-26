@@ -130,9 +130,15 @@ end
 
 function step_tag(step::AbstractDict)
     op = String(step["op"])
-    op == "trailing_mean_fluctuations" ? "trailing" * string(step["window"]) :
+    if op == "trailing_mean_fluctuations"
+        denominator = String(get(step, "denominator", "mean"))
+        suffix = denominator == "mean" ? "" : denominator == "scale" ? "scaled" : "abs"
+        return "trailing" * string(step["window"]) * suffix
+    end
+    op == "round" ? "round" * string(step["digits"]) :
     op == "centered_moving_average" ? "cma" * string(step["window"]) :
     op == "clip_quantile" ? "clip" * string(step["q"]) :
+    op == "clip_sigma" ? "sigma" * string(get(step, "k", 3)) :
     op == "log_returns" ? "logret" :
     op == "differences" ? "diff" :
     op == "select_range" ? "range" :

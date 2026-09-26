@@ -6,10 +6,10 @@ using WaitingTimes.Provenance: artefact_id, backup_existing!, canonical_toml, co
                                toml_ready, write_toml
 using WaitingTimes.Naming: artefact_name, parse_artefact_name
 using WaitingTimes.Preprocessing: RawSeries, apply_steps, centered_moving_average,
-                                  clip_quantile, collapse_ties, differences,
+                                  clip_quantile, clip_sigma, collapse_ties, differences,
                                   exclude_intervals, log_returns, quantized_series,
-                                  read_series, resolution_digits, sampling_summary,
-                                  select_range, terminal_overview,
+                                  read_series, resolution_digits, round_values,
+                                  sampling_summary, select_range, terminal_overview,
                                   trailing_mean_fluctuations, value_summary
 using WaitingTimes.Storage: load_distributions, partition_path, read_distribution,
                             read_index, read_series_files, write_distribution,
@@ -21,6 +21,7 @@ using DataFrames: DataFrame, nrow
 using Dates: DateTime
 using TOML: TOML
 using Logging: Warn
+using Statistics: std
 import Distributions
 using CairoMakie: CairoMakie
 
@@ -116,6 +117,19 @@ end
             D("time_column" => "Time"))))
         @test_throws ArgumentError load_settings(write_config(D("preprocessing" =>
             D("steps" => Any[D("op" => "teleport")]))))
+        @test_throws ArgumentError load_settings(write_config(D("preprocessing" =>
+            D("steps" => Any[D("op" => "clip_quantile", "q" => 1.5)]))))
+        @test_throws ArgumentError load_settings(write_config(D("preprocessing" =>
+            D("steps" => Any[D("op" => "trailing_mean_fluctuations", "window" => 5,
+                "denominator" => "scale", "offset" => "auto")]))))
+        @test_throws ArgumentError load_settings(write_config(D("preprocessing" =>
+            D("steps" => Any[D("op" => "centered_moving_average", "window" => 4)]))))
+        @test_throws ArgumentError load_settings(write_config(D("preprocessing" =>
+            D("steps" => Any[D("op" => "round", "digits" => 16)]))))
+        @test length(load_settings(write_config(D("preprocessing" =>
+            D("steps" =>
+                Any[D("op" => "clip_sigma", "k" => 2.5, "center" => "median",
+                    "scale" => "mad", "splice" => false)])))).steps) == 1
         log_settings = load_settings(write_config(D("thresholds" =>
             D("mode" => "log", "min" => 0.001, "max" => 1.0, "points_per_decade" => 3))))
         ts = threshold_list(log_settings, s)
@@ -164,11 +178,72 @@ end
           tm.values[3] ≈ (12 - 10.5) * 100 / 10.5
     @test tm.values[4] ≈ (6 - 11.5) * 100 / 11.5
     @test_throws ArgumentError trailing_mean_fluctuations(raw_from([0.0, 1.0]); window = 1)
+    # the papers' shift: the minimum becomes 1 before the percentage
+    sh = trailing_mean_fluctuations(raw_from([-4.0, 1.0, 6.0]); window = 1, offset = :auto)
+    @test sh.record.steps[end].summary["shift"] == 5.0
+    @test sh.values[2] ≈ (6 - 1) * 100 / 1 && sh.values[3] ≈ (11 - 6) * 100 / 6
+    num = trailing_mean_fluctuations(raw_from([-4.0, 1.0]); window = 1, offset = 10)
+    @test num.values[2] ≈ (11 - 6) * 100 / 6
+    @test_throws ArgumentError trailing_mean_fluctuations(raw_from([1.0, 2.0]); window = 1,
+        denominator = :scale, offset = :auto)
+    @test_throws ArgumentError trailing_mean_fluctuations(raw_from([1.0, 2.0]); window = 1,
+        denominator = :ratio)
+    # absolute deviations and scale-normalised deviations
+    ab = trailing_mean_fluctuations(raw_from([1.0, 3.0, 2.0, 6.0]); window = 2,
+        denominator = :none)
+    @test ab.values == [0.0, 2.0, 0.0, 3.5]
+    sc = trailing_mean_fluctuations(raw_from([1.0, 3.0, 2.0, 6.0]); window = 2,
+        denominator = :scale)
+    dev = [2.0, 0.0, 3.5]
+    @test sc.values[2:end] ≈ dev ./ std(dev) && sc.values[1] == 0.0
+    @test_throws ArgumentError trailing_mean_fluctuations(
+        raw_from([1.0, 1.0, 1.0]); window = 1,
+        denominator = :scale)
+    # non-positive trailing mean: abort, or record as missing
+    @test_throws ArgumentError trailing_mean_fluctuations(raw_from([1.0, -1.0, 2.0]); window = 1)
+    np = trailing_mean_fluctuations(raw_from([1.0, -1.0, 2.0]); window = 1,
+        on_nonpositive = :missing)
+    @test isequal(np.values, [0.0, -200.0, missing]) &&
+          np.record.steps[end].summary["n_nonpositive"] == 1
+    # rounding step
+    rd = round_values(raw_from([1.26, missing, 2.35]); digits = 1)
+    @test isequal(rd.values, [1.3, missing, 2.4])
+    @test_throws ArgumentError round_values(rd; digits = 16)
     cma = centered_moving_average(raw_from([1.0, 2.0, 3.0, 4.0, 5.0]); window = 3)
     @test cma.values[3] == 0.0 && cma.values[1] ≈ 1 - 1.5
     @test_throws ArgumentError centered_moving_average(rs; window = 2)
+    # pruning deletes the row and its slot; splice = false keeps the slot as a gap
     cq = clip_quantile(raw_from([1.0, 2.0, 3.0, 100.0]); q = 0.75)
-    @test ismissing(cq.values[4]) && cq.values[3] == 3.0
+    @test cq.values == [1.0, 2.0, 3.0] && cq.times === nothing
+    @test cq.record.steps[end].summary["n_removed"] == 1 &&
+          cq.record.steps[end].summary["positions"] == [4]
+    cq2 = clip_quantile(raw_from([1.0, 2.0, 3.0, 100.0]); q = 0.75, splice = false)
+    @test isequal(cq2.values, [1.0, 2.0, 3.0, missing])
+    timed = raw_from([1.0, 50.0, 2.0, 3.0, 60.0, 4.0]; times = [1, 2, 4, 7, 11, 16], unit = :second)
+    ct = clip_quantile(timed; q = 0.6)
+    @test ct.values == [1.0, 2.0, 3.0, 4.0] && ct.times == [1, 3, 6, 11]
+    # consecutive removals close their slots cumulatively
+    ct2 = clip_quantile(
+        raw_from([1.0, 50.0, 60.0, 2.0]; times = [1, 2, 4, 8], unit = :second);
+        q = 0.5)
+    @test ct2.values == [1.0, 2.0] && ct2.times == [1, 5]
+    # removing the first row drops it without shifting
+    ct3 = clip_quantile(raw_from([50.0, 1.0, 2.0]; times = [1, 3, 4], unit = :second); q = 0.6)
+    @test ct3.values == [1.0, 2.0] && ct3.times == [3, 4]
+    # a spanning waiting time shortens by the removed slots
+    spliced = quantized_series(clip_quantile(raw_from([1.0, 2.0, 9.0, 9.0, 3.0]); q = 0.6), 0)
+    @test spliced.times == [1, 2, 3] && waiting_times(spliced, 2) == [2, 0, 0]
+    @test_throws ArgumentError clip_quantile(raw_from([1.0, 2.0]); q = 0.0)
+    cs = clip_sigma(raw_from([0.0, 0.1, -0.1, 0.05, 100.0]); k = 1)
+    @test cs.values == [0.0, 0.1, -0.1, 0.05]
+    cs_robust = clip_sigma(
+        raw_from([0.0, 0.1, -0.1, 0.05, 100.0]); k = 3, center = :median,
+        scale = :mad)
+    @test cs_robust.values == [0.0, 0.1, -0.1, 0.05] &&
+          cs_robust.record.steps[end].parameters["center"] == "median"
+    @test_throws ArgumentError clip_sigma(raw_from([1.0, 1.0]); k = 3)
+    @test_throws ArgumentError clip_sigma(raw_from([1.0, 2.0]); k = 0)
+    @test_throws ArgumentError clip_sigma(raw_from([1.0, 2.0]); center = :mode)
     sr = select_range(raw_from([1.0, 2.0, 3.0, 4.0]); from = 2, to = 3)
     @test sr.values == [2.0, 3.0]
     @test_throws ArgumentError select_range(rs; from = 10, to = 20)
@@ -191,6 +266,16 @@ end
     stepped = apply_steps(raw_from([1.0, 2.0, 4.0, 8.0]),
         [Dict("op" => "log_returns"), Dict("op" => "clip_quantile", "q" => 1.0)])
     @test length(stepped.record.steps) == 2
+    paper = apply_steps(raw_from([-4.26, 1.0, 6.04, 2.0]),
+        [Dict("op" => "round", "digits" => 1),
+            Dict("op" => "trailing_mean_fluctuations",
+                "window" => 1, "denominator" => "mean",
+                "offset" => "auto"),
+            Dict("op" => "clip_sigma", "k" => 1.0, "center" => "median", "scale" => "mad")])
+    @test [st.op for st in paper.record.steps] ==
+          [:round, :trailing_mean_fluctuations, :clip_sigma]
+    @test_throws ArgumentError apply_steps(raw_from([1.0, 2.0]), [Dict("op" => "warp")])
+    @test_throws ArgumentError WaitingTimes.Preprocessing.check_finite(raw_from([1.0, Inf]), "x")
     qs = quantized_series(stepped, 2; detect = :cadence, cadence = 1)
     @test qs.times == [1, 2, 3] && isempty(qs.gaps) && qs.digits == 2
     qs2 = quantized_series(raw_from([1.0, missing, 2.0]), 0; detect = :none)
