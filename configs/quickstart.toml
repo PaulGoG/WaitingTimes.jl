@@ -34,12 +34,12 @@ step = 0.0005                               # > 0; on the grid
 search = "segment_tree"                     # one of: "naive" | "guarded" | "segment_tree" | "fenwick_sweep" | "streaming" | "device"
 backend = "none"                            # one of: "none" | "auto" | "cuda" | "oneapi" | "amdgpu" | "metal"
 chunk_size = 4096                           # >= 1
-oracle_checks = 2                           # >= 0; thresholds recomputed with the oracle
-oracle = "naive"                            # one of: "naive" | "guarded" | "device"
+reference_checks = 2                        # >= 0; thresholds recomputed with the reference kernel
+reference_kernel = "naive"                            # one of: "naive" | "guarded" | "device"
 
 [limits]
 max_ram_gb = 8.0                            # >= 0
-max_naive_work = 1e11                       # >= 0; bound on the oracle's sum of tau
+max_reference_work = 1e11                   # >= 0; element comparisons of one reference check
 
 [output]
 root = "../data"                            # collections under root/<collection id>

@@ -11,8 +11,9 @@ The naive scan as a KernelAbstractions kernel: one work-item per index scans
 forward from its position until the target is reached, after an O(1)
 censoring test on the host-computed suffix maxima. The CPU backend is always
 available; GPU backends come from loading CUDA, oneAPI, AMDGPU or Metal.
-Results equal [`NaiveSearch`](@ref) bit for bit. Work is ``O(\\sum_n \\tau_n)``,
-so the pipeline bounds it with `[limits].max_naive_work` before launching.
+Results equal [`NaiveSearch`](@ref) bit for bit. Work is that of the guarded
+scan ([`scan_work`](@ref) with `guarded = true`); as a reference kernel it is
+bounded by `[limits].max_reference_work` before a check is launched.
 """
 struct DeviceSearch{B <: Backend} <: AbstractSearch
     backend::B

@@ -12,7 +12,7 @@ abstract type AbstractSearch end
 
 The definition, verbatim: for each index scan forward until the first value at
 least `δ` above it. Cost ``O(\\sum_n \\tau_n)``, worst case ``O(N^2)``. This is
-the permanent correctness oracle for every other kernel. Indices are processed
+the permanent reference implementation for every other kernel. Indices are processed
 in chunks of `chunk_size` under dynamic scheduling, because the cost per index
 is heavy-tailed.
 """
@@ -166,4 +166,31 @@ end
 function waiting_times(s::QuantizedSeries, δ::Union{Real, AbstractString},
         alg::AbstractSearch = SegmentTreeSearch(); kwargs...)
     waiting_times(s, threshold(δ, s), alg; kwargs...)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Number of element comparisons a forward scan performs to reproduce the result
+`τ` on `s`: an index resolved at position ``m`` costs ``m - n``; a
+right-censored index costs ``N - n`` under [`NaiveSearch`](@ref) and nothing
+under the guarded kernels (`guarded = true`), whose suffix-maximum test settles
+it in ``O(1)``. Positions are recovered from the time axis, so the count is in
+index units whatever the time unit of `s`. This is the cost model that bounds a
+reference check before it is launched.
+"""
+function scan_work(τ::AbstractVector{Tt}, s::QuantizedSeries{Tv, Tt};
+        guarded::Bool = false) where {Tv, Tt}
+    t = s.times
+    N = length(t)
+    length(τ) == N || throw(DimensionMismatch("τ has length $(length(τ)), series has $N"))
+    work = 0
+    @inbounds for n in 1:(N - 1)
+        if τ[n] > 0
+            work += searchsortedfirst(t, t[n] + τ[n]) - n
+        elseif !guarded
+            work += N - n
+        end
+    end
+    return work
 end

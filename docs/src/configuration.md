@@ -54,15 +54,14 @@ values = []                       # explicit list, on the grid
 [algorithm]
 search = "segment_tree"           # "naive" | "guarded" | "segment_tree" | "fenwick_sweep" | "streaming" | "device"
 backend = "none"                  # "none" | "auto" | "cuda" | "oneapi" | "amdgpu" | "metal"
-threads = 0                       # 0 = all available
 chunk_size = 4096                 # >= 1
-oracle_checks = 2                 # >= 0
-oracle = "naive"                  # "naive" | "guarded" | "device"
+reference_checks = 2              # >= 0; thresholds recomputed with the reference kernel
+reference_kernel = "naive"        # "naive" | "guarded" | "device"
 
 [limits]
 max_ram_gb = 16.0                 # >= 0
 max_vram_gb = 8.0                 # >= 0
-max_naive_work = 1e12             # >= 0; bound on the oracle's sum of tau
+max_reference_work = 1e12         # >= 0; element comparisons of one reference check
 
 [output]
 root = "../data"                  # collections under root/<collection id>
@@ -73,7 +72,6 @@ overwrite = false
 [run]
 seed = 12345
 log_level = "info"                # "debug" | "info" | "warn"
-monitor = false
 ```
 
 Thresholds are generated on the grid: a linear grid from `min` to `max` by

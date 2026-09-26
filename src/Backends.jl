@@ -31,10 +31,11 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Best available backend. `prefer` names a backend (`:cuda`, `:oneapi`,
-`:amdgpu`, `:metal`), `:none` forces the CPU, `:auto` takes the first
-functional GPU. Falls back to the multi-threaded `CPU()` backend with a
-warning when a requested GPU is unavailable.
+Backend selected by `prefer`: `:none` is the multi-threaded `CPU()` backend,
+`:auto` the first functional GPU with the CPU as fallback, and a named backend
+(`:cuda`, `:oneapi`, `:amdgpu`, `:metal`) is returned only when its package is
+loaded and its device is functional; otherwise an `ArgumentError` is thrown,
+so a run never silently proceeds on a backend other than the requested one.
 """
 function get_best_backend(; prefer::Symbol = :auto)
     prefer === :none && return CPU()
@@ -43,11 +44,11 @@ function get_best_backend(; prefer::Symbol = :auto)
         backend = probe()
         backend !== nothing && return backend
     end
-    if prefer ∉ (:auto, :none)
-        @warn "Requested GPU backend :$prefer is not available (package not loaded or device " *
-              "not functional); falling back to CPU." registered = first.(BACKEND_PROBES)
-    end
-    return CPU()
+    prefer === :auto && return CPU()
+    throw(ArgumentError(
+        "GPU backend :$prefer is not available (package not loaded or device not " *
+        "functional); registered probes: $(first.(BACKEND_PROBES))",
+    ))
 end
 
 """

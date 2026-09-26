@@ -1,11 +1,11 @@
 # Kernel benchmarks on synthetic random walks.
 #
-#   julia --threads=auto --project=bench bench/run_benchmarks.jl [--sizes 1e4,1e5,1e6,4e6] [--csv PATH]
+#   julia --threads=auto bench/run_benchmarks.jl [--sizes 1e4,1e5,1e6,4e6] [--csv PATH]
 #
 # For every size and threshold regime the four batch kernels and the streaming
 # replay are timed (wall time of one evaluation after a warm-up), the results
 # are checked for exact equality, and a table is printed; with --csv the rows
-# are also written to a CSV file. Sizes above 10^6 skip the naive oracle.
+# are also written to a CSV file. Sizes above 10^6 skip the naive reference kernel.
 include(joinpath(@__DIR__, "activate.jl"))
 
 using Printf: @printf, @sprintf

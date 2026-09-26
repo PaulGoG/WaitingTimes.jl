@@ -20,11 +20,11 @@ max = 2000.0
 step = 0.5
 
 [algorithm]
-oracle_checks = 3
+reference_checks = 3
 
 [limits]
 max_ram_gb = 16.0
-max_naive_work = 1e12
+max_reference_work = 1e12
 
 [output]
 format = "arrow"

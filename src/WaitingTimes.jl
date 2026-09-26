@@ -7,7 +7,7 @@ Given a series ``\\{A_n\\}`` observed at strictly increasing integer times
 elapsed time to the first observed value at least ``\\delta`` above ``A_n``.
 Values and thresholds live on a decimal integer grid (`digits`), so every
 search kernel computes bit-identical results and the naive scan serves as the
-permanent correctness oracle.
+permanent reference implementation.
 """
 module WaitingTimes
 
@@ -65,6 +65,24 @@ CairoMakie extension.
 """
 function save_figure end
 
+"""
+$(TYPEDSIGNATURES)
+
+Publication theme shared by every figure of the package (Computer Modern
+fonts, boxed axes, no minor ticks, faint dashed grid); provided by the
+CairoMakie extension for use with `with_theme` or `set_theme!`.
+"""
+function figure_theme end
+
+"""
+$(TYPEDSIGNATURES)
+
+Tick positions and labels at the decades `10^lo` to `10^hi` for logarithmic
+axes, rendering `10^0` as `1` and `10^1` as `10`; provided by the CairoMakie
+extension.
+"""
+function decade_ticks end
+
 include("Provenance.jl")
 include("Config.jl")
 include("Naming.jl")
@@ -89,10 +107,11 @@ export CollectionHandle, generate, prepare, run_pipeline, validate
 
 public CLASS_EXACT, CLASS_GAP_CROSSING, CLASS_RIGHT_CENSORED, TIME_UNITS
 public narrow_integer, suffix_maximum, SearchWorkspace, MaxTree, FenwickWorkspace,
-       workspace,
+       workspace, scan_work,
        check_threshold, first_at_least, duration, record!
 public support, counts, probabilities, cumulative, survival, nsamples, mean_waiting_time
-public discrete_distribution, plot_series, plot_distribution, save_figure, PACKAGE_ROOT
+public discrete_distribution, plot_series, plot_distribution, save_figure, figure_theme,
+       decade_ticks, PACKAGE_ROOT
 public Synthetic, Backends, Provenance, Config, Naming, Preprocessing, Monitoring, Storage,
        Orchestrator
 

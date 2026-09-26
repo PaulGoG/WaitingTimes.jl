@@ -1,7 +1,7 @@
 # Interfacing from downstream tools
 
 A consumer of this package touches a small surface. The rest (configuration,
-provenance, storage layout, orchestration) is plumbing for reproducible batch
+provenance, storage layout, orchestration) is infrastructure for reproducible batch
 runs.
 
 ## In memory: three calls

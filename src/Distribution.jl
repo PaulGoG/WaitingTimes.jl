@@ -13,7 +13,7 @@ $(TYPEDFIELDS)
 """
 struct WaitingTimeDistribution{Tt <: Integer}
     "threshold"
-    delta::Threshold
+    delta::Threshold{Int64}
     "time unit of the support"
     time_unit::Symbol
     "`:elapsed` or `:exact`"
@@ -62,8 +62,9 @@ function empirical_distribution(
     K = length(sample)
     pmf = K == 0 ? Float64[] : counts ./ K
     cdf = cumsum(pmf)
-    return WaitingTimeDistribution{Tt}(δ, s.time_unit, mode, support, counts, pmf, cdf,
-        acc.n_candidates, acc.n_exact, acc.n_gap_crossing, acc.n_right_censored)
+    return WaitingTimeDistribution{Tt}(Threshold{Int64}(δ.d, δ.digits), s.time_unit, mode,
+        support, counts, pmf, cdf, acc.n_candidates, acc.n_exact, acc.n_gap_crossing,
+        acc.n_right_censored)
 end
 
 "distinct values and their multiplicities of a sorted vector"

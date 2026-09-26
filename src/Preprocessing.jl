@@ -13,14 +13,14 @@ using Dates: DateTime, DateFormat, Dates, unix2datetime
 using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
 using Statistics: mean, median, quantile
 using UnicodePlots: UnicodePlots
-using ..WaitingTimes: PreparationRecord, QuantizedSeries, TIME_UNITS, declare_gaps,
-                      record!
+using ..WaitingTimes: MAX_DIGITS, PreparationRecord, QuantizedSeries, TIME_UNITS,
+                      declare_gaps, record!
 using ..Provenance: file_sha256, read_toml
 
 export RawSeries, read_series, select_range, exclude_intervals, trailing_mean_fluctuations,
        log_returns, differences, centered_moving_average, clip_quantile, collapse_ties,
-       sampling_summary, value_summary, terminal_overview, quantized_series, apply_steps,
-       read_gap_intervals
+       sampling_summary, value_summary, resolution_digits, terminal_overview,
+       quantized_series, apply_steps, read_gap_intervals
 
 """
     RawSeries
@@ -537,6 +537,30 @@ function value_summary(rs::RawSeries)
         return (n = 0, min = NaN, q25 = NaN, median = NaN, q75 = NaN, max = NaN, mean = NaN)
     return (n = length(x), min = minimum(x), q25 = quantile(x, 0.25), median = median(x),
         q75 = quantile(x, 0.75), max = maximum(x), mean = mean(x))
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Recorded resolution of the observed values: the smallest number of decimals
+`d ≤ max_digits` such that every value lies on the ``10^{-d}`` grid to within
+`tolerance` grid units, or `nothing` when no such `d` exists (values off any
+decimal grid, as after most transformations). Quantising with `digits = d`
+merges no distinct observed values, a coarser grid does, and a finer grid only
+enlarges the integers; `d` is therefore the natural choice of `digits` for a
+series used as recorded.
+"""
+function resolution_digits(rs::RawSeries; max_digits::Integer = MAX_DIGITS,
+        tolerance::Real = 1e-6)
+    0 <= max_digits <= MAX_DIGITS ||
+        throw(ArgumentError("max_digits must lie in 0:$(MAX_DIGITS), got $max_digits"))
+    _, x = observed(rs)
+    isempty(x) && throw(ArgumentError("the series has no observed value"))
+    for d in 0:max_digits
+        scale = 10.0^d
+        all(v -> abs(v * scale - round(v * scale)) <= tolerance, x) && return Int(d)
+    end
+    return nothing
 end
 
 """

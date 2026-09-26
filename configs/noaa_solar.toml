@@ -20,7 +20,7 @@ max = 28.0
 step = 0.1
 
 [algorithm]
-oracle_checks = 3
+reference_checks = 3
 
 [output]
 format = "arrow"

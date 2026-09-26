@@ -1,7 +1,7 @@
 """
 Pipeline orchestration: prepare a series from a configuration, generate the
-collection of waiting-time distributions with resume and oracle checks, and
-validate kernels against the oracle.
+collection of waiting-time distributions with resume and reference checks, and
+validate kernels against the reference kernel.
 """
 module Orchestrator
 
@@ -16,13 +16,14 @@ using ..WaitingTimes: WaitingTimes, AbstractSearch, DeviceSearch, FenwickSweep,
                       NaiveSearch,
                       QuantizedSeries, SegmentTreeSearch, StreamingSearch, Threshold,
                       WaitingTimeDistribution, classify, empirical_distribution,
-                      format_threshold, nsamples, support, waiting_times, waiting_times!,
-                      workspace
+                      format_threshold, nsamples, scan_work, support, waiting_times,
+                      waiting_times!, workspace
 using ..Config: Settings, load_settings, threshold_list
 using ..Provenance: artefact_id, backup_existing!, content_hash, file_sha256, git_state,
                     hardware_fingerprint, read_toml, record_to_dict, session_id, slugify,
                     toml_ready, write_hardware_fingerprint, write_toml
-using ..Preprocessing: apply_steps, quantized_series, read_gap_intervals, read_series
+using ..Preprocessing: apply_steps, quantized_series, read_gap_intervals, read_series,
+                       resolution_digits
 using ..Storage: partition_path, read_index, write_catalog, write_distribution, write_index,
                  write_series_files, write_summary, write_waiting_times
 using ..Monitoring: run_progress, with_run_logging
@@ -33,7 +34,7 @@ export CollectionHandle, run_pipeline, prepare, generate, validate, make_kernel,
        estimate_memory_bytes, dataset_descriptor
 
 "provenance schema written into metadata files"
-const SCHEMA = "waitingtimes-provenance/1"
+const SCHEMA = "waitingtimes-provenance/2"
 
 """
     CollectionHandle
@@ -57,8 +58,8 @@ struct CollectionHandle
     computed::Vector{String}
     "thresholds skipped because partitions existed"
     skipped::Vector{String}
-    "oracle check records"
-    oracle_checks::Vector{Dict{String, Any}}
+    "reference check records"
+    reference_checks::Vector{Dict{String, Any}}
 end
 
 # --- dataset descriptors -----------------------------------------------------
@@ -99,9 +100,10 @@ function make_kernel(settings::Settings)
     throw(ArgumentError("unknown search $s"))
 end
 
-function oracle_kernel(settings::Settings)
-    settings.oracle === :naive ? NaiveSearch(; chunk_size = settings.chunk_size) :
-    settings.oracle === :guarded ? GuardedSearch(; chunk_size = settings.chunk_size) :
+function make_reference_kernel(settings::Settings)
+    settings.reference_kernel === :naive ? NaiveSearch(; chunk_size = settings.chunk_size) :
+    settings.reference_kernel === :guarded ?
+    GuardedSearch(; chunk_size = settings.chunk_size) :
     WaitingTimes.device_search(settings.backend)
 end
 
@@ -146,9 +148,7 @@ series and a named tuple of identifiers and slugs.
 """
 function prepare(settings::Settings)
     descriptor = dataset_descriptor(settings)
-    format = settings.input_format === :csv && settings.dataset == "" ? :csv :
-             settings.input_format
-    rs = read_series(settings.input_path; format = format,
+    rs = read_series(settings.input_path; format = settings.input_format,
         value_column = settings.value_column, time_column = settings.time_column,
         time_unit = settings.time_unit, time_format = settings.time_format,
         epoch_unit = settings.epoch_unit, delimiter = settings.delimiter,
@@ -161,6 +161,9 @@ function prepare(settings::Settings)
         ))
     end
     rs = apply_steps(rs, settings.steps)
+    resolution = resolution_digits(rs)
+    resolution === nothing || resolution <= settings.digits ||
+        @warn "[quantization] digits is below the recorded resolution of the prepared series; quantisation merges distinct values" digits=settings.digits resolution
     declared = isempty(settings.declared_gaps) ? Tuple{Int64, Int64}[] :
                read_gap_intervals(settings.declared_gaps)
     s = quantized_series(rs, settings.digits; detect = settings.gap_detect,
@@ -259,7 +262,7 @@ $(TYPEDSIGNATURES)
 
 Generate (or extend) the collection of waiting-time distributions described
 by `settings`: prepare the series, compute every configured threshold not yet
-present, write partitions, run oracle checks, and record the session.
+present, write partitions, run reference checks, and record the session.
 """
 function generate(settings::Settings)
     s, ids = prepare(settings)
@@ -277,6 +280,7 @@ function generate(settings::Settings)
         @info "collection" id dir session series=ids.series_id observations=length(s) gaps=length(s.gaps)
         config_snapshot = joinpath(dir, "config.toml")
         isfile(config_snapshot) || write_toml(config_snapshot, settings.raw)
+        write_toml(joinpath(dir, "sessions", session * ".config.toml"), settings.raw)
         meta_path = joinpath(dir, "metadata.toml")
         meta = isfile(meta_path) ? read_toml(meta_path) :
                initial_metadata(id, ids, settings, s)
@@ -294,8 +298,6 @@ function generate(settings::Settings)
         end
 
         alg = make_kernel(settings)
-        settings.threads == 0 || settings.threads == Threads.nthreads() ||
-            @warn "[algorithm] threads is a request recorded for provenance; the process runs with the thread count it was started with" requested=settings.threads running=Threads.nthreads()
         bytes = estimate_memory_bytes(s, alg)
         limit = settings.max_ram_gb * 2^30
         bytes <= limit || throw(ArgumentError(
@@ -350,8 +352,8 @@ function generate(settings::Settings)
         end
         finish!(progress)
 
-        if settings.oracle_checks > 0 && !isempty(computed)
-            checks = oracle_check!(timer, s, thresholds, computed, alg, ws, settings)
+        if settings.reference_checks > 0 && !isempty(computed)
+            checks = reference_check!(timer, s, thresholds, computed, alg, ws, settings)
         end
 
         entries = sort!(collect(values(existing)); by = e -> parse(Float64, e["delta"]))
@@ -373,16 +375,16 @@ function generate(settings::Settings)
             "julia" => string(VERSION), "hardware" => hardware,
             "config_hash" => content_hash(settings.raw),
             "deltas_computed" => computed, "deltas_skipped" => skipped,
-            "oracle_checks" => checks, "timings" => timings(timer),
+            "reference_checks" => checks, "timings" => timings(timer),
             "memory_estimate_bytes" => bytes)
         write_toml(joinpath(dir, "sessions", session * ".toml"), record)
         push!(meta["sessions"],
             Dict{String, Any}("id" => session, "created" => record["created"],
                 "kernel" => record["kernel"], "git" => git, "n_computed" =>
                     length(computed),
-                "n_skipped" => length(skipped), "n_oracle_checks" => length(checks)))
+                "n_skipped" => length(skipped), "n_reference_checks" => length(checks)))
         write_toml(meta_path, meta)
-        @info "session complete" computed=length(computed) skipped=length(skipped) oracle_checks=length(checks) seconds=round(
+        @info "session complete" computed=length(computed) skipped=length(skipped) reference_checks=length(checks) seconds=round(
             TimerOutputs.tottime(timer)/1e9; digits = 2)
     end
     return CollectionHandle(
@@ -403,39 +405,41 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Recompute `settings.oracle_checks` thresholds among those just computed with
-the oracle kernel (always including the largest) and compare exactly. A
-disagreement raises after being recorded; a check whose work bound
-``\\sum \\tau`` exceeds `[limits].max_naive_work` is skipped with a warning.
+Recompute `settings.reference_checks` thresholds among those just computed with
+the reference kernel (always including the largest) and compare exactly. A
+disagreement raises after being recorded; a check whose scan work
+([`scan_work`](@ref), in element comparisons) exceeds
+`[limits].max_reference_work` is skipped with a warning.
 """
-function oracle_check!(timer, s, thresholds, computed, alg, ws, settings::Settings)
+function reference_check!(timer, s, thresholds, computed, alg, ws, settings::Settings)
     by_key = Dict(format_threshold(δ) => δ for δ in thresholds)
     keys_ = sort(computed; by = k -> parse(Float64, k))
     chosen = [last(keys_)]
     rest = keys_[1:(end - 1)]
     rng = MersenneTwister(settings.seed)
-    append!(chosen, first(shuffle(rng, rest), max(0, settings.oracle_checks - 1)))
-    oracle = oracle_kernel(settings)
+    append!(chosen, first(shuffle(rng, rest), max(0, settings.reference_checks - 1)))
+    reference = make_reference_kernel(settings)
     checks = Dict{String, Any}[]
+    τ_fast = Vector{eltype(s.times)}(undef, length(s))
     for key in chosen
         δ = by_key[key]
-        τ_fast = waiting_times(s, δ, alg; workspace = ws)
-        work = Float64(sum(τ_fast))
-        if work > settings.max_naive_work
-            @warn "oracle check skipped: work bound exceeds [limits] max_naive_work" delta = key work
+        waiting_times!(τ_fast, s, δ, alg; workspace = ws)
+        work = Float64(scan_work(τ_fast, s; guarded = !(reference isa NaiveSearch)))
+        if work > settings.max_reference_work
+            @warn "reference check skipped: work bound exceeds [limits] max_reference_work" delta = key work
             push!(checks,
-                Dict{String, Any}("delta" => key, "kernel" => kernel_name(oracle),
+                Dict{String, Any}("delta" => key, "kernel" => kernel_name(reference),
                     "skipped" => true, "work" => work))
             continue
         end
-        seconds = @elapsed τ_oracle = @timeit timer "oracle" waiting_times(s, δ, oracle)
-        equal = τ_oracle == τ_fast
+        seconds = @elapsed τ_reference = @timeit timer "reference" waiting_times(s, δ, reference)
+        equal = τ_reference == τ_fast
         push!(checks,
-            Dict{String, Any}("delta" => key, "kernel" => kernel_name(oracle),
+            Dict{String, Any}("delta" => key, "kernel" => kernel_name(reference),
                 "equal" => equal, "seconds" => seconds, "work" => work, "skipped" => false))
-        @info "oracle check" delta=key kernel=kernel_name(oracle) equal seconds=round(seconds; digits = 3)
+        @info "reference check" delta=key kernel=kernel_name(reference) equal seconds=round(seconds; digits = 3)
         equal ||
-            error("oracle disagreement at delta = $key between $(kernel_name(alg)) and $(kernel_name(oracle))")
+            error("reference disagreement at delta = $key between $(kernel_name(alg)) and $(kernel_name(reference))")
     end
     return checks
 end
@@ -443,36 +447,40 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Compare the configured kernel with the oracle on `deltas` (defaults to the
-largest configured threshold and `oracle_checks - 1` random ones). Returns a
+Compare the configured kernel with the reference kernel on `deltas` (defaults to the
+largest configured threshold and `reference_checks - 1` random ones). Returns a
 report dictionary; disagreements are reported, not thrown.
 """
 function validate(settings::Settings; deltas = nothing)
     s, ids = prepare(settings)
     alg = make_kernel(settings)
-    oracle = oracle_kernel(settings)
+    reference = make_reference_kernel(settings)
     ws = workspace(alg, s)
     thresholds = deltas === nothing ? threshold_list(settings, s) :
-                 [WaitingTimes.threshold(δ, s) for δ in deltas]
+                 Threshold{eltype(s.values)}[WaitingTimes.threshold(δ, s) for δ in deltas]
     if deltas === nothing
         rng = MersenneTwister(settings.seed)
         chosen = [last(thresholds)]
-        append!(chosen, first(shuffle(rng, thresholds[1:(end - 1)]), max(0, settings.oracle_checks -
+        append!(chosen, first(shuffle(rng, thresholds[1:(end - 1)]), max(0, settings.reference_checks -
                                                                             1)))
         thresholds = chosen
     end
     results = Dict{String, Any}[]
+    τ_fast = Vector{eltype(s.times)}(undef, length(s))
     for δ in thresholds
-        τ_fast = waiting_times(s, δ, alg; workspace = ws)
-        seconds = @elapsed τ_oracle = waiting_times(s, δ, oracle)
+        waiting_times!(τ_fast, s, δ, alg; workspace = ws)
+        seconds = @elapsed τ_reference = waiting_times(s, δ, reference)
         push!(results,
             Dict{String, Any}(
-                "delta" => format_threshold(δ), "equal" => τ_oracle == τ_fast,
-                "seconds" => seconds, "work" => Float64(sum(τ_fast)),
-                "n_differences" => count(τ_oracle .!= τ_fast)))
+                "delta" => format_threshold(δ), "equal" => τ_reference == τ_fast,
+                "seconds" => seconds,
+                "work" =>
+                    Float64(scan_work(τ_fast, s; guarded = !(reference isa NaiveSearch))),
+                "n_differences" => count(τ_reference .!= τ_fast)))
     end
     return Dict{String, Any}("series" => ids.series_id, "kernel" => kernel_name(alg),
-        "oracle" => kernel_name(oracle), "all_equal" => all(r -> r["equal"], results),
+        "reference_kernel" => kernel_name(reference), "all_equal" =>
+            all(r -> r["equal"], results),
         "results" => results)
 end
 

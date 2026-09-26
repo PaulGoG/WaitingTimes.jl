@@ -150,9 +150,10 @@ function empirical_distribution(
     pmf = K == 0 ? Float64[] : counts ./ K
     cdf = cumsum(pmf)
     n_candidates = max(state.n_seen - 1, 0)
+    n_pending = n_candidates - state.n_resolved
     return WaitingTimeDistribution{Tt}(
-        state.delta, time_unit, :elapsed, support, counts, pmf,
-        cdf, n_candidates, state.n_resolved, 0, n_candidates - state.n_resolved)
+        Threshold{Int64}(state.delta.d, state.delta.digits), time_unit, :elapsed, support,
+        counts, pmf, cdf, n_candidates, state.n_resolved, 0, n_pending)
 end
 
 function waiting_times!(τ::AbstractVector{Tt}, s::QuantizedSeries{Tv, Tt}, δ::Threshold,

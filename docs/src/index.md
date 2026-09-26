@@ -21,18 +21,19 @@ The package computes these distributions exactly and reproducibly:
 
 - values and thresholds live on a decimal integer grid, so every kernel
   produces bit-identical results and the naive scan is the permanent
-  correctness oracle ([Formulation](formulation.md));
+  reference implementation ([Formulation](formulation.md));
 - a segment-tree kernel serves production runs in milliseconds per threshold,
   a Fenwick sweep and a streaming kernel cross-check it, and a
-  KernelAbstractions kernel runs the oracle on GPUs ([Kernels](kernels.md));
+  KernelAbstractions kernel runs the reference kernel on GPUs ([Kernels](kernels.md));
 - a validated TOML configuration drives ingestion, preprocessing, generation
-  with resume and oracle checks, and provenance ([Pipeline](pipeline.md),
+  with resume and reference checks, and provenance ([Pipeline](pipeline.md),
   [Configuration](configuration.md), [Provenance](provenance.md)).
 
 ## Contents
 
 ```@contents
 Pages = ["formulation.md", "kernels.md", "pipeline.md", "configuration.md",
-    "provenance.md", "validation.md", "api.md", "references.md"]
+    "provenance.md", "validation.md", "interfacing.md", "generated/downstream_fit.md",
+    "api.md", "references.md"]
 Depth = 1
 ```

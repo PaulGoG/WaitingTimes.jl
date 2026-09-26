@@ -68,6 +68,6 @@ spacing, ``\delta > 0`` censors everything); strictly increasing series;
 pointwise monotonicity ``\tau_n(d) \ge \tau_n(d')`` for ``d \ge d'`` whenever
 both exist, with a censored set growing in ``d``; the accounting identities;
 equality of ``\delta = 0`` with the monotonic-stack next-greater-or-equal
-oracle; rejection of thresholds off the grid; invariance of every waiting
+solution; rejection of thresholds off the grid; invariance of every waiting
 time under declaration or detection of gaps; and equality of the streaming
-kernel with the batch oracle on every prefix of a record.
+kernel with the batch reference kernel on every prefix of a record.

@@ -18,7 +18,7 @@ large gaps can be located and cut before a run.
 ## Generate
 
 [`generate`](@ref) computes every configured threshold not yet present in the
-collection, writes one partition per threshold, runs oracle checks, and
+collection, writes one partition per threshold, runs reference checks, and
 records the session. The collection directory is
 
 ```
@@ -26,7 +26,8 @@ data/<collection id>/
 ├── config.toml            effective configuration of the first session
 ├── metadata.toml          identity, series and dataset provenance, session list
 ├── hardware.txt           fingerprint of the latest session
-├── sessions/<id>.toml     per-session record: kernel, backend, git, timings, oracle checks
+├── sessions/<id>.toml     per-session record: kernel, backend, git, timings, reference checks
+├── sessions/<id>.config.toml   effective configuration of that session
 ├── series.<csv|arrow>     prepared series (values, times), gaps.csv, series.toml
 ├── distributions/delta=<fixed>.<csv|arrow>
 ├── waiting_times/         optional dense waiting-time vectors with classes and bounds
@@ -42,21 +43,24 @@ case they are backed up as `<name>#k.<ext>` first.
 
 ## Validate
 
-[`validate`](@ref) compares the configured kernel with the oracle on chosen
+[`validate`](@ref) compares the configured kernel with the reference kernel on chosen
 thresholds and reports equality, the number of differing indices and the
-oracle's cost. `scripts/validate.jl` exits non-zero on any disagreement.
+reference kernel's cost. `scripts/validate.jl` exits non-zero on any disagreement.
 
 ## Scripts
 
 ```
-julia --threads=auto --project scripts/run_pipeline.jl --config configs/geisenheim_wind.toml
-julia --project scripts/launch_run.jl --config configs/geisenheim_wind.toml
-julia --project scripts/prepare.jl --config configs/geisenheim_wind.toml
-julia --threads=auto --project scripts/validate.jl --config configs/quickstart.toml --deltas 0.001,0.005
-julia --project scripts/lineage.jl data/<collection id>
+julia --threads=auto scripts/run_pipeline.jl --config configs/geisenheim_wind.toml
+julia scripts/launch_run.jl --config configs/geisenheim_wind.toml
+julia scripts/prepare.jl --config configs/geisenheim_wind.toml
+julia --threads=auto scripts/validate.jl --config configs/quickstart.toml --deltas 0.001,0.005
+julia --threads=auto scripts/crosscheck.jl --config configs/quickstart.toml
+julia scripts/lineage.jl data/<collection id>
 ```
 
-`launch_run.jl` starts the pipeline as a detached process with a console log
-under `data/logs/`. `run_pipeline.jl` loads the GPU package named by
+Every script activates the package environment itself. `launch_run.jl`
+starts the pipeline as a detached process with a console log under
+`data/logs/`. `run_pipeline.jl` loads the GPU package named by
 `[algorithm].backend` when it is installed, which activates the corresponding
-extension.
+extension. `crosscheck.jl` compares every kernel with the naive reference
+kernel index by index on the whole threshold grid of a configuration.

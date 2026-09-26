@@ -10,7 +10,7 @@ answers, for each index, the leftmost later position whose value reaches the
 target in ``O(\\log N)``: climb to the first right sibling whose maximum
 qualifies, then descend to its leftmost qualifying leaf. The tree is built
 once per series (`workspace`) and is read-only during queries, so the loop
-over indices runs in parallel exactly like the oracle's. Results equal
+over indices runs in parallel exactly like the reference kernel's. Results equal
 [`NaiveSearch`](@ref) bit for bit.
 """
 struct SegmentTreeSearch <: AbstractSearch

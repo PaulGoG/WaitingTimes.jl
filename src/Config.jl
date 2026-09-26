@@ -87,21 +87,19 @@ Base.@kwdef struct Settings
     search::Symbol
     "device backend: `:none`, `:auto`, `:cuda`, `:oneapi`, `:amdgpu`, `:metal`"
     backend::Symbol
-    "thread count requested (0 = all)"
-    threads::Int
     "indices per task"
     chunk_size::Int
-    "thresholds recomputed with the oracle per run"
-    oracle_checks::Int
-    "oracle kernel: `:naive`, `:guarded` or `:device`"
-    oracle::Symbol
+    "thresholds recomputed with the reference kernel per run"
+    reference_checks::Int
+    "reference kernel: `:naive`, `:guarded` or `:device`"
+    reference_kernel::Symbol
     # limits
     "host memory bound in GiB"
     max_ram_gb::Float64
     "device memory bound in GiB"
     max_vram_gb::Float64
-    "bound on the oracle's work ``\\sum \\tau``"
-    max_naive_work::Float64
+    "bound on the element comparisons of one reference check (`scan_work`)"
+    max_reference_work::Float64
     # output
     "absolute output root; collections live under it"
     output_root::String
@@ -116,8 +114,6 @@ Base.@kwdef struct Settings
     seed::Int
     "`:debug`, `:info` or `:warn`"
     log_level::Symbol
-    "in-terminal live diagnostics"
-    monitor::Bool
     "effective configuration as parsed"
     raw::Dict{String, Any}
 end
@@ -134,10 +130,10 @@ const KNOWN_KEYS = Dict(
     "quantization" => ["digits"],
     "thresholds" => ["mode", "min", "max", "step", "points_per_decade", "values"],
     "algorithm" =>
-        ["search", "backend", "threads", "chunk_size", "oracle_checks", "oracle"],
-    "limits" => ["max_ram_gb", "max_vram_gb", "max_naive_work"],
+        ["search", "backend", "chunk_size", "reference_checks", "reference_kernel"],
+    "limits" => ["max_ram_gb", "max_vram_gb", "max_reference_work"],
     "output" => ["root", "format", "store_waiting_times", "overwrite"],
-    "run" => ["seed", "log_level", "monitor"]
+    "run" => ["seed", "log_level"]
 )
 
 "preprocessing operations and their accepted parameter keys"
@@ -338,17 +334,18 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
         (:naive, :guarded, :segment_tree, :fenwick_sweep, :streaming, :device))
     backend = as_symbol(fetch(alg, "algorithm", "backend", "none"), "algorithm", "backend",
         (:none, :auto, :cuda, :oneapi, :amdgpu, :metal))
-    threads = as_int(fetch(alg, "algorithm", "threads", 0), "algorithm", "threads"; min = 0)
     chunk_size = as_int(fetch(alg, "algorithm", "chunk_size", 4096), "algorithm", "chunk_size"; min = 1)
-    oracle_checks = as_int(fetch(alg, "algorithm", "oracle_checks", 2), "algorithm", "oracle_checks"; min = 0)
-    oracle = as_symbol(fetch(alg, "algorithm", "oracle", "naive"), "algorithm", "oracle",
+    reference_checks = as_int(fetch(alg, "algorithm", "reference_checks", 2),
+        "algorithm", "reference_checks"; min = 0)
+    reference_kernel = as_symbol(fetch(alg, "algorithm", "reference_kernel", "naive"),
+        "algorithm", "reference_kernel",
         (:naive, :guarded, :device))
 
     lim = section(raw, "limits")
     max_ram_gb = as_float(fetch(lim, "limits", "max_ram_gb", 16.0), "limits", "max_ram_gb"; min = 0.0)
     max_vram_gb = as_float(fetch(lim, "limits", "max_vram_gb", 8.0), "limits", "max_vram_gb"; min = 0.0)
-    max_naive_work = as_float(
-        fetch(lim, "limits", "max_naive_work", 1e12), "limits", "max_naive_work"; min = 0.0)
+    max_reference_work = as_float(
+        fetch(lim, "limits", "max_reference_work", 1e12), "limits", "max_reference_work"; min = 0.0)
 
     out = section(raw, "output")
     root = output_dir === nothing ?
@@ -364,7 +361,6 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
     seed = as_int(fetch(run, "run", "seed", 12345), "run", "seed")
     log_level = as_symbol(fetch(run, "run", "log_level", "info"), "run", "log_level", (
         :debug, :info, :warn))
-    monitor = as_bool(fetch(run, "run", "monitor", false), "run", "monitor")
 
     return Settings(;
         config_path, config_dir, input_path, input_format,
@@ -386,10 +382,10 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
         unit_label = as_string(fetch(inp, "input", "unit_label", ""), "input", "unit_label"),
         steps, declared_gaps, gap_detect, gap_cadence, gap_threshold, mode, digits,
         threshold_mode, threshold_min, threshold_max, threshold_step, points_per_decade,
-        threshold_values, search, backend, threads, chunk_size, oracle_checks, oracle,
-        max_ram_gb, max_vram_gb, max_naive_work,
+        threshold_values, search, backend, chunk_size, reference_checks, reference_kernel,
+        max_ram_gb, max_vram_gb, max_reference_work,
         output_root = root, output_format, store_waiting_times, overwrite,
-        seed, log_level, monitor, raw)
+        seed, log_level, raw)
 end
 
 "whether `value` is a multiple of `10^-digits` to within `1e-6` grid units"

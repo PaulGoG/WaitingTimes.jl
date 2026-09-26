@@ -39,6 +39,7 @@ waiting_times
 waiting_times!
 WaitingTimes.workspace
 WaitingTimes.suffix_maximum
+WaitingTimes.scan_work
 ```
 
 ## Streaming
@@ -95,6 +96,7 @@ WaitingTimes.Preprocessing.collapse_ties
 WaitingTimes.Preprocessing.quantized_series
 WaitingTimes.Preprocessing.sampling_summary
 WaitingTimes.Preprocessing.value_summary
+WaitingTimes.Preprocessing.resolution_digits
 ```
 
 ## Provenance, naming, storage
@@ -119,6 +121,8 @@ WaitingTimes.Storage.load_distributions
 WaitingTimes.Backends.get_best_backend
 WaitingTimes.Backends.to_backend
 WaitingTimes.Backends.backend_name
+WaitingTimes.figure_theme
+WaitingTimes.decade_ticks
 WaitingTimes.plot_series
 WaitingTimes.plot_distribution
 WaitingTimes.save_figure

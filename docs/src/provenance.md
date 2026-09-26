@@ -26,10 +26,10 @@ descriptor, and the `[[sessions]]` list. Each session also has its own file
 under `sessions/` with the kernel and backend, thread count, package version,
 git state (commit, tags, dirty flag), Julia version, hardware fingerprint
 (host, CPU, cores, memory, BLAS threads, and the device report of a GPU
-backend), configuration hash, thresholds computed and skipped, oracle checks
+backend), configuration hash, thresholds computed and skipped, reference checks
 and stage timings. `hardware.txt` carries `versioninfo` and the device
 report. Arrow partitions also carry the collection identifier, threshold and
-session in their schema metadata; CSV partitions stay clean.
+session in their schema metadata; CSV partitions carry none.
 
 `index.toml` lists every partition with its file, checksum, session and
 per-threshold statistics; `summary.csv` and `catalog.csv` are regenerated

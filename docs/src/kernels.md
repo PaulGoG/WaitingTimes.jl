@@ -6,12 +6,12 @@ comparable with `==` across kernels and backends.
 
 | Kernel | Cost per threshold | Parallelism | Role |
 |---|---|---|---|
-| [`NaiveSearch`](@ref) | ``O(\sum_n \tau_n)``, worst ``O(N^2)`` | over indices, chunked dynamic scheduling | the definition; permanent oracle |
-| [`GuardedSearch`](@ref) | same, censored indices skipped in ``O(1)`` | over indices | oracle with the suffix-maximum censoring proof |
+| [`NaiveSearch`](@ref) | ``O(\sum_n \tau_n)``, worst ``O(N^2)`` | over indices, chunked dynamic scheduling | the definition; permanent reference kernel |
+| [`GuardedSearch`](@ref) | same, censored indices skipped in ``O(1)`` | over indices | reference kernel with the suffix-maximum censoring proof |
 | [`SegmentTreeSearch`](@ref) | ``O(N \log N)``, insensitive to ``\delta`` | over indices | production kernel |
 | [`FenwickSweep`](@ref) | ``O(N \log V)``; any number of thresholds per sweep | over thresholds | dense grids, few cores, small memory |
-| [`StreamingSearch`](@ref) | ``O(N \log N)``, one pass, no lookahead | none | live pipelines; equals the oracle on every prefix |
-| [`DeviceSearch`](@ref) | ``O(\sum_n \tau_n)`` | one work-item per index on a KernelAbstractions backend | oracle on GPUs |
+| [`StreamingSearch`](@ref) | ``O(N \log N)``, one pass, no lookahead | none | live pipelines; equals the reference kernel on every prefix |
+| [`DeviceSearch`](@ref) | ``O(\sum_n \tau_n)`` | one work-item per index on a KernelAbstractions backend | reference kernel on GPUs |
 
 ## Segment tree
 
@@ -53,6 +53,9 @@ series arrays are uploaded once per series. Opt-in device tests live in
 
 `SegmentTreeSearch` is the default of [`waiting_times`](@ref) and of the
 pipeline. Production runs recompute a configurable number of thresholds with
-the oracle and compare exactly (`[algorithm].oracle_checks`); the work of an
-oracle check, ``\sum_n \tau_n``, is known from the fast result before the
-oracle is launched and is bounded by `[limits].max_naive_work`.
+the reference kernel and compare exactly (`[algorithm].reference_checks`).
+The cost of a reference check is known before it is launched:
+[`WaitingTimes.scan_work`](@ref) counts, from the fast result, the element
+comparisons the scan will perform (``m - n`` for an index resolved at
+position ``m``, ``N - n`` for a right-censored index under `NaiveSearch`), in
+index units whatever the time unit; `[limits].max_reference_work` bounds it.

@@ -117,7 +117,7 @@ end
 
 # --- gap generators ----------------------------------------------------------
 # Sample-level masks (`true` = observed) modelled on the downlink of a
-# duty-cycled deep-space mission: periodic contact windows, stochastic packet
+# duty-cycled telemetry link: periodic contact windows, stochastic packet
 # loss, and scheduled disruptions. Composed masks turn a complete series into
 # one with gaps of realistic structure.
 

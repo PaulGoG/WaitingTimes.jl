@@ -7,9 +7,9 @@ using WaitingTimes.Provenance: artefact_id, backup_existing!, canonical_toml, co
 using WaitingTimes.Naming: artefact_name, parse_artefact_name
 using WaitingTimes.Preprocessing: RawSeries, apply_steps, centered_moving_average,
                                   clip_quantile, collapse_ties, differences,
-                                  exclude_intervals,
-                                  log_returns, quantized_series, read_series,
-                                  sampling_summary, select_range, terminal_overview,
+                                  exclude_intervals, log_returns, quantized_series,
+                                  read_series, resolution_digits, sampling_summary,
+                                  select_range, terminal_overview,
                                   trailing_mean_fluctuations, value_summary
 using WaitingTimes.Storage: load_distributions, partition_path, read_distribution,
                             read_index, read_series_files, write_distribution,
@@ -99,7 +99,7 @@ end
         end
         D(pairs...) = Dict{String, Any}(pairs...)
         @test_logs (:warn, r"unknown configuration key") match_mode = :any load_settings(write_config(D("input" =>
-            D("bogus" => 1))))
+            D("unknown" => 1))))
         @test_throws ArgumentError load_settings(write_config(D("thresholds" =>
             D("mode" => "linear", "min" => 1.0, "max" => 0.5, "step" => 0.1))))
         @test_throws ArgumentError load_settings(write_config(D("thresholds" =>
@@ -198,7 +198,15 @@ end
     qs3 = quantized_series(raw_from([1.0, 2.0, 3.0]; times = [1, 5, 9], unit = :second), 0;
         detect = :threshold, threshold = 2, declared = [(6, 8)])
     @test qs3.gaps == [(2, 5), (6, 9)]
-    @test_throws ArgumentError quantized_series(rs, 0; detect = :magic)
+    @test_throws ArgumentError quantized_series(rs, 0; detect = :undefined)
+    # recorded resolution
+    @test resolution_digits(raw_from([1.0857, 1.0900, 12.0])) == 4
+    @test resolution_digits(raw_from([3.0, 5.0, missing])) == 0
+    @test resolution_digits(raw_from([0.1, 0.2, 0.3])) == 1
+    @test resolution_digits(raw_from([1 / 3, 2 / 3])) === nothing
+    @test resolution_digits(raw_from([1 / 3, 2 / 3]); max_digits = 15, tolerance = 1.0) == 0
+    @test_throws ArgumentError resolution_digits(raw_from([1.0]); max_digits = 16)
+    @test_throws ArgumentError resolution_digits(raw_from([missing, missing]))
     io = IOBuffer()
     terminal_overview(io, raw_from(sin.(1:200)))
     @test occursin("value", String(take!(io)))
@@ -269,8 +277,8 @@ end
         handle = generate(settings)
         @test isdir(handle.dir) && startswith(handle.id, "collection-eur_usd-closing_rate-")
         @test length(handle.computed) == 10 && isempty(handle.skipped)
-        @test length(handle.oracle_checks) == 2 &&
-              all(c -> c["equal"], handle.oracle_checks)
+        @test length(handle.reference_checks) == 2 &&
+              all(c -> c["equal"] && c["work"] > 0, handle.reference_checks)
         for name in ("config.toml", "metadata.toml", "hardware.txt", "index.toml", "summary.csv",
             "catalog.csv", "series.csv", "gaps.csv", "series.toml", "run.log")
             @test isfile(joinpath(handle.dir, name))
@@ -280,6 +288,7 @@ end
         @test meta["artefact"]["id"] == handle.id && length(meta["sessions"]) == 1
         @test meta["dataset"]["descriptor"]["slug"] == "eur_usd-closing_rate"
         session = TOML.parsefile(joinpath(handle.dir, "sessions", handle.session * ".toml"))
+        @test isfile(joinpath(handle.dir, "sessions", handle.session * ".config.toml"))
         @test session["kernel"] == "segmenttreesearch" &&
               length(session["deltas_computed"]) == 10
         @test haskey(session["timings"], "search") &&
@@ -354,6 +363,10 @@ end
     s = QuantizedSeries(x, 2)
     δ = threshold(1.0, s)
     d = empirical_distribution(waiting_times(s, δ), δ, s)
+    @test WaitingTimes.figure_theme() isa CairoMakie.Theme
+    @test WaitingTimes.decade_ticks(-1, 2) ==
+          ([0.1, 1.0, 10.0, 100.0], ["10⁻¹", "1", "10", "10²"])
+    @test_throws ArgumentError WaitingTimes.decade_ticks(2, 1)
     fig = WaitingTimes.plot_series(s; quantity_label = "level", unit_label = "cm")
     @test fig isa CairoMakie.Figure
     fig2 = WaitingTimes.plot_distribution(d)

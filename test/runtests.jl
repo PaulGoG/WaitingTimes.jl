@@ -1,3 +1,7 @@
+# Test suite of WaitingTimes.jl; self-activating, so both
+# `julia --threads=auto test/runtests.jl` and `Pkg.test()` run it.
+include(joinpath(@__DIR__, "activate.jl"))
+
 using WaitingTimes
 using Test
 using Aqua
@@ -30,7 +34,7 @@ function reference_waiting_times(q::AbstractVector, t::AbstractVector, d::Intege
     return τ
 end
 
-"Next greater-or-equal element by monotonic stack: the O(N) oracle valid only for δ = 0."
+"Next greater-or-equal element by monotonic stack: the O(N) solution valid only for δ = 0."
 function stack_waiting_times_zero(q::AbstractVector, t::AbstractVector)
     N = length(q)
     τ = zeros(eltype(t), N)
@@ -189,6 +193,18 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         # overflow guard on narrowed values
         s = QuantizedSeries(Int32[1, 2], [1, 2], 0)
         @test_throws OverflowError waiting_times(s, Threshold(typemax(Int32), 0))
+
+        # scan work in index units: A = 1 3 2 5 4 4 6 at δ = 3 gives τ = 3 5 1 0 0 0 0,
+        # positions 4, 7, 4 for the resolved indices and 7 - n for the censored ones
+        s = QuantizedSeries([1, 3, 2, 5, 4, 4, 6], 0)
+        τ = waiting_times(s, 3)
+        @test WT.scan_work(τ, s) == (3 + 5 + 1) + (3 + 2 + 1)
+        @test WT.scan_work(τ, s; guarded = true) == 3 + 5 + 1
+        s_irregular = QuantizedSeries([1, 3, 2, 5, 4, 4, 6], 0;
+            times = [10, 20, 30, 45, 60, 80, 100], time_unit = :second)
+        @test WT.scan_work(waiting_times(s_irregular, 3), s_irregular) ==
+              WT.scan_work(τ, s)
+        @test_throws DimensionMismatch WT.scan_work(zeros(Int, 3), s)
     end
 
     @testset "Kernel equivalence and invariants (synthetic)" begin
@@ -291,7 +307,7 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         @test WT.nsamples(empty) == 0 && isnan(mean(empty))
     end
 
-    @testset "Fast kernels equal the oracle" begin
+    @testset "Fast kernels equal the reference kernel" begin
         rng = StableRNG(2026)
         families = [
             ("random walk", 2, N -> random_walk(rng, N), nothing),
@@ -395,7 +411,7 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
     @testset "Device search selection" begin
         @test device_search(:none) isa DeviceSearch{<:WaitingTimes.Backends.CPU}
         @test device_search(:auto) isa DeviceSearch{<:WaitingTimes.Backends.CPU}
-        @test_logs (:warn, r"not available") device_search(:cuda)
+        @test_throws ArgumentError device_search(:cuda)
         s = QuantizedSeries([1.0, 3.0, 2.0, 5.0], 0)
         @test waiting_times(s, 2, DeviceSearch()) == [1, 2, 1, 0]
         @test_throws DimensionMismatch waiting_times!(zeros(Int, 2), s, Threshold(1, 0), DeviceSearch())
