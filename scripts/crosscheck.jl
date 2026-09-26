@@ -1,115 +1,125 @@
-# Exact point-by-point cross-validation of every kernel on a configured series.
+# Exact index-by-index comparison of every kernel with the naive reference
+# kernel on the threshold grid of a configuration.
 #
-#   julia --threads=auto --project=test/device scripts/crosscheck.jl --config PATH
-#         [--every K] [--naive-every M] [--backend oneapi|cuda|amdgpu|metal|none] [--out PATH.csv]
+#   julia --threads=auto scripts/crosscheck.jl --config PATH [--every K]
+#         [--reference-every M] [--backend oneapi|cuda|amdgpu|metal|none]
+#         [--env DIR] [--out PATH.csv]
 #
-# For every K-th threshold of the configured grid (default every one) the
-# segment tree computes the reference vector τ_ref; every other kernel is run
-# on the same threshold and compared index by index: number of differing
-# indices, sum and maximum of |Δτ|, and whether the sorted multisets of the
-# positive waiting times agree (the distribution-level comparison of the
-# original analysis). The naive CPU oracle runs on every M-th checked
-# threshold (default every one; raise it on million-point series). With
-# --backend the device kernel runs on that GPU when its package is installed
-# in the active environment. Rows go to the CSV; a summary is printed.
-using WaitingTimes
-using WaitingTimes.Backends: backend_name
-using Printf: @printf
-
+# Every K-th threshold of the grid is checked (default every one). The naive
+# reference kernel is evaluated on every M-th checked threshold (default every
+# one); on those thresholds every other kernel is compared with it index by
+# index: number of differing indices, sum and maximum of |Δτ|, and equality of
+# the sorted multisets of positive waiting times (the distribution-level
+# comparison of the original analysis). On checked thresholds without a
+# reference evaluation the segment tree stands in as the comparison base. With
+# --backend the device kernel also runs on that GPU; the environment must then
+# contain the GPU package, which --env selects (test/device holds oneAPI).
+# Rows go to the CSV; a summary is printed; a non-zero exit signals
+# disagreement.
 function parse_commandline(argv)
-    options = Dict{String, Any}("config" => nothing, "every" => 1, "naive-every" => 1,
-        "backend" => "none", "out" => nothing)
+    options = Dict{String, Any}("config" => nothing, "every" => 1, "reference-every" => 1,
+        "backend" => "none", "env" => dirname(@__DIR__), "out" => nothing)
     i = 1
     while i <= length(argv)
         arg = argv[i]
-        if arg in ("--config", "--every", "--naive-every", "--backend", "--out") &&
+        if arg in
+           ("--config", "--every", "--reference-every", "--backend", "--env", "--out") &&
            i < length(argv)
             key = arg[3:end]
-            options[key] = key in ("every", "naive-every") ? parse(Int, argv[i + 1]) :
+            options[key] = key in ("every", "reference-every") ? parse(Int, argv[i + 1]) :
                            argv[i + 1]
             i += 2
         else
-            error("usage: crosscheck.jl --config PATH [--every K] [--naive-every M] [--backend B] [--out PATH.csv]")
+            error("usage: crosscheck.jl --config PATH [--every K] [--reference-every M] " *
+                  "[--backend B] [--env DIR] [--out PATH.csv]")
         end
     end
     options["config"] === nothing && error("--config is required")
     return options
 end
 
+const OPTIONS = parse_commandline(ARGS)
+include(joinpath(abspath(OPTIONS["env"]), "activate.jl"))
+
+using WaitingTimes
+using WaitingTimes.Backends: backend_name
+using Printf: @printf
+
 const GPU_PACKAGES = Dict("cuda" => "CUDA", "amdgpu" => "AMDGPU", "metal" => "Metal",
     "oneapi" => "oneAPI")
 
-args = parse_commandline(ARGS)
-settings = load_settings(abspath(args["config"]))
+settings = load_settings(abspath(OPTIONS["config"]))
 series, ids = prepare(settings)
-thresholds = threshold_list(settings, series)[1:args["every"]:end]
+thresholds = threshold_list(settings, series)[1:OPTIONS["every"]:end]
 println(
     "series ", ids.series_id, ": ", length(series), " observations, ", length(thresholds),
-    " thresholds checked")
+    " thresholds checked, reference kernel on every ", OPTIONS["reference-every"], "th")
 
-kernels = Any[("guarded", GuardedSearch()), ("fenwick", FenwickSweep()),
-    ("streaming", StreamingSearch()), ("device_cpu", DeviceSearch())]
-backend = lowercase(String(args["backend"]))
+kernels = Any[("guarded", GuardedSearch()), ("segment_tree", SegmentTreeSearch()),
+    ("fenwick", FenwickSweep()), ("streaming", StreamingSearch()),
+    ("device_cpu", DeviceSearch())]
+backend = lowercase(String(OPTIONS["backend"]))
 if backend != "none"
     pkgname = GPU_PACKAGES[backend]
-    if Base.find_package(pkgname) === nothing
-        @warn "backend $backend requested but $pkgname is not installed in this environment"
-    else
-        Base.require(Main, Symbol(pkgname))
-        alg = device_search(Symbol(backend))
-        println("device backend: ", backend_name(alg.backend))
-        push!(kernels, ("device_" * backend, alg))
-    end
+    Base.find_package(pkgname) === nothing &&
+        error("backend $backend requires the package $pkgname in the environment $(OPTIONS["env"])")
+    Base.require(Main, Symbol(pkgname))
+    alg = device_search(Symbol(backend))
+    println("device backend: ", backend_name(alg.backend))
+    push!(kernels, ("device_" * backend, alg))
 end
-naive = NaiveSearch()
 
 workspaces = Dict(name => WaitingTimes.workspace(alg, series) for (name, alg) in kernels)
-ws_tree = WaitingTimes.workspace(SegmentTreeSearch(), series)
-τ_ref = Vector{eltype(series.times)}(undef, length(series))
-τ = similar(τ_ref)
+τ_base = Vector{eltype(series.times)}(undef, length(series))
+τ = similar(τ_base)
 
-out = args["out"] === nothing ? nothing : open(args["out"], "w")
-out === nothing ||
-    println(out, "dataset,delta,kernel,n,n_differ,sum_abs_diff,max_abs_diff,multiset_equal,seconds")
+out = OPTIONS["out"] === nothing ? nothing : open(OPTIONS["out"], "w")
+out === nothing || println(out,
+    "dataset,delta,base,kernel,n,n_differ,sum_abs_diff,max_abs_diff,multiset_equal,seconds")
 totals = Dict{String, Any}(name => (checked = 0, differing = 0, indices = 0, seconds = 0.0)
-for name in vcat(first.(kernels), "naive"))
+for name in first.(kernels))
 
-function record!(name, δ, τ_ref, τ, seconds)
-    Δ = abs.(Int128.(τ) .- Int128.(τ_ref))
+function record!(name, base, δ, τ_base, τ, seconds)
+    Δ = abs.(Int128.(τ) .- Int128.(τ_base))
     n_differ = count(!=(0), Δ)
     sum_abs = sum(Δ)
     max_abs = maximum(Δ; init = zero(Int128))
-    multiset = sort(filter(>(0), τ)) == sort(filter(>(0), τ_ref))
+    multiset = n_differ == 0 || sort(filter(>(0), τ)) == sort(filter(>(0), τ_base))
     t = totals[name]
     totals[name] = (checked = t.checked + 1, differing = t.differing + (n_differ > 0),
         indices = t.indices + n_differ, seconds = t.seconds + seconds)
     out === nothing || println(out,
         join(
-            (ids.series_slug, format_threshold(δ), name,
-                length(τ), n_differ, sum_abs, max_abs, multiset, seconds),
+            (ids.series_slug, format_threshold(δ),
+                base, name, length(τ), n_differ, sum_abs,
+                max_abs, multiset, seconds),
             ","))
     n_differ == 0 ||
-        @printf("  DIFFERENCE %-12s δ = %s: %d indices, Σ|Δ| = %d, max |Δ| = %d, multiset equal %s\n",
-            name, format_threshold(δ), n_differ, sum_abs, max_abs, multiset)
+        @printf("  DIFFERENCE %-12s against %s at δ = %s: %d indices, Σ|Δ| = %d, max |Δ| = %d, multiset equal %s\n",
+            name, base, format_threshold(δ), n_differ, sum_abs, max_abs, multiset)
     return nothing
 end
 
 for (k, δ) in enumerate(thresholds)
-    waiting_times!(τ_ref, series, δ, SegmentTreeSearch(); workspace = ws_tree)
-    for (name, alg) in kernels
-        seconds = @elapsed waiting_times!(τ, series, δ, alg; workspace = workspaces[name])
-        record!(name, δ, τ_ref, τ, seconds)
+    reference = (k - 1) % OPTIONS["reference-every"] == 0
+    base = reference ? "naive" : "segment_tree"
+    if reference
+        waiting_times!(τ_base, series, δ, NaiveSearch())
+    else
+        waiting_times!(τ_base, series, δ, SegmentTreeSearch();
+            workspace = workspaces["segment_tree"])
     end
-    if (k - 1) % args["naive-every"] == 0
-        seconds = @elapsed waiting_times!(τ, series, δ, naive)
-        record!("naive", δ, τ_ref, τ, seconds)
+    for (name, alg) in kernels
+        reference || name != "segment_tree" || continue
+        seconds = @elapsed waiting_times!(τ, series, δ, alg; workspace = workspaces[name])
+        record!(name, base, δ, τ_base, τ, seconds)
     end
     k % 50 == 0 && println("  ", k, " / ", length(thresholds), " thresholds")
 end
 out === nothing || close(out)
 
-println("summary against the segment tree (", length(thresholds), " thresholds):")
-for name in vcat(first.(kernels), "naive")
+println("summary (", length(thresholds), " thresholds):")
+for name in first.(kernels)
     t = totals[name]
     @printf("  %-12s checked %5d  thresholds with differences %3d  differing indices %6d  total %8.2f s\n",
         name, t.checked, t.differing, t.indices, t.seconds)

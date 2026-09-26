@@ -1,7 +1,7 @@
 # Print the lineage of a collection directory or of a file inside one:
 # collection, series (with its preparation steps) and dataset, plus sessions.
 #
-#   julia --project scripts/lineage.jl PATH
+#   julia scripts/lineage.jl PATH
 include(joinpath(dirname(@__DIR__), "activate.jl"))
 
 using TOML
@@ -33,5 +33,5 @@ end
 println("sessions   ", length(meta["sessions"]))
 for s in meta["sessions"]
     println("    ", s["id"], "  kernel ", s["kernel"], "  git ", s["git"], "  computed ",
-        s["n_computed"], "  skipped ", s["n_skipped"], "  oracle checks ", s["n_oracle_checks"])
+        s["n_computed"], "  skipped ", s["n_skipped"], "  reference checks ", s["n_reference_checks"])
 end

@@ -1,3 +1,8 @@
+# Build the documentation site into docs/build/.
+#
+#   julia docs/make.jl
+include(joinpath(@__DIR__, "activate.jl"))
+
 using WaitingTimes
 using Documenter
 using Literate
@@ -13,7 +18,7 @@ end
 
 makedocs(;
     modules = [WaitingTimes],
-    authors = "Paul-Adrian Gogîță <gogitapaul@yahoo.ro>",
+    authors = "Paul-Adrian Gogîță",
     sitename = "WaitingTimes.jl",
     format = Documenter.HTML(;
         canonical = "https://PaulGoG.github.io/WaitingTimes.jl",

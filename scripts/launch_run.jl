@@ -1,7 +1,7 @@
 # Launch scripts/run_pipeline.jl as a detached child process with the same
 # Julia binary, all threads, and a console log under data/logs/.
 #
-#   julia --project scripts/launch_run.jl [--config PATH] [--output-dir DIR]
+#   julia scripts/launch_run.jl [--config PATH] [--output-dir DIR]
 include(joinpath(dirname(@__DIR__), "activate.jl"))
 
 using Dates
@@ -20,7 +20,7 @@ println("=" ^ 78)
 println("  project root : $PROJECT_ROOT")
 println("  console log  : $console_log")
 
-cmd = `$(Base.julia_cmd()) --project=$PROJECT_ROOT --threads=auto $PIPELINE_SCRIPT $ARGS`
+cmd = `$(Base.julia_cmd()) --threads=auto $PIPELINE_SCRIPT $ARGS`
 process = run(pipeline(cmd; stdout = console_log, stderr = console_log); wait = false)
 
 println("  status       : RUNNING (PID $(getpid(process)))")

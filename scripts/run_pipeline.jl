@@ -1,6 +1,6 @@
 # Generate (or extend) a collection of waiting-time distributions.
 #
-#   julia --threads=auto --project scripts/run_pipeline.jl [--config PATH] [--output-dir DIR]
+#   julia --threads=auto scripts/run_pipeline.jl [--config PATH] [--output-dir DIR]
 #
 # --config PATH      TOML configuration (default configs/quickstart.toml); relative
 #                    paths inside it resolve against its own directory
@@ -13,7 +13,7 @@ const PROJECT_ROOT = dirname(@__DIR__)
 const USAGE = """
 WaitingTimes pipeline
 
-    julia --threads=auto --project scripts/run_pipeline.jl [--config PATH] [--output-dir DIR]
+    julia --threads=auto scripts/run_pipeline.jl [--config PATH] [--output-dir DIR]
 """
 
 function parse_commandline(argv)
@@ -65,4 +65,4 @@ handle = run_pipeline(config_path; output_dir = args["output-dir"])
 println("collection ", handle.id, " at ", handle.dir)
 println(
     "session ", handle.session, ": ", length(handle.computed), " thresholds computed, ",
-    length(handle.skipped), " skipped, ", length(handle.oracle_checks), " oracle checks")
+    length(handle.skipped), " skipped, ", length(handle.reference_checks), " reference checks")

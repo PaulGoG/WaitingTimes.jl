@@ -1,6 +1,6 @@
-# Compare the configured kernel with the oracle on a configuration's series.
+# Compare the configured kernel with the reference kernel on a configuration's series.
 #
-#   julia --threads=auto --project scripts/validate.jl --config PATH [--deltas 0.5,5,50]
+#   julia --threads=auto scripts/validate.jl --config PATH [--deltas 0.5,5,50]
 include(joinpath(dirname(@__DIR__), "activate.jl"))
 
 using WaitingTimes
@@ -26,11 +26,11 @@ settings = load_settings(abspath(args["config"]))
 deltas = args["deltas"] === nothing ? nothing :
          [parse(Float64, s) for s in split(args["deltas"], ",")]
 report = validate(settings; deltas = deltas)
-println("kernel ", report["kernel"], " against oracle ",
-    report["oracle"], " on ", report["series"])
+println("kernel ", report["kernel"], " against reference kernel ",
+    report["reference_kernel"], " on ", report["series"])
 for r in report["results"]
     println("  delta = ", r["delta"], "  equal = ", r["equal"], "  differences = ",
-        r["n_differences"], "  oracle seconds = ", round(r["seconds"]; digits = 3))
+        r["n_differences"], "  reference seconds = ", round(r["seconds"]; digits = 3))
 end
 println(report["all_equal"] ? "all thresholds agree" : "DISAGREEMENT DETECTED")
 exit(report["all_equal"] ? 0 : 1)

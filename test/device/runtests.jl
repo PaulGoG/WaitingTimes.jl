@@ -1,14 +1,12 @@
 # Opt-in device tests on the local Intel GPU through oneAPI (skipped, with a
 # message, when no functional device is present):
 #
-#   julia --threads=auto --project=test/device test/device/runtests.jl [N ...]
+#   julia --threads=auto test/device/runtests.jl [N ...]
 #
-# Every threshold is checked bit for bit against the naive oracle, and the
+# Every threshold is checked bit for bit against the naive reference kernel, and the
 # streaming and segment-tree kernels, on synthetic random walks of the given
 # sizes (default 10^5 and 10^6) and on a walk with missing runs.
-using Pkg
-Pkg.activate(@__DIR__; io = devnull)
-Pkg.instantiate(; io = devnull)
+include(joinpath(@__DIR__, "activate.jl"))
 
 using Test
 using StableRNGs: StableRNG
@@ -27,7 +25,7 @@ alg = device_search(:oneapi)
 println("backend: ", backend_name(alg.backend))
 print(device_fingerprint(alg.backend))
 
-@testset "oneAPI device kernel equals the oracle" begin
+@testset "oneAPI device kernel equals the reference kernel" begin
     rng = StableRNG(2026)
     for N in sizes
         for (label, x) in (("random walk", random_walk(rng, N)),
