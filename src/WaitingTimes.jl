@@ -121,4 +121,6 @@ public discrete_distribution, plot_series, plot_distribution, save_figure, figur
 public Synthetic, Backends, Provenance, Config, Naming, Preprocessing, Monitoring, Storage,
        Orchestrator
 
+include("precompile.jl")
+
 end # module

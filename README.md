@@ -124,7 +124,8 @@ push!(est, t_ns, price)                        # one sample; snapshot(est) gives
 | Preprocessing after the published treatment (round, fluctuations with denominator and offset, pruning with row deletion, `clip_sigma`) | done; Table 1 of the paper reproduced for the raw datasets |
 | Collection read side (`load_collection`, `distribution`, `summary_table`, `export_legacy`), per-collection README | done |
 | Online estimator for live streams (`OnlineWaitingTimes`) | done; equal to the batch result on every prefix |
-| Worked consumers against MarketTickStreamer.jl and DeepSpaceTelemetry.jl | `examples/` |
+| Worked consumers against MarketTickStreamer.jl and DeepSpaceTelemetry.jl; Table 1 reproduction | done, `examples/` |
+| Load latency | precompile workload; first result below 0.1 s after `using WaitingTimes` |
 | Documentation site | done |
 
 ## How to cite

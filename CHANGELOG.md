@@ -3,7 +3,9 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
-## [Unreleased]
+## [0.1.0] - 2026-09-26
+
+First release. Everything below is new.
 
 ### Added
 
@@ -69,6 +71,10 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   extensions; a named backend that is unavailable is an error, `:auto` falls
   back to the CPU; CPU backend in the default tests, opt-in device tests
   under `test/device/`.
+- Precompile workload (PrecompileTools) over the kernels, the distribution,
+  the online estimator and a small pipeline run: the first waiting-time call
+  after loading drops from 0.7 s to below 0.1 s and the first configuration
+  load with preparation from 7 s to below 1 s.
 - Documentation site (formulation, kernels, pipeline, configuration,
   provenance, validation, interfacing, an executable downstream example,
   API, references).
