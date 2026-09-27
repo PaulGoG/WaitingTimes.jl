@@ -10,7 +10,8 @@
 #                        function with the scale-free and Pareto-Tsallis fits of
 #                        the 2024 recipe (examples/legacy_fit.jl)
 #   sweep.gif            the survival function sweeping through the threshold grid
-#   kernels.gif          how the five search kernels resolve the same waiting time
+#   kernels.gif          how the search kernels resolve the waiting times of one index
+#                        at three thresholds, streaming in packets
 #   timings.png          wall time per threshold of every kernel against the naive
 #                        reference on a synthetic random walk (minimum of five)
 include(joinpath(@__DIR__, "activate.jl"))
@@ -158,69 +159,95 @@ end
 
 # --- kernels.gif ------------------------------------------------------------------
 if wanted("kernels")
-    # One index of a small series, resolved by every kernel: the naive scan visits
-    # every later sample until the target; the guarded scan first tests the suffix
-    # maximum; the segment tree climbs to the first subtree whose maximum reaches the
-    # target and descends to its leftmost qualifying leaf; the Fenwick sweep walks
-    # the series backwards and asks, at the index, for the smallest index seen with a
-    # value at least the target; the streaming kernel keeps the index pending until
-    # the resolving sample arrives. Thirty-two samples fill a tree of depth 5; the
-    # waiting time spans 17 samples, so the tree climbs three levels and its descent
-    # takes both left and right branches.
-    q = [4, 6, 3, 5, 4, 7, 6, 8, 5, 7, 9, 6, 8, 7, 5, 8,
-        9, 7, 9, 11, 8, 9, 12, 10, 7, 9, 11, 8, 10, 12, 9, 11]
+    # The waiting times of one index, resolved by every kernel. The naive and guarded
+    # scans and the segment tree take one threshold per pass and are shown at the
+    # second threshold: the guarded scan tests the suffix maximum and then scans as
+    # the naive one; the segment tree climbs to the first subtree whose maximum
+    # reaches the target and descends to its leftmost qualifying leaf. The Fenwick
+    # sweep answers every threshold in one backward pass: each index queries the
+    # smallest recorded index at its target levels and is then recorded under its
+    # value; the step line is that query answer for every level. The streaming kernel
+    # receives the series in packets and keeps one heap of pending indices per
+    # threshold. Every frame is checked against the package kernels.
+    q = [6, 7, 4, 5, 7, 3, 6, 5, 9, 7, 10, 8, 11, 9, 6, 10,
+        8, 11, 9, 7, 10, 13, 11, 14, 12, 9, 13, 15, 11, 8, 12, 14,
+        10, 13, 15, 12, 14, 17, 13, 10, 12, 8, 11, 7, 13, 16, 19, 15]
     N = length(q)
-    n0 = 3                     # the index followed
-    d0 = 7                     # threshold: target = q[3] + 7 = 10, resolved at index 20
-    target = q[n0] + d0
-    resolved_at = findfirst(j -> j > n0 && q[j] >= target, 1:N)
-    resolved_at === nothing && error("index $n0 is never resolved on the series")
-    τ0 = resolved_at - n0
-    # frames per second and the hold of each kind of frame in frames: a sequential
-    # step, a test that decides the course of the search, the kernel's principle,
-    # the resolved waiting time
+    n0 = 3                             # the index followed
+    deltas = [4, 8, 12]                # targets q[3] + δ = 8, 12, 16: resolved at 9, 22, 38
+    K = length(deltas)
+    k1 = 2                             # threshold of the one-threshold kernels
+    packet = 8                         # samples per packet of the streaming kernel
+    targets = q[n0] .+ deltas
+    passage(j, T) = findfirst(m -> m > j && q[m] >= T, 1:N)
+    resolved = [passage(n0, T) for T in targets]
+    any(isnothing, resolved) && error("index $n0 is not resolved at every threshold")
+    qs = QuantizedSeries(Float64.(q), 0)
+    thresholds_q = [threshold(δ, qs) for δ in deltas]
+    τF = waiting_times(qs, thresholds_q, FenwickSweep())
+    for k in 1:K, j in 1:N
+
+        m = passage(j, q[j] + deltas[k])
+        τF[k][j] == (m === nothing ? 0 : m - j) ||
+            error("Fenwick sweep disagrees with the forward scan at index $j, δ = $(deltas[k])")
+    end
+    for alg in (NaiveSearch(), GuardedSearch(), SegmentTreeSearch())
+        waiting_times(qs, thresholds_q[k1], alg) == τF[k1] ||
+            error("$(nameof(typeof(alg))) disagrees with the Fenwick sweep")
+    end
+    # frames per second and the hold of each kind of frame in frames
     framerate = 5
-    hold = (step = 4, decision = 8, intro = 12, result = 15)
+    hold = (step = 3, decision = 7, intro = 12, packet = 11, result = 14, summary = 20)
+
+    # an arrow at level y from x0 to x1: a resolved waiting time (labelled with τ when
+    # τ > 0) or a pending one; one slot per threshold
+    Arrow = @NamedTuple{x0::Int, x1::Int, y::Int, style::Symbol, τ::Int}
+    no_arrow = (; x0 = 0, x1 = 0, y = 0, style = :none, τ = 0)
+    Frame = @NamedTuple{kernel::String, caption::String, highlight::Vector{Int},
+        visited::Vector{Int}, band::UnitRange{Int}, arrived::Int, active::Vector{Int},
+        arrows::Vector{Arrow}, staircase::Vector{Point2f}, hold::Int}
 
     "frames of the animation, each held for `hold` frames of the GIF"
     function kernel_frames()
-        frames = NamedTuple{
-            (:kernel, :caption, :highlight, :visited, :band, :resolved, :hold),
-            Tuple{String, String, Vector{Int}, Vector{Int}, UnitRange{Int}, Bool, Int}}[]
+        frames = Frame[]
         function frame!(kernel, caption, h; highlight = Int[], visited = Int[],
-                band = 1:0, resolved = false)
-            push!(frames, (; kernel, caption, highlight, visited, band, resolved, hold = h))
+                band = 1:0, arrived = N, active = [k1], arrows = fill(no_arrow, K),
+                staircase = Point2f[])
+            push!(frames,
+                (; kernel, caption, highlight, visited, band, arrived, active,
+                    arrows = Arrow.(arrows), staircase, hold = h))
         end
-        function scan!(kernel)
-            for j in (n0 + 1):resolved_at
-                hit = q[j] >= target
-                frame!(kernel,
-                    hit ? "q[$j] = $(q[j]) ≥ $target: τ = $τ0" :
-                    "q[$j] = $(q[j]) < $target, continue",
-                    hit ? hold.result : hold.step;
-                    highlight = [j], visited = collect((n0 + 1):j), resolved = hit)
-            end
+        function one_arrow(x1; style = :resolved)
+            a = fill(no_arrow, K)
+            a[k1] = (; x0 = n0, x1, y = targets[k1], style,
+                τ = style === :resolved ? x1 - n0 : 0)
+            return a
         end
-        # naive
-        k = "Naive scan (1/5)"
-        frame!(k, "visits every later sample in order until one reaches the target",
-            hold.intro)
-        scan!(k)
-        # guarded
-        k = "Guarded scan (2/5)"
-        frame!(k, "tests the suffix maximum first, then scans as the naive kernel",
+        T = targets[k1]
+        r = resolved[k1]
+        # naive and guarded scans
+        name = "Naive and guarded scans (1/4)"
+        frame!(
+            name, "one threshold per pass: scan the later samples until one reaches the target",
             hold.intro)
         M = WaitingTimes.suffix_maximum(q)
-        frame!(
-            k, "suffix maximum of $(n0 + 1)–$N is $(M[n0 + 1]) ≥ $target: a passage exists",
+        frame!(name,
+            "guarded scan: suffix maximum of $(n0 + 1)–$N is $(M[n0 + 1]) ≥ $T, a passage exists",
             hold.decision; highlight = collect((n0 + 1):N), band = (n0 + 1):N)
-        scan!(k)
+        for j in (n0 + 1):r
+            hit = q[j] >= T
+            frame!(name,
+                hit ? "q[$j] = $(q[j]) ≥ $T: τ = $(r - n0)" :
+                "q[$j] = $(q[j]) < $T, continue",
+                hit ? hold.result : hold.step; highlight = [j],
+                visited = collect((n0 + 1):j),
+                arrows = one_arrow(j; style = hit ? :resolved : :pending))
+        end
         # segment tree, as in first_at_least: climb from the leaf of n0 + 1 to the first
         # right sibling whose maximum reaches the target, then descend, taking the left
         # child when it qualifies and its right sibling otherwise
-        k = "Segment tree (3/5)"
-        frame!(
-            k, "climbs over subtree maxima, then descends to the leftmost qualifying leaf",
+        name = "Segment tree (2/4)"
+        frame!(name, "one threshold per pass: climb over subtree maxima, then descend",
             hold.intro)
         P = nextpow(2, N)
         tree = fill(typemin(Int), 2P)
@@ -234,15 +261,15 @@ if wanted("kernels")
             lo = (i - (1 << depth)) * width + 1
             return lo:min(lo + width - 1, N)
         end
-        function node!(i, verdict; h = hold.decision, resolved = false)
-            r = cover(i)
-            cmp = tree[i] >= target ? "≥" : "<"
-            test = length(r) == 1 ? "leaf $(r[1]): q[$(r[1])] = $(tree[i]) $cmp $target" :
-                   "subtree $(r[1])–$(r[end]): maximum $(tree[i]) $cmp $target"
-            frame!(k, test * verdict, h; highlight = collect(r), band = r, resolved)
+        function node!(i, verdict; h = hold.decision, arrows = fill(no_arrow, K))
+            c = cover(i)
+            cmp = tree[i] >= T ? "≥" : "<"
+            test = length(c) == 1 ? "leaf $(c[1]): q[$(c[1])] = $(tree[i]) $cmp $T" :
+                   "subtree $(c[1])–$(c[end]): maximum $(tree[i]) $cmp $T"
+            frame!(name, test * verdict, h; highlight = collect(c), band = c, arrows)
         end
         i = n0 + P
-        while tree[i] < target
+        while tree[i] < T
             node!(i, ", climb")
             while isodd(i)
                 i >>= 1
@@ -252,79 +279,175 @@ if wanted("kernels")
         while i < P
             node!(i, ", descend")
             i <<= 1
-            if tree[i] < target
+            if tree[i] < T
                 node!(i, ", take the right sibling")
                 i += 1
             end
         end
-        node!(i, ": τ = $τ0"; h = hold.result, resolved = true)
-        # Fenwick sweep: right to left, the smallest index seen with value ≥ target
-        k = "Fenwick sweep (4/5)"
-        frame!(k, "walks the series backwards, recording each index under its value",
-            hold.intro)
-        best = 0
+        i - P + 1 == r || error("segment-tree frames end at $(i - P + 1), not $r")
+        node!(i, ": τ = $(r - n0)"; h = hold.result, arrows = one_arrow(r))
+        # Fenwick sweep: right to left; index j queries its K target levels, then is
+        # recorded under its value
+        name = "Fenwick sweep (3/4)"
+        frame!(name,
+            "one backward pass answers every index at every threshold δ = $(join(deltas, ", "))",
+            hold.intro; active = Int[])
+        function staircase(j)
+            pts = [Point2f(j, 0), Point2f(j, q[j])]
+            top = j
+            for m in (j + 1):N
+                if q[m] > q[top]
+                    push!(pts, Point2f(m, q[top]), Point2f(m, q[m]))
+                    top = m
+                end
+            end
+            return pts
+        end
+        explained = false
         for j in N:-1:(n0 + 1)
-            qualifies = q[j] >= target
-            qualifies && (best = j)
-            frame!(k,
-                "index $j recorded under value $(q[j])" *
-                (best == 0 ? "" : "; smallest recorded index with value ≥ $target: $best"),
-                qualifies ? hold.decision : hold.step;
-                highlight = [j], visited = collect(j:N))
+            arrows = fill(no_arrow, K)
+            τs = String[]
+            for k in 1:K
+                m = τF[k][j] == 0 ? nothing : j + τF[k][j]
+                push!(τs, m === nothing ? "–" : string(m - j))
+                m === nothing ||
+                    (arrows[k] = (;
+                        x0 = j, x1 = m, y = q[j] + deltas[k], style = :resolved, τ = 0))
+            end
+            stair = staircase(j)
+            state = (; highlight = [j], visited = collect(j:N), active = Int[], arrows,
+                staircase = stair)
+            frame!(name,
+                "index $j queries levels $(join(q[j] .+ deltas, ", ")): τ = $(join(τs, ", ")); recorded at level $(q[j])",
+                hold.step; state...)
+            if !explained && length(stair) >= 8
+                frame!(name,
+                    "step line: for every level, the first recorded index reaching it",
+                    hold.intro; state...)
+                explained = true
+            end
         end
-        frame!(k, "index $n0 asks: smallest index with value ≥ $target is $best: τ = $τ0",
-            hold.result; highlight = [n0], visited = collect((n0 + 1):N), resolved = true)
-        # streaming: samples arrive left to right; the index waits in the heap
-        k = "Streaming (5/5)"
-        frame!(
-            k, "samples arrive in order; index $n0 waits in a heap until one reaches its target",
-            hold.intro)
-        for j in 1:resolved_at
-            caption, h = j < n0 ? ("sample $j arrives", hold.step) :
-                         j == n0 ?
-                         ("sample $j arrives and joins the heap with target $target",
-                hold.decision) :
-                         q[j] >= target ?
-                         ("sample $j = $(q[j]) ≥ $target resolves index $n0: τ = $τ0",
-                hold.result) :
-                         (
-                "sample $j = $(q[j]) < $target; index $n0 stays pending", hold.step)
-            frame!(k, caption, h; highlight = [j], visited = collect(1:j),
-                resolved = j == resolved_at)
+        arrows = [(; x0 = n0, x1 = resolved[k], y = targets[k], style = :resolved,
+                      τ = resolved[k] - n0) for k in 1:K]
+        frame!(name,
+            "index $n0 queries levels $(join(targets, ", ")): τ = $(join(resolved .- n0, ", ")) from the one pass",
+            hold.summary; highlight = [n0], visited = collect((n0 + 1):N),
+            active = collect(1:K), arrows, staircase = staircase(n0 + 1))
+        # streaming: packets arrive left to right; every sample updates one heap per
+        # threshold, as OnlineWaitingTimes does
+        name = "Streaming (4/4)"
+        frame!(name,
+            "samples arrive in packets of $packet; one heap of pending indices per threshold",
+            hold.intro; arrived = 0, active = collect(1:K))
+        states = [StreamingState(qs, thr) for thr in thresholds_q]
+        at = zeros(Int, K)                 # resolving index of n0 per threshold
+        for lo in 1:packet:N
+            hi = min(lo + packet - 1, N)
+            before = copy(at)
+            count = 0
+            for j in lo:hi, k in 1:K
+
+                count += WaitingTimes.update!(states[k], qs.times[j], qs.values[j]) do n, τ
+                    n == n0 && (at[k] = n0 + τ)
+                end
+            end
+            arrows = fill(no_arrow, K)
+            if hi >= n0
+                for k in 1:K
+                    arrows[k] = at[k] > 0 ?
+                                (; x0 = n0, x1 = at[k], y = targets[k], style = :resolved,
+                        τ = at[k] - n0) :
+                                (;
+                        x0 = n0, x1 = hi, y = targets[k], style = :pending, τ = 0)
+                end
+            end
+            new = findall(k -> before[k] == 0 && at[k] > 0, 1:K)
+            waiting = findall(==(0), at)
+            caption = "packet $(lo)–$(hi): " *
+                      (count == 0 ? "no waiting time resolved" :
+                       "$count waiting time$(count == 1 ? "" : "s") resolved") *
+                      (lo <= n0 <= hi ? "; index $n0 joins the heap of every threshold" :
+                       !isempty(new) ?
+                       ", index $n0 at δ = $(join(deltas[new], ", ")) (τ = $(join(at[new] .- n0, ", ")))" :
+                       !isempty(waiting) ?
+                       "; index $n0 pending at δ = $(join(deltas[waiting], ", "))" :
+                       "; $(sum(pending(st) for st in states)) remain pending, right-censored")
+            frame!(name, caption, isempty(new) ? hold.packet : hold.result;
+                highlight = collect(lo:hi), visited = collect(1:(lo - 1)), band = lo:hi,
+                arrived = hi, active = collect(1:K), arrows)
         end
+        at .- n0 == [τF[k][n0] for k in 1:K] ||
+            error("streaming frames disagree with the Fenwick sweep")
         return frames
     end
 
     frames = kernel_frames()
     ticks = reduce(vcat, [fill(f, f.hold) for f in frames])
+    # Okabe–Ito: one colour per threshold, vermillion for the samples under test, sky
+    # blue for visited samples, yellow for the index followed
+    threshold_colors = [RGBf(0.0, 0.62, 0.451), RGBf(0.0, 0.447, 0.698),
+        RGBf(0.8, 0.475, 0.655)]
+    tested = RGBf(0.835, 0.369, 0.0)
+    seen = RGBf(0.337, 0.706, 0.914)
+    followed = RGBf(0.941, 0.894, 0.259)
     fig = with_theme(THEME) do
         fig = Figure(; size = (1200, 640))
         ax = Axis(fig[3, 1]; xlabel = L"Index $n$", ylabel = L"Value $q_n$",
-            xticks = 1:N, limits = ((0.5, N + 0.5), (0, 13)))
+            xticks = [1; 4:4:N], yticks = 0:5:20, limits = ((0.5, N + 0.5), (0, 21)))
         current = Observable(frames[1])
         band = lift(
             f -> isempty(f.band) ? (0.5, 0.5) : (f.band[1] - 0.5, f.band[end] + 0.5),
             current)
-        vspan!(ax, lift(first, band), lift(last, band); color = (:orangered, 0.1),
+        vspan!(ax, lift(first, band), lift(last, band); color = (tested, 0.08),
             visible = lift(f -> !isempty(f.band), current))
-        hlines!(ax, [target]; color = :orangered, linestyle = :dash,
-            label = L"Target $q_3 + \delta = %$target$")
-        hlines!(ax, [q[n0]]; color = :grey, linestyle = :dot, label = L"$q_3 = %$(q[n0])$")
-        scatter!(
-            ax, Point2f.(1:N, q); color = :black, strokecolor = :black, markersize = 12)
+        for k in 1:K
+            c = threshold_colors[k]
+            hlines!(ax, [targets[k]]; linestyle = :dash, linewidth = 1.5,
+                color = lift(f -> RGBAf(c.r, c.g, c.b, k in f.active ? 1.0 : 0.25), current))
+            text!(ax, 0.7, targets[k]; text = L"q_3 + %$(deltas[k])", color = c,
+                align = (:left, :bottom), offset = (0, 2), fontsize = 20)
+        end
+        lines!(ax,
+            lift(f -> isempty(f.staircase) ? [Point2f(NaN, NaN)] : f.staircase, current);
+            color = :grey25, linewidth = 2.5)
+        scatter!(ax, Point2f.(1:N, q); strokewidth = 0, markersize = 10,
+            color = lift(
+                f -> [j <= f.arrived ? RGBAf(0, 0, 0, 1) : RGBAf(0, 0, 0, 0.18)
+                      for j in 1:N],
+                current))
         scatter!(ax, lift(f -> Point2f[(j, q[j]) for j in f.visited], current);
-            color = (:royalblue3, 0.45), strokecolor = :royalblue3, markersize = 20,
-            label = "Visited")
+            color = (seen, 0.5), strokecolor = seen, markersize = 18, label = "Visited")
         scatter!(ax, lift(f -> Point2f[(j, q[j]) for j in f.highlight], current);
-            color = :orangered, strokecolor = :orangered, markersize = 24,
-            label = "Under test")
-        scatter!(
-            ax, [Point2f(n0, q[n0])]; color = :gold, strokecolor = :black, markersize = 20,
-            label = L"Index followed, $n = %$n0$")
-        # the waiting time, drawn once resolved (bracket! takes no `visible`)
-        τ_color = lift(f -> f.resolved ? RGBAf(1.0, 0.27, 0.0, 1.0) : RGBAf(0, 0, 0, 0), current)
-        bracket!(ax, n0, 2, resolved_at, 2; text = L"\tau = %$τ0", orientation = :down,
-            color = τ_color, textcolor = τ_color, fontsize = 22)
+            color = tested, strokecolor = tested, markersize = 20, label = "Under test")
+        for k in 1:K
+            c = threshold_colors[k]
+            nan = Point2f(NaN, NaN)
+            function segment(f, style)
+                f.arrows[k].style === style ?
+                [Point2f(f.arrows[k].x0, f.arrows[k].y),
+                    Point2f(f.arrows[k].x1, f.arrows[k].y)] : [nan, nan]
+            end
+            lines!(ax, lift(f -> segment(f, :resolved), current); color = c, linewidth = 3)
+            # the wait elapsed so far, a translucent bar over the target line
+            lines!(ax, lift(f -> segment(f, :pending), current); color = (c, 0.4),
+                linewidth = 7)
+            scatter!(ax,
+                lift(
+                    f -> f.arrows[k].style === :resolved ?
+                         [Point2f(f.arrows[k].x1 - 0.3, f.arrows[k].y)] : [nan],
+                    current);
+                marker = :rtriangle, color = c, strokewidth = 0, markersize = 16)
+            text!(ax,
+                lift(
+                    f -> f.arrows[k].τ > 0 ?
+                         [Point2f((f.arrows[k].x0 + f.arrows[k].x1) / 2, f.arrows[k].y)] :
+                         [nan],
+                    current);
+                text = lift(f -> [L"\tau = %$(f.arrows[k].τ)"], current), color = c,
+                align = (:center, :bottom), offset = (0, 3), fontsize = 20)
+        end
+        scatter!(ax, [Point2f(n0, q[n0])]; color = followed, strokecolor = :black,
+            markersize = 18, label = L"Index followed, $n = %$n0$")
         Label(fig[2, 1],
             lift(f -> rich(rich(f.kernel; font = :bold), "   ", f.caption), current);
             halign = :left, tellwidth = false, fontsize = 22)
@@ -335,7 +458,8 @@ if wanted("kernels")
         end
         fig
     end
-    provenance["assets"]["kernels.gif"] = Dict("series" => q, "index" => n0, "delta" => d0,
+    provenance["assets"]["kernels.gif"] = Dict("series" => q, "index" => n0,
+        "deltas" => deltas, "delta_one_pass" => deltas[k1], "packet" => packet,
         "frames" => length(frames), "framerate" => framerate,
         "duration_s" => length(ticks) / framerate)
     println("kernels.gif (", length(frames), " frames, ", length(ticks) / framerate, " s)")
