@@ -1,16 +1,18 @@
 collection = "collection-geisenheim-wind_speed-f0c740a2"
-generated = "2026-09-27T10:20:07.586"
-git = "v0.1.0-8-g7ba0878"
+generated = "2026-09-27T11:56:26.894"
+git = "v0.1.0-10-gb17fa1a"
 package_version = "0.1.0"
 series = "geisenheim-wind_speed"
 
 [assets."kernels.gif"]
-delta = 7
-duration_s = 113.4
+delta_one_pass = 8
+deltas = [4, 8, 12]
+duration_s = 88.4
 framerate = 5
-frames = 100
+frames = 87
 index = 3
-series = [4, 6, 3, 5, 4, 7, 6, 8, 5, 7, 9, 6, 8, 7, 5, 8, 9, 7, 9, 11, 8, 9, 12, 10, 7, 9, 11, 8, 10, 12, 9, 11]
+packet = 8
+series = [6, 7, 4, 5, 7, 3, 6, 5, 9, 7, 10, 8, 11, 9, 6, 10, 8, 11, 9, 7, 10, 13, 11, 14, 12, 9, 13, 15, 11, 8, 12, 14, 10, 13, 15, 12, 14, 17, 13, 10, 12, 8, 11, 7, 13, 16, 19, 15]
 
 [assets."sweep.gif"]
 delta_first = "0.0"
