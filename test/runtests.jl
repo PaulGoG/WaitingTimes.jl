@@ -1,6 +1,8 @@
-# Test suite of WaitingTimes.jl; self-activating, so both
-# `julia --threads=auto test/runtests.jl` and `Pkg.test()` run it.
-include(joinpath(@__DIR__, "activate.jl"))
+# Test suite of WaitingTimes.jl. Run as a script, `julia --threads=auto
+# test/runtests.jl` activates the test environment itself; under `Pkg.test()`
+# the sandbox is already active and Pkg is absent from its load path, so the
+# activation is skipped.
+Base.identify_package("Pkg") === nothing || include(joinpath(@__DIR__, "activate.jl"))
 
 using WaitingTimes
 using Test
