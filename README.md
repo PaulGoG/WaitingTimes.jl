@@ -71,11 +71,11 @@ of points), `FenwickSweep` (many thresholds per sweep), `StreamingSearch`
 kernels), `DeviceSearch` (the naive scan as a KernelAbstractions kernel on
 CPU or GPU).
 
-![How the five kernels resolve the same waiting time on a thirty-two-sample
-series: the naive scan visits every later sample, the guarded scan first
-proves a passage exists, the segment tree climbs and descends, the Fenwick
-sweep walks backwards, the streaming kernel waits for the resolving
-sample](docs/src/assets/kernels.gif)
+![How the kernels resolve the waiting times of one index on a 48-sample
+series: the naive and guarded scans visit every later sample, the segment tree
+climbs and descends, the Fenwick sweep answers three thresholds for every
+index in one backward pass, the streaming kernel resolves them as packets of
+samples arrive](docs/src/assets/kernels.gif)
 
 Every kernel produces the same integer result, which is why the naive scan
 can stand as the permanent reference: on the full threshold grids of the six
