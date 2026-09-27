@@ -14,31 +14,20 @@ tail = sample[sample .&gt;= x_min]
 pareto = fit_mle(Pareto, tail)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Distributions.Pareto{Float64}(α=0.5479566265003212, θ=5.0)</code></pre><pre><code class="language-julia hljs">tail_dn = WaitingTimes.discrete_distribution(empirical_distribution(
     [τ &gt;= x_min ? τ : 0 for τ in waiting_times(series, δ)], δ, series))
 distance = maximum(abs(cdf(pareto, k) - cdf(tail_dn, k)) for k in support(tail_dn))
-(alpha = shape(pareto) + 1, x_min = scale(pareto), D_KS = distance)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(alpha = 1.547956626500321, x_min = 5.0, D_KS = 0.09526135808500244)</code></pre><h2 id="Figure"><a class="docs-heading-anchor" href="#Figure">Figure</a><a id="Figure-1"></a><a class="docs-heading-anchor-permalink" href="#Figure" title="Permalink"></a></h2><p>Survival function of the data with the fitted tail: data as black markers, fit as a dashed line from <span>$x_{\min}$</span>; boxed axes, no title, legend on top.</p><pre><code class="language-julia hljs">k = WaitingTimes.support(d)
+(alpha = shape(pareto) + 1, x_min = scale(pareto), D_KS = distance)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(alpha = 1.547956626500321, x_min = 5.0, D_KS = 0.09526135808500244)</code></pre><h2 id="Figure"><a class="docs-heading-anchor" href="#Figure">Figure</a><a id="Figure-1"></a><a class="docs-heading-anchor-permalink" href="#Figure" title="Permalink"></a></h2><p>Survival function of the data with the fitted tail, drawn with the package theme (<code>WaitingTimes.figure_theme</code>) and decade ticks (<code>WaitingTimes.decade_ticks</code>): data as markers, fit as a dashed line from <span>$x_{\min}$</span>, legend on top with the fitted exponent as an entry.</p><pre><code class="language-julia hljs">k = WaitingTimes.support(d)
 S = WaitingTimes.survival(d)
 keep = S .&gt; 0
 kt = k[k .&gt;= x_min]
-fig = Figure(; size = (600, 400), fontsize = 13)
-function decade_ticks(lo, hi)
-    (10.0 .^ (lo:hi),
-        [p == 0 ? &quot;1&quot; :
-         p == 1 ? &quot;10&quot; :
-         &quot;10&quot; * join(get(
-                  Dict(
-                      &#39;-&#39; =&gt; &#39;⁻&#39;, &#39;0&#39; =&gt; &#39;⁰&#39;, &#39;1&#39; =&gt; &#39;¹&#39;, &#39;2&#39; =&gt; &#39;²&#39;, &#39;3&#39; =&gt; &#39;³&#39;, &#39;4&#39; =&gt;
-                          &#39;⁴&#39;), c, c)
-         for c in string(p)) for p in lo:hi])
+fig = with_theme(WaitingTimes.figure_theme()) do
+    fig = Figure(; size = (900, 600))
+    ax = Axis(fig[1, 1]; xscale = log10, yscale = log10,
+        xticks = WaitingTimes.decade_ticks(0, 4), yticks = WaitingTimes.decade_ticks(-4, 0),
+        xlabel = &quot;Waiting time k [days]&quot;, ylabel = &quot;P(τ &gt; k)&quot;)
+    scatter!(ax, k[keep], S[keep]; color = :black, strokecolor = :black,
+        label = &quot;Data, δ = 0.002&quot;)
+    lines!(ax, kt, ccdf(dn, x_min - 1) .* ccdf.(pareto, kt); color = :orangered,
+        linestyle = :dash, label = &quot;Pareto tail, α = $(round(shape(pareto) + 1; digits = 2))&quot;)
+    Legend(fig[0, 1], ax)
+    fig
 end
-ax = Axis(fig[1, 1]; xscale = log10, yscale = log10,
-    xticks = decade_ticks(0, 4), yticks = decade_ticks(-4, 0),
-    xlabel = &quot;Waiting time k [days]&quot;, ylabel = &quot;P(τ &gt; k)&quot;,
-    xgridstyle = :dash, ygridstyle = :dash, xgridcolor = (:grey, 0.12), ygridcolor = (
-        :grey, 0.12),
-    xminorticksvisible = false, yminorticksvisible = false, xtickalign = 1, ytickalign = 1,
-    topspinevisible = true, rightspinevisible = true)
-scatter!(ax, k[keep], S[keep]; color = :black, markersize = 5, label = &quot;Data, δ = 0.002&quot;)
-lines!(
-    ax, kt, ccdf(dn, x_min - 1) .* ccdf.(pareto, kt); color = :orangered, linestyle = :dash,
-    linewidth = 2, label = &quot;Pareto tail, α = $(round(shape(pareto) + 1; digits = 2))&quot;)
-Legend(fig[0, 1], ax; orientation = :horizontal, framevisible = false)
-fig</code></pre><img src="0f8a22b4.png" alt="Example block output"/><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../interfacing/">« Interfacing</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Tuesday 8 September 2026 11:57">Tuesday 8 September 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+fig</code></pre><img src="383bf28f.png" alt="Example block output"/><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../interfacing/">« Interfacing</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Sunday 27 September 2026 01:06">Sunday 27 September 2026</span>. Using Julia version 1.13.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

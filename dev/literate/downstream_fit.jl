@@ -57,34 +57,25 @@ distance = maximum(abs(cdf(pareto, k) - cdf(tail_dn, k)) for k in support(tail_d
 
 # ## Figure
 #
-# Survival function of the data with the fitted tail: data as black markers,
-# fit as a dashed line from ``x_{\min}``; boxed axes, no title, legend on top.
+# Survival function of the data with the fitted tail, drawn with the
+# package theme (`WaitingTimes.figure_theme`) and decade ticks
+# (`WaitingTimes.decade_ticks`): data as markers, fit as a dashed line from
+# ``x_{\min}``, legend on top with the fitted exponent as an entry.
 
 k = WaitingTimes.support(d)
 S = WaitingTimes.survival(d)
 keep = S .> 0
 kt = k[k .>= x_min]
-fig = Figure(; size = (600, 400), fontsize = 13)
-function decade_ticks(lo, hi)
-    (10.0 .^ (lo:hi),
-        [p == 0 ? "1" :
-         p == 1 ? "10" :
-         "10" * join(get(
-                  Dict(
-                      '-' => '⁻', '0' => '⁰', '1' => '¹', '2' => '²', '3' => '³', '4' =>
-                          '⁴'), c, c)
-         for c in string(p)) for p in lo:hi])
+fig = with_theme(WaitingTimes.figure_theme()) do
+    fig = Figure(; size = (900, 600))
+    ax = Axis(fig[1, 1]; xscale = log10, yscale = log10,
+        xticks = WaitingTimes.decade_ticks(0, 4), yticks = WaitingTimes.decade_ticks(-4, 0),
+        xlabel = "Waiting time k [days]", ylabel = "P(τ > k)")
+    scatter!(ax, k[keep], S[keep]; color = :black, strokecolor = :black,
+        label = "Data, δ = 0.002")
+    lines!(ax, kt, ccdf(dn, x_min - 1) .* ccdf.(pareto, kt); color = :orangered,
+        linestyle = :dash, label = "Pareto tail, α = $(round(shape(pareto) + 1; digits = 2))")
+    Legend(fig[0, 1], ax)
+    fig
 end
-ax = Axis(fig[1, 1]; xscale = log10, yscale = log10,
-    xticks = decade_ticks(0, 4), yticks = decade_ticks(-4, 0),
-    xlabel = "Waiting time k [days]", ylabel = "P(τ > k)",
-    xgridstyle = :dash, ygridstyle = :dash, xgridcolor = (:grey, 0.12), ygridcolor = (
-        :grey, 0.12),
-    xminorticksvisible = false, yminorticksvisible = false, xtickalign = 1, ytickalign = 1,
-    topspinevisible = true, rightspinevisible = true)
-scatter!(ax, k[keep], S[keep]; color = :black, markersize = 5, label = "Data, δ = 0.002")
-lines!(
-    ax, kt, ccdf(dn, x_min - 1) .* ccdf.(pareto, kt); color = :orangered, linestyle = :dash,
-    linewidth = 2, label = "Pareto tail, α = $(round(shape(pareto) + 1; digits = 2))")
-Legend(fig[0, 1], ax; orientation = :horizontal, framevisible = false)
 fig
