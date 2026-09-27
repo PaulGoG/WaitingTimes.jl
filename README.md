@@ -270,7 +270,7 @@ WaitingTimes.jl/
 │   ├── Project.toml, activate.jl, check_environment.jl
 │   ├── tick_stream.jl            # Channel{Trade} of MarketTickStreamer.jl → OnlineWaitingTimes, batch check
 │   └── telemetry_run.jl          # DeepSpaceTelemetry.jl run directory → series with gaps → collection
-├── .github/                      # CI and Dependabot templates, dormant until public launch
+├── .github/, codecov.yml         # CI (tests on Julia 1 and pre, coverage, docs deploy), Dependabot
 ├── CITATION.cff, CHANGELOG.md, LICENSE, .JuliaFormatter.toml
 ```
 

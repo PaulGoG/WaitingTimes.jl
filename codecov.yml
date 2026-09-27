@@ -1,0 +1,14 @@
+# Coverage reporting for the CI uploads. The precompile workload runs during
+# precompilation, where line coverage is not recorded, so it is excluded; the
+# statuses are informational so that coverage changes never block a merge.
+ignore:
+  - "src/precompile.jl"
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+comment: false
