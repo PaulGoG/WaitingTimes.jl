@@ -8,8 +8,9 @@
 #
 #   julia --threads=auto examples/published_fits.jl [--out results.csv]
 #
-# Every dataset of the table except BTC-USDT, whose input is not distributed.
-# The raw inputs are expected under data/raw/ as the configurations state.
+# The datasets whose inputs the shipped configurations reference; the BTC-USDT
+# and automotive inputs of the paper are not distributed. The raw inputs are
+# expected under data/raw/ as the configurations state.
 include(joinpath(@__DIR__, "activate.jl"))
 
 using CSV: CSV
@@ -29,8 +30,7 @@ const TABLE = [
     ("Daily solar index", "noaa_solar.toml", 0.05, 2.268, 3.07e-2, 55.0, 6.441, 1.86e-2),
     ("TEC in ionosphere", "iss_tec.toml", 5.0, 2.411, 3.04e-2, 25.0, 1.492, 2.09e-2),
     ("Sea level variations", "trieste_sea_level.toml", 1.0, 2.141, 3.45e-2, 76.0, 1.389, 3.49e-2),
-    ("EUR-USD", "eur_usd.toml", 1e-4, 1.404, 1.61e-2, 3.4e-2, 0.753, 4.00e-2),
-    ("Fuel consumption", "trustee_fuel.toml", 10.0, 1.977, 1.04e-2, 2600.0, 1.010, 1.06e-2)
+    ("EUR-USD", "eur_usd.toml", 1e-4, 1.404, 1.61e-2, 3.4e-2, 0.753, 4.00e-2)
 ]
 
 out = let i = findfirst(==("--out"), ARGS)

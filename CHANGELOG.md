@@ -44,7 +44,7 @@ First release. Everything below is new.
   (`splice = false`, the published semantics) or delete the slot
   (`splice = true`); a finite-value check after every step; step parameters
   validated when the configuration loads. The Trieste and fuel-consumption
-  configurations state the published treatment and reproduce Table 1.
+  configurations state the published treatment.
 - `OnlineWaitingTimes`: online estimation at several thresholds from raw
   `(time, value)` samples, with `snapshot`, `status`, `pending`, a late-sample
   policy and bounded memory, for live pipelines.
