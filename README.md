@@ -1,6 +1,31 @@
 # WaitingTimes.jl
 
-Exact waiting-time distributions of scalar time series for threshold grids.
+[![Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://PaulGoG.github.io/WaitingTimes.jl/stable/)
+[![CI](https://github.com/PaulGoG/WaitingTimes.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/PaulGoG/WaitingTimes.jl/actions/workflows/CI.yml)
+[![Coverage](https://codecov.io/gh/PaulGoG/WaitingTimes.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/PaulGoG/WaitingTimes.jl)
+[![Aqua QA](https://raw.githubusercontent.com/JuliaTesting/Aqua.jl/master/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+Exact waiting-time distributions of scalar time series for threshold grids:
+the numerical backbone of the analyses in P.-A. Gogîță et al., *J. Phys.
+Complex.* **7**, 035007 (2026),
+[doi:10.1088/2632-072X/ae8aa5](https://doi.org/10.1088/2632-072X/ae8aa5),
+and G. T. Pană, P.-A. Gogîță, A. Nicolin-Żaczek, *Rom. J. Phys.* **69**,
+111 (2024),
+[doi:10.59277/RomJPhys.2024.69.111](https://doi.org/10.59277/RomJPhys.2024.69.111),
+rewritten as a package with verified fast kernels, provenance-tracked data
+products and interfaces for batch and real-time analysis.
+
+![Survival functions of the waiting times of the Geisenheim wind speed at a
+small and a large threshold, with the scale-free and Pareto-Tsallis fits of
+the 2024 recipe](docs/src/assets/transition.png)
+
+The two regimes the papers describe, on the Geisenheim hourly wind speed: at
+δ = 1 km/h the survival function of the waiting times is scale-free over
+three decades, at δ = 32.5 km/h it is Pareto-Tsallis. Both fits use the
+recipe of the 2024 analysis (`examples/legacy_fit.jl`) on distributions
+computed here; the numbers behind every figure of this page are in
+[`docs/src/assets/PROVENANCE.toml`](docs/src/assets/PROVENANCE.toml).
 
 ## File structure
 
@@ -41,6 +66,30 @@ of points), `FenwickSweep` (many thresholds per sweep), `StreamingSearch`
 (online, for live pipelines), `NaiveSearch` and `GuardedSearch` (reference
 kernels), `DeviceSearch` (the naive scan as a KernelAbstractions kernel on
 CPU or GPU).
+
+![How the five kernels resolve the same waiting time on a sixteen-sample
+series: the naive scan visits every later sample, the guarded scan first
+proves a passage exists, the segment tree climbs and descends, the Fenwick
+sweep walks backwards, the streaming kernel waits for the resolving
+sample](docs/src/assets/kernels.gif)
+
+Every kernel produces the same integer result, which is why the naive scan
+can stand as the permanent reference: on the full threshold grids of the six
+datasets shipped as configurations (7 124 thresholds, up to 10⁶ points) not
+one index differs between any kernel and the reference.
+
+![Wall time per threshold of every kernel on synthetic random walks of 10⁴
+to 10⁶ points at three thresholds](docs/src/assets/timings.png)
+
+## The transition across thresholds
+
+![The survival function of the Geisenheim waiting times sweeping through the
+threshold grid from 0 to 50 km/h](docs/src/assets/sweep.gif)
+
+A collection holds one distribution per threshold; sweeping the grid is
+what the downstream indicators of the 2026 paper (the difference of the two
+fits' Kolmogorov–Smirnov distances and the generalised Kullback–Leibler
+divergence between their tails) are computed from.
 
 ## Setup
 
@@ -142,9 +191,23 @@ The package is described by `CITATION.cff`. In BibTeX:
 }
 ```
 
-The method and the datasets are described in P.-A. Gogîță et al., *J. Phys.
-Complex.* **7**, 035007 (2026),
-[doi:10.1088/2632-072X/ae8aa5](https://doi.org/10.1088/2632-072X/ae8aa5).
+The method and the datasets are described in the two papers the package
+grew out of:
+
+- P.-A. Gogîță, T.-G. Dumitru, F.-I. Constantin, T.-A. Diac, A.-F. Neagoe,
+  M.-C. Raportaru, A. Nicolin-Żaczek, Scale-free to Pareto-Tsallis
+  transitions in the distributions of waiting times: weather, sea-level,
+  currency trading and automotive datasets, *J. Phys. Complex.* **7**, 035007
+  (2026), [doi:10.1088/2632-072X/ae8aa5](https://doi.org/10.1088/2632-072X/ae8aa5).
+- G. T. Pană, P.-A. Gogîță, A. Nicolin-Żaczek, Waiting times for sea level
+  variations in the Port of Trieste: a computational data-driven study,
+  *Rom. J. Phys.* **69**, 111 (2024),
+  [doi:10.59277/RomJPhys.2024.69.111](https://doi.org/10.59277/RomJPhys.2024.69.111).
+
+The waiting-time definition with a threshold goes back to B. N. Vivirschi,
+P. C. Boboc, V. Băran, A. I. Nicolin, *Phys. Scr.* **95**, 044011 (2020),
+[doi:10.1088/1402-4896/ab623d](https://doi.org/10.1088/1402-4896/ab623d);
+the full list of sources is on the documentation's references page.
 
 <details>
 <summary>Full file tree</summary>

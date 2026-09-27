@@ -75,7 +75,8 @@ end
 source = isempty(ARGS) ? synthetic_tape(200_000) : replay_source(ARGS; pace = "max")
 est, trades, persisted = consume(source)
 println(est)
-println("prints persisted ", persisted, ", price-forming ", length(trades), ", late ", est.n_late)
+println("prints persisted ", persisted, ", price-forming ",
+    length(trades), ", late ", est.n_late)
 for row in status(est)
     @printf("  δ = %-6s resolved %8d  pending %6d  mean wait %10.3e ns\n",
         row.delta, row.resolved, row.pending, row.mean_waiting_time)
@@ -86,11 +87,13 @@ end
 # reader of WaitingTimes takes `time_ns` and `price` from it.
 mktempdir() do dir
     path = joinpath(dir, SYMBOL * ".csv")
-    CSV.write(path, DataFrame(symbol = [t.symbol for t in trades],
-        time_ns = [t.time_ns for t in trades], recv_ns = [t.recv_ns for t in trades],
-        price = [t.price for t in trades], size = [t.size for t in trades],
-        exchange = [t.exchange for t in trades], conditions = [join(t.conditions, "|") for t in trades],
-        tape = [t.tape for t in trades], id = [t.id for t in trades]))
+    CSV.write(path,
+        DataFrame(symbol = [t.symbol for t in trades],
+            time_ns = [t.time_ns for t in trades], recv_ns = [t.recv_ns for t in trades],
+            price = [t.price for t in trades], size = [t.size for t in trades],
+            exchange = [t.exchange for t in trades], conditions = [join(t.conditions, "|")
+                                                                   for t in trades],
+            tape = [t.tape for t in trades], id = [t.id for t in trades]))
     rs = read_series(path; format = :tick, value_column = "price", tie_policy = :last)
     s = quantized_series(rs, DIGITS; detect = :none)
     online = snapshot(est)

@@ -29,14 +29,16 @@ const TABLE = [
     ("Wind speed", "geisenheim_wind.toml", 1.0, 2.100, 1.08e-2, 32.5, 1.485, 1.22e-2),
     ("Daily solar index", "noaa_solar.toml", 0.05, 2.268, 3.07e-2, 55.0, 6.441, 1.86e-2),
     ("TEC in ionosphere", "iss_tec.toml", 5.0, 2.411, 3.04e-2, 25.0, 1.492, 2.09e-2),
-    ("Sea level variations", "trieste_sea_level.toml", 1.0, 2.141, 3.45e-2, 76.0, 1.389, 3.49e-2),
+    ("Sea level variations", "trieste_sea_level.toml",
+        1.0, 2.141, 3.45e-2, 76.0, 1.389, 3.49e-2),
     ("EUR-USD", "eur_usd.toml", 1e-4, 1.404, 1.61e-2, 3.4e-2, 0.753, 4.00e-2)
 ]
 
 out = let i = findfirst(==("--out"), ARGS)
     i === nothing ? nothing : ARGS[i + 1]
 end
-rows = DataFrame(dataset = String[], model = String[], delta = Float64[], n_waiting = Int[],
+rows = DataFrame(
+    dataset = String[], model = String[], delta = Float64[], n_waiting = Int[],
     alpha = Float64[], alpha_published = Float64[], second = Float64[], ks = Float64[],
     ks_published = Float64[], seconds = Float64[])
 
@@ -46,14 +48,18 @@ for (label, config, δ_sf, α_sf, d_sf, δ_pt, α_pt, d_pt) in TABLE
     println("== ", label, " (", ids.series_slug, ", ", length(series), " observations)")
     τ, pmf, cdf, d = distribution_at(series, δ_sf)
     seconds = @elapsed sf = fit_scale_free(τ, cdf)
-    push!(rows, (label, "scale-free", δ_sf, WaitingTimes.nsamples(d), sf.α, α_sf, Float64(sf.x_min),
-        sf.ks, d_sf, seconds))
+    push!(rows,
+        (label, "scale-free", δ_sf, WaitingTimes.nsamples(d),
+            sf.α, α_sf, Float64(sf.x_min),
+            sf.ks, d_sf, seconds))
     @printf("  scale-free     δ = %-8g α = %.3f (published %.3f)  x_min = %-6d D_KS = %.2e (published %.2e)  %.1f s\n",
         δ_sf, sf.α, α_sf, sf.x_min, sf.ks, d_sf, seconds)
     τ, pmf, cdf, d = distribution_at(series, δ_pt)
     seconds = @elapsed pt = fit_pareto_tsallis(τ, pmf, cdf)
-    push!(rows, (label, "Pareto-Tsallis", δ_pt, WaitingTimes.nsamples(d), pt.α, α_pt, pt.λ, pt.ks, d_pt,
-        seconds))
+    push!(rows,
+        (label, "Pareto-Tsallis", δ_pt, WaitingTimes.nsamples(d),
+            pt.α, α_pt, pt.λ, pt.ks, d_pt,
+            seconds))
     @printf("  Pareto-Tsallis δ = %-8g α = %.3f (published %.3f)  λ = %-8.3g D_KS = %.2e (published %.2e)  %.1f s\n",
         δ_pt, pt.α, α_pt, pt.λ, pt.ks, d_pt, seconds)
     flush(stdout)

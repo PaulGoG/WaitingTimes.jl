@@ -39,3 +39,17 @@ references:
     start: 035007
     year: 2026
     doi: "10.1088/2632-072X/ae8aa5"
+  - type: article
+    title: "Waiting times for sea level variations in the Port of Trieste: a computational data-driven study"
+    authors:
+      - family-names: "Pană"
+        given-names: "Gabriel Tiberiu"
+      - family-names: "Gogîță"
+        given-names: "Paul-Adrian"
+      - family-names: "Nicolin-Żaczek"
+        given-names: "Alexandru"
+    journal: "Romanian Journal of Physics"
+    volume: 69
+    start: 111
+    year: 2024
+    doi: "10.59277/RomJPhys.2024.69.111"

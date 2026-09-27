@@ -34,7 +34,9 @@ using WaitingTimes.Synthetic: random_walk
 
 arg(flag) = (i = findfirst(==(flag), ARGS); i === nothing ? nothing : ARGS[i + 1])
 out_dir = something(arg("--out"), joinpath(@__DIR__, "output"))
-run_dir = let positional = filter(a -> !startswith(a, "--") && a != something(arg("--out"), ""), ARGS)
+run_dir = let positional = filter(
+        a -> !startswith(a, "--") &&
+             a != something(arg("--out"), ""), ARGS)
     isempty(positional) ? nothing : abspath(first(positional))
 end
 
@@ -71,8 +73,9 @@ function delivered_batches(run_dir)
         segments = sort(filter(f -> occursin(r"^seg_\d+\.csv$", f), readdir(dir));
             by = f -> parse(Int, match(r"\d+", f).match))
         isempty(segments) && continue                 # payload pruned by retention
-        samples = reduce(vcat, [Vector{Float64}(CSV.read(joinpath(dir, f), DataFrame).Amplitude)
-                                for f in segments])
+        samples = reduce(vcat,
+            [Vector{Float64}(CSV.read(joinpath(dir, f), DataFrame).Amplitude)
+             for f in segments])
         push!(batches, (epoch, samples))
     end
     sort!(batches; by = first)
@@ -91,18 +94,22 @@ for (epoch, samples) in batches
         push!(values, v)
     end
 end
-println(length(batches), " delivered batches, ", length(values), " samples at ", sample_rate,
+println(
+    length(batches), " delivered batches, ", length(values), " samples at ", sample_rate,
     " Hz, ", period_ms, " ms per sample")
 
 # --- a series with the mission's gaps --------------------------------------------
 # The delivered flag series as recorded, and a random walk masked with the same
 # availability: both carry the same gap structure, the second has dynamics.
-flag = quantized_series(RawSeries(values, times, :millisecond, nothing,
-        PreparationRecord(run_dir)), 0; detect = :threshold, threshold = period_ms)
+flag = quantized_series(
+    RawSeries(values, times, :millisecond, nothing,
+        PreparationRecord(run_dir)),
+    0; detect = :threshold, threshold = period_ms)
 println("flag series: ", flag)
 rng = StableRNG(7)
 walk = round.(random_walk(rng, length(values)); digits = 2)
-signal = quantized_series(RawSeries(Vector{Union{Missing, Float64}}(walk), times,
+signal = quantized_series(
+    RawSeries(Vector{Union{Missing, Float64}}(walk), times,
         :millisecond, nothing, PreparationRecord("random walk on the mission's availability")),
     2; detect = :threshold, threshold = period_ms)
 println("masked walk:  ", signal)
@@ -149,5 +156,6 @@ mktempdir() do dir
     c = load_collection(handle.dir)
     show(stdout, MIME("text/plain"), c)
     println()
-    println(summary_table(c)[:, [:delta, :n_exact, :n_gap_crossing, :n_right_censored, :tau_mean]])
+    println(summary_table(c)[:, [
+        :delta, :n_exact, :n_gap_crossing, :n_right_censored, :tau_mean]])
 end

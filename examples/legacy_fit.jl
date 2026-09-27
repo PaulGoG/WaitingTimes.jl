@@ -36,7 +36,7 @@ mle_exponent(τ, x_min) = 1 + length(τ) / sum(log.(τ ./ (x_min - 0.5)))
 "scale-free fit: the best of the Nelder-Mead runs started on the x_min grid"
 function fit_scale_free(τ::Vector{Float64}, cdf::Vector{Float64})
     limit = max(round(Int, log10(maximum(τ)) - 2), 2) - 1
-    grid = unique(reduce(vcat, [10^i:10^i:10^(i + 1) for i in 1:limit]))
+    grid = unique(reduce(vcat, [(10 ^ i):(10 ^ i):(10 ^ (i + 1)) for i in 1:limit]))
     best = (α = 2.0, x_min = minimum(τ), ks = 1.0)
     lock_ = ReentrantLock()
     Threads.@threads for x_start in grid
@@ -62,7 +62,6 @@ function fit_pareto_tsallis(τ::Vector{Float64}, pmf::Vector{Float64}, cdf::Vect
     return (α = Optim.minimizer(result)[1], λ = Optim.minimizer(result)[2],
         ks = Optim.minimum(result))
 end
-
 
 "support, probability mass, cumulative distribution and the distribution of `series` at `δ`"
 function distribution_at(series, δ)
