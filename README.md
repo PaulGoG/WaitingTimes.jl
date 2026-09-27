@@ -1,7 +1,6 @@
 # WaitingTimes.jl
 
 [![Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://PaulGoG.github.io/WaitingTimes.jl/stable/)
-[![Documentation (dev)](https://img.shields.io/badge/docs-dev-blue.svg)](https://PaulGoG.github.io/WaitingTimes.jl/dev/)
 [![Release](https://img.shields.io/github/v/release/PaulGoG/WaitingTimes.jl)](https://github.com/PaulGoG/WaitingTimes.jl/releases)
 [![Julia](https://img.shields.io/badge/julia-%E2%89%A5%201.12-9558b2?logo=julia&logoColor=white)](https://julialang.org)
 [![CI](https://github.com/PaulGoG/WaitingTimes.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/PaulGoG/WaitingTimes.jl/actions/workflows/CI.yml)
