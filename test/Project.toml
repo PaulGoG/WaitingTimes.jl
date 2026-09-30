@@ -17,3 +17,14 @@ WaitingTimes = "78cbc771-1cb5-4db9-b01d-2cca60acb935"
 
 [sources]
 WaitingTimes = {path = ".."}
+
+[compat]
+Aqua = "0.8"
+Arrow = "2"
+CSV = "0.10, 1.1"
+CairoMakie = "0.15"
+DataFrames = "1"
+Distributions = "0.25"
+ExplicitImports = "1"
+StableRNGs = "1"
+Statistics = "1"

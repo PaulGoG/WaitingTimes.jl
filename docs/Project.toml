@@ -11,3 +11,12 @@ WaitingTimes = "78cbc771-1cb5-4db9-b01d-2cca60acb935"
 
 [sources]
 WaitingTimes = {path = ".."}
+
+[compat]
+CairoMakie = "0.15"
+DataFrames = "1"
+Distributions = "0.25"
+Documenter = "1"
+Literate = "2"
+Optim = "2"
+StableRNGs = "1"
