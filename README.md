@@ -191,7 +191,7 @@ The package is described by `CITATION.cff`. In BibTeX:
   author  = {Gogîță, Paul-Adrian},
   title   = {WaitingTimes.jl: exact waiting-time distributions of scalar time series},
   year    = {2026},
-  version = {0.1.1},
+  version = {0.2.0},
   url     = {https://github.com/PaulGoG/WaitingTimes.jl}
 }
 ```
