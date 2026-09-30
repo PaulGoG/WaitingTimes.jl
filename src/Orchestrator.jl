@@ -16,14 +16,15 @@ using ..WaitingTimes: WaitingTimes, AbstractSearch, DeviceSearch, FenwickSweep,
                       NaiveSearch,
                       QuantizedSeries, SegmentTreeSearch, StreamingSearch, Threshold,
                       WaitingTimeDistribution, classify, empirical_distribution,
-                      format_threshold, nsamples, scan_work, support, waiting_times,
+                      format_threshold, nsamples, record!, scan_work, support,
+                      waiting_times,
                       waiting_times!, workspace
-using ..Config: Settings, load_settings, threshold_list
+using ..Config: Settings, load_settings, threshold_decimals, threshold_list
 using ..Provenance: artefact_id, backup_existing!, content_hash, file_sha256, git_state,
                     hardware_fingerprint, read_toml, record_to_dict, session_id, slugify,
                     toml_ready, write_hardware_fingerprint, write_toml
 using ..Preprocessing: apply_steps, quantized_series, read_gap_intervals, read_series,
-                       resolution_digits
+                       resolution_digits, suggest_digits
 using ..Storage: partition_path, read_index, write_catalog, write_collection_readme,
                  write_distribution, write_index, write_series_files, write_summary,
                  write_waiting_times
@@ -169,12 +170,13 @@ function prepare(settings::Settings)
         ))
     end
     rs = apply_steps(rs, settings.steps)
+    digits = resolve_digits(settings, rs)
     resolution = resolution_digits(rs)
-    resolution === nothing || resolution <= settings.digits ||
-        @warn "[quantization] digits is below the recorded resolution of the prepared series; quantisation merges distinct values" digits=settings.digits resolution
+    resolution === nothing || resolution <= digits ||
+        @warn "[quantization] digits is below the recorded resolution of the prepared series; quantisation merges distinct values" digits resolution
     declared = isempty(settings.declared_gaps) ? Tuple{Int64, Int64}[] :
                read_gap_intervals(settings.declared_gaps)
-    s = quantized_series(rs, settings.digits; detect = settings.gap_detect,
+    s = quantized_series(rs, digits; detect = settings.gap_detect,
         cadence = settings.gap_cadence, threshold = settings.gap_threshold, declared = declared)
 
     dataset_identity = Dict{String, Any}("sha256" => rs.record.source_sha256,
@@ -187,7 +189,7 @@ function prepare(settings::Settings)
     series_identity = Dict{String, Any}("dataset" => dataset_id,
         "time_unit" => settings.time_unit, "epoch_unit" => settings.epoch_unit,
         "missing_policy" => settings.missing_policy, "tie_policy" => settings.tie_policy,
-        "steps" => settings.steps, "digits" => settings.digits,
+        "steps" => settings.steps, "digits" => digits,
         "declared_gaps_sha256" =>
             isempty(settings.declared_gaps) ? "" :
             file_sha256(settings.declared_gaps),
@@ -201,6 +203,38 @@ function prepare(settings::Settings)
         series_id = series_id, series_slug = series_slug, series_identity = series_identity,
         descriptor = descriptor, raw = rs)
     return s, ids
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+The `digits` of the run: the configured value, or for `digits = "auto"` the
+choice of [`suggest_digits`](@ref WaitingTimes.Preprocessing.suggest_digits)
+under the threshold grid and the `auto_*` keys, recorded in the preparation
+record of `rs` and logged. An automatic choice that meets the tolerance at no
+grid up to `auto_max_digits` is an error.
+"""
+function resolve_digits(settings::Settings, rs)
+    settings.digits === nothing || return settings.digits
+    choice = suggest_digits(rs; min_digits = threshold_decimals(settings),
+        tolerance = settings.auto_tolerance, step_ratio = settings.auto_step_ratio,
+        max_digits = settings.auto_max_digits)
+    choice.rule === :max_digits && throw(ArgumentError(
+        "[quantization] digits = \"auto\" meets auto_tolerance = $(settings.auto_tolerance) at no grid up to auto_max_digits = $(settings.auto_max_digits) (last distance $(choice.ks)); raise auto_max_digits or set digits",
+    ))
+    summary = Dict{String, Any}("digits" => choice.digits, "rule" => String(choice.rule))
+    for key in (:resolution, :dispersion_digits, :increment_scale, :ks)
+        value = getfield(choice, key)
+        value === nothing || (summary[String(key)] = value)
+    end
+    record!(rs.record, :suggest_digits,
+        Dict{String, Any}("min_digits" => choice.min_digits,
+            "tolerance" => settings.auto_tolerance, "step_ratio" =>
+                settings.auto_step_ratio,
+            "max_digits" => settings.auto_max_digits),
+        summary)
+    @info "[quantization] digits = \"auto\"" digits=choice.digits rule=choice.rule ks=choice.ks
+    return choice.digits
 end
 
 # --- generate ----------------------------------------------------------------

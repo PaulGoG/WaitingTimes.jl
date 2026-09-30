@@ -67,6 +67,7 @@ WaitingTimes.cumulative
 WaitingTimes.survival
 WaitingTimes.nsamples
 WaitingTimes.mean_waiting_time
+WaitingTimes.ks_distance
 WaitingTimes.discrete_distribution
 ```
 
@@ -105,6 +106,9 @@ WaitingTimes.Preprocessing.quantized_series
 WaitingTimes.Preprocessing.sampling_summary
 WaitingTimes.Preprocessing.value_summary
 WaitingTimes.Preprocessing.resolution_digits
+WaitingTimes.Preprocessing.increment_scale
+WaitingTimes.Preprocessing.digits_sensitivity
+WaitingTimes.Preprocessing.suggest_digits
 ```
 
 ## Provenance, naming, storage

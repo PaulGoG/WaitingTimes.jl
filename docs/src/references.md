@@ -66,3 +66,9 @@
   Math. Soc.* **s1-29**, 353 (1898),
   [doi:10.1112/plms/s1-29.1.353](https://doi.org/10.1112/plms/s1-29.1.353).
   What rounding to the decimal grid does to a distribution.
+- D. Cousineau, How many decimals? Rounding descriptive and inferential
+  statistics based on measurement precision, *J. Math. Psychol.* **97**,
+  102362 (2020),
+  [doi:10.1016/j.jmp.2020.102362](https://doi.org/10.1016/j.jmp.2020.102362).
+  The grid step against the dispersion of the quantity, the basis of the
+  automatic choice of `digits`.

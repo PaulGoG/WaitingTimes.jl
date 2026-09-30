@@ -461,6 +461,20 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         @test_throws ArgumentError OnlineWaitingTimes([0.25], 1)
     end
 
+    @testset "Distance between distributions" begin
+        s = QuantizedSeries(random_walk(StableRNG(61), 5_000), 2)
+        a = empirical_distribution(waiting_times(s, 0.5), threshold(0.5, s), s)
+        b = empirical_distribution(waiting_times(s, 2.0), threshold(2.0, s), s)
+        grid = sort!(union(WT.support(a), WT.support(b)))
+        F(d, k) = (
+            i = searchsortedlast(WT.support(d), k); i == 0 ? 0.0 : WT.cumulative(d)[i])
+        @test WT.ks_distance(a, b) ≈ maximum(abs(F(a, k) - F(b, k)) for k in grid)
+        @test WT.ks_distance(a, b) == WT.ks_distance(b, a) > 0
+        @test WT.ks_distance(a, a) == 0
+        empty = empirical_distribution(Int64[0], threshold(0, 0), QuantizedSeries([1.0], 0))
+        @test isnan(WT.ks_distance(a, empty))
+    end
+
     @testset "Bounded streaming memory" begin
         rng = StableRNG(53)
         # downward drift: a fixed fraction of the indices never resolves

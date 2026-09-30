@@ -8,7 +8,7 @@ using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
 using ..WaitingTimes: TIME_UNITS, QuantizedSeries, threshold, check_digits
 using ..Provenance: effective_config
 
-export Settings, load_settings, threshold_list, KNOWN_KEYS
+export Settings, load_settings, threshold_list, threshold_decimals, KNOWN_KEYS
 
 """
     Settings
@@ -67,8 +67,14 @@ Base.@kwdef struct Settings
     "distribution mode, `:elapsed` or `:exact`"
     mode::Symbol
     # quantization
-    "decimal digits of the grid"
-    digits::Int
+    "decimal digits of the grid; `nothing` for `\"auto\"`, resolved by `prepare`"
+    digits::Union{Nothing, Int}
+    "largest `digits` the automatic choice may return"
+    auto_max_digits::Int
+    "Kolmogorov–Smirnov tolerance of the automatic choice"
+    auto_tolerance::Float64
+    "largest ratio of grid step to increment scale in the automatic choice"
+    auto_step_ratio::Float64
     # thresholds
     "`:linear`, `:log` or `:explicit`"
     threshold_mode::Symbol
@@ -127,7 +133,7 @@ const KNOWN_KEYS = Dict(
         "quantity_label", "unit_label"],
     "preprocessing" => ["steps"],
     "gaps" => ["declared", "detect", "cadence", "threshold", "mode"],
-    "quantization" => ["digits"],
+    "quantization" => ["digits", "auto_max_digits", "auto_tolerance", "auto_step_ratio"],
     "thresholds" => ["mode", "min", "max", "step", "points_per_decade", "values"],
     "algorithm" =>
         ["search", "backend", "chunk_size", "reference_checks", "reference_kernel"],
@@ -348,8 +354,25 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
         :elapsed, :exact))
 
     quant = section(raw, "quantization")
-    digits = check_digits(as_int(require(quant, "quantization", "digits"),
-        "quantization", "digits"; min = 0, max = 15))
+    digits_raw = require(quant, "quantization", "digits")
+    digits = if digits_raw isa AbstractString
+        lowercase(digits_raw) == "auto" || throw(ArgumentError(
+            "[quantization] digits must be an integer in 0:15 or \"auto\", got $(repr(digits_raw))",
+        ))
+        nothing
+    else
+        check_digits(as_int(digits_raw, "quantization", "digits"; min = 0, max = 15))
+    end
+    auto_max_digits = as_int(fetch(quant, "quantization", "auto_max_digits", 8),
+        "quantization", "auto_max_digits"; min = 0, max = 14)
+    auto_tolerance = as_float(fetch(quant, "quantization", "auto_tolerance", 1e-3),
+        "quantization", "auto_tolerance"; min = 0.0, max = 1.0)
+    0 < auto_tolerance < 1 ||
+        throw(ArgumentError("[quantization] auto_tolerance must lie in (0, 1)"))
+    auto_step_ratio = as_float(fetch(quant, "quantization", "auto_step_ratio", 0.1),
+        "quantization", "auto_step_ratio"; min = 0.0, max = 1.0)
+    auto_step_ratio > 0 ||
+        throw(ArgumentError("[quantization] auto_step_ratio must lie in (0, 1]"))
 
     thr = section(raw, "thresholds")
     threshold_mode = as_symbol(
@@ -376,16 +399,18 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
         threshold_mode === :log && threshold_min <= 0 &&
             throw(ArgumentError("[thresholds] mode = \"log\" requires min > 0"))
     end
-    for (key, value) in (("min", threshold_min), ("max", threshold_max), (
-        "step", threshold_step))
-        threshold_mode === :explicit && continue
-        threshold_mode === :log && key == "step" && continue
-        on_grid(value, digits) ||
-            throw(ArgumentError("[thresholds] $key = $value is not on the 10^-$digits grid"))
-    end
-    for v in threshold_values
-        on_grid(v, digits) ||
-            throw(ArgumentError("[thresholds] value $v is not on the 10^-$digits grid"))
+    grid_values = threshold_grid_values(threshold_mode, threshold_min, threshold_max,
+        threshold_step, threshold_values)
+    if digits === nothing
+        needed = maximum(decimals, grid_values; init = 0)
+        needed <= auto_max_digits || throw(ArgumentError(
+            "[thresholds] the grid needs $needed decimals, above [quantization] auto_max_digits = $auto_max_digits",
+        ))
+    else
+        for v in grid_values
+            on_grid(v, digits) ||
+                throw(ArgumentError("[thresholds] $v is not on the 10^-$digits grid"))
+        end
     end
 
     alg = section(raw, "algorithm")
@@ -441,7 +466,8 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
         quantity_label = as_string(fetch(inp, "input", "quantity_label", ""), "input", "quantity_label"),
         unit_label = as_string(fetch(inp, "input", "unit_label", ""), "input", "unit_label"),
         steps, declared_gaps, gap_detect, gap_cadence, gap_threshold, mode, digits,
-        threshold_mode, threshold_min, threshold_max, threshold_step, points_per_decade,
+        auto_max_digits, auto_tolerance, auto_step_ratio, threshold_mode, threshold_min,
+        threshold_max, threshold_step, points_per_decade,
         threshold_values, search, backend, chunk_size, reference_checks, reference_kernel,
         max_ram_gb, max_vram_gb, max_reference_work,
         output_root = root, output_format, store_waiting_times, overwrite,
@@ -452,6 +478,33 @@ end
 function on_grid(value::Real, digits::Integer)
     scaled = value * 10.0^digits
     return abs(scaled - round(scaled)) <= 1e-6
+end
+
+"decimals needed to place `value` on a grid (at most 15)"
+function decimals(value::Real)
+    for d in 0:15
+        on_grid(value, d) && return d
+    end
+    throw(ArgumentError("$value has more than 15 decimals"))
+end
+
+"threshold values that must lie on the grid: the explicit values, or the grid ends and step"
+function threshold_grid_values(mode, min, max, step, values)
+    mode === :explicit && return values
+    mode === :log && return [min, max]
+    return [min, max, step]
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Decimals the configured threshold grid needs: the lower bound of an automatic
+`digits` choice.
+"""
+function threshold_decimals(settings::Settings)
+    values = threshold_grid_values(settings.threshold_mode, settings.threshold_min,
+        settings.threshold_max, settings.threshold_step, settings.threshold_values)
+    return maximum(decimals, values; init = 0)
 end
 
 """

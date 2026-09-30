@@ -39,7 +39,10 @@ threshold = 0                     # > 0 in time units when detect = "threshold"
 mode = "elapsed"                  # "elapsed" | "exact"
 
 [quantization]
-digits = 1                        # 0:15
+digits = 1                        # 0:15, or "auto"
+auto_max_digits = 8               # 0:14; largest automatic choice
+auto_tolerance = 1e-3             # (0, 1); Kolmogorov-Smirnov tolerance of the automatic choice
+auto_step_ratio = 0.1             # (0, 1]; largest grid step over the increment scale
 
 [thresholds]
 mode = "linear"                   # "linear" | "log" | "explicit"
@@ -71,6 +74,40 @@ overwrite = false
 seed = 12345
 log_level = "info"                # "debug" | "info" | "warn"
 ```
+
+## Choosing `digits`
+
+Values are quantised to ``q_n = \mathrm{round}(x_n \cdot 10^d)`` and
+thresholds to ``\delta \cdot 10^d``. The grid step ``w = 10^{-d}`` decides
+which observations count as equal (the ties, and with them the ``\delta = 0``
+distribution), resolves the threshold grid, and bounds the rounding error by
+``w/2``. A grid finer than the data's own resolution changes nothing but the
+size of the integers; a coarser one merges observations. `digits = "auto"`
+applies these rules after the preprocessing steps:
+
+1. Values on a decimal grid (as recorded, rounded, or differenced) take their
+   recorded resolution, [`resolution_digits`](@ref
+   WaitingTimes.Preprocessing.resolution_digits), raised to the decimals the
+   threshold grid needs.
+2. Other values (fluctuations, returns, detrended series) take the smallest
+   ``d`` that places the threshold grid, keeps ``w`` at most
+   `auto_step_ratio` times the increment scale (the median absolute
+   difference of consecutive values, so that the rounding variance
+   ``w^2/12`` is negligible against the increments), and changes the
+   ``\delta = 0`` distribution by less than `auto_tolerance` in
+   Kolmogorov–Smirnov distance when one more decimal is kept.
+
+The choice, the rule that decided it and the distance are recorded in the
+preparation record of the series and logged; a configuration whose tolerance
+is met at no grid up to `auto_max_digits` fails. `julia scripts/prepare.jl
+--config PATH --digits-scan` prints the sensitivity table
+([`digits_sensitivity`](@ref WaitingTimes.Preprocessing.digits_sensitivity))
+from which a fixed value can also be read. For recorded series whose last
+digit is instrument noise the table shows whether a coarser grid leaves the
+distributions unchanged; that coarsening is left to the analyst.
+The rationale follows the statistical theory of quantisation (Widrow, Kollár
+and Liu) and the rounding of statistics to measurement precision (Cousineau),
+see [References](@ref).
 
 ## Preprocessing steps
 

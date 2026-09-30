@@ -17,6 +17,17 @@ Keep a Changelog and the project adheres to Semantic Versioning.
 - `WaitingTimeDistribution` carries the `horizon` at which it is censored;
   `empirical_distribution(τ, δ, s; horizon)` gives the batch counterpart of
   an online snapshot under a horizon.
+- `digits = "auto"` in `[quantization]`, with `auto_max_digits`,
+  `auto_tolerance` and `auto_step_ratio`: values on a decimal grid take their
+  recorded resolution, other values the smallest grid that places the
+  thresholds, keeps the step below a fraction of the increment scale, and
+  leaves the δ = 0 distribution unchanged to within a Kolmogorov–Smirnov
+  tolerance when one more decimal is kept. The choice is recorded in the
+  preparation record. `suggest_digits`, `digits_sensitivity` and
+  `increment_scale` expose the rule; `scripts/prepare.jl --digits-scan`
+  prints the sensitivity table.
+- `WaitingTimes.ks_distance`, the exact two-sample Kolmogorov–Smirnov
+  distance between two waiting-time distributions.
 
 ### Fixed
 
