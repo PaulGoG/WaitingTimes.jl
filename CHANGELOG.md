@@ -3,6 +3,25 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
+## [Unreleased]
+
+### Changed
+
+- CSV.jl 1.1 is supported alongside 0.10. Time columns are read as text and
+  converted by the package, so time stamps do not depend on the date-time
+  inference of the installed CSV version; the six dataset configurations
+  prepare identical series under both versions.
+- Tables read from a collection (`summary_table`, partitions, series files)
+  hold plain `String` text columns without pooling under both CSV versions.
+
+### Fixed
+
+- A `time_format` made only of digits (`yyyymmdd`) is honoured; such stamps
+  were previously read as integers in `epoch_unit`.
+- ISO 8601 time stamps keep fractions finer than a millisecond (up to
+  nanoseconds) instead of failing to parse; integral numbers written with a
+  decimal point are accepted as epoch stamps.
+
 ## [0.1.0] - 2026-09-26
 
 First release. Everything below is new.
