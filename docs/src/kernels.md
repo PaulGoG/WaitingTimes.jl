@@ -42,6 +42,15 @@ joins the heap; the heap contents are the right-censored set so far. A
 [`DistributionAccumulator`](@ref) turns resolved waits into a distribution
 incrementally, for embedding in real-time detection pipelines.
 
+After ``t`` samples the heap holds ``E[\min(\tau, t)]`` entries on average:
+``O(\log t)`` for independent values, ``O(\sqrt{t})`` for a random walk,
+``O(t)`` when a fraction ``p_\infty`` of the indices never resolves (downward
+drift, bounded values at thresholds near their range). A declared
+`upper_bound` removes the provably unreachable entries without changing any
+result; a `horizon` ``H`` evicts entries older than ``H`` as censored and
+bounds the heap by twice the samples within one horizon, at a cost within
+25 % of the unbounded state (random walk, ``10^6`` points).
+
 ## Device kernel
 
 The naive scan as a KernelAbstractions kernel with one work-item per index

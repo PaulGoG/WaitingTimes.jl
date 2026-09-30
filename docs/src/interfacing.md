@@ -79,8 +79,8 @@ export_legacy(c, "outputData/ftEURUSD_clsng_raw"; slug = "ftEURUSD_clsng_raw")
 ## Live: an online estimator
 
 [`OnlineWaitingTimes`](@ref) keeps one streaming state per threshold and
-consumes raw `(time, value)` samples; memory is bounded by the pending
-indices, not by the length of the stream.
+consumes raw `(time, value)` samples; memory is set by the pending indices,
+not by stored samples.
 
 ```julia
 est = OnlineWaitingTimes([0.5, 5.0, 50.0], 2; time_unit = :nanosecond, late_policy = :skip)
@@ -99,6 +99,27 @@ under `:skip`; a consolidated tape interleaves venues, so `:skip` is the
 setting for market data. The distributions of a replayed record equal the
 batch result of `StreamingSearch`, which equals the reference kernel on
 every prefix (tested).
+
+The pending set grows with the stream wherever a fraction of the indices
+never resolves: under a downward drift, or when bounded values meet a
+threshold near their range (a random walk with drift ``-0.5\,\sigma`` per
+sample leaves two thirds of its indices pending at ``\delta = 0.5\,\sigma``).
+Two options bound it for long-running pipelines:
+
+```julia
+est = OnlineWaitingTimes([0.5, 5.0, 50.0], 2;
+    upper_bound = 250.0, bound_policy = :skip,   # largest attainable value
+    horizon = 86_400)                            # longest wait kept, in time_unit
+```
+
+`upper_bound` is exact: an index whose target lies above the bound cannot
+resolve and is counted as censored on arrival; a value above the bound is an
+error under `bound_policy = :error` and a missing observation under `:skip`.
+`horizon` evicts indices pending longer than ``H`` and counts them as
+censored, so the distributions are censored at ``H``, carry `horizon = H`,
+and equal `empirical_distribution(τ, δ, s; horizon = H)` of the batch
+evaluation; memory stays below twice the samples within one horizon.
+`status(est)` reports the evicted and unreachable indices per threshold.
 
 The lower-level pieces remain available: a [`StreamingState`](@ref) at one
 threshold fed with [`update!`](@ref), and a

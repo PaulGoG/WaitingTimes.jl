@@ -11,7 +11,7 @@ permanent reference implementation.
 """
 module WaitingTimes
 
-using DataStructures: BinaryMinHeap
+using DataStructures: BinaryMinHeap, extract_all!
 using Dates: DateTime
 using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
 using KernelAbstractions: KernelAbstractions, Backend, CPU, @Const, @index, @kernel

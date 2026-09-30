@@ -3,6 +3,26 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
+## [Unreleased]
+
+### Added
+
+- Bounded memory for online evaluation. `StreamingState` and
+  `OnlineWaitingTimes` accept `upper_bound`, the largest attainable value:
+  indices whose target lies above it are counted as censored on arrival
+  instead of being stored, with unchanged results; `bound_policy` (`:error`
+  or `:skip`) governs a value above the bound. `horizon` evicts indices
+  pending longer than it as censored, bounding the heap by twice the samples
+  within one horizon; `status` reports evicted and unreachable indices.
+- `WaitingTimeDistribution` carries the `horizon` at which it is censored;
+  `empirical_distribution(τ, δ, s; horizon)` gives the batch counterpart of
+  an online snapshot under a horizon.
+
+### Fixed
+
+- The documentation described `FenwickSweep` as parallel over thresholds;
+  the sweep is sequential.
+
 ## [0.1.1] - 2026-09-30
 
 ### Changed
