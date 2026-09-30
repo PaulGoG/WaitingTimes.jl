@@ -67,12 +67,13 @@ $(TYPEDSIGNATURES)
 Read a series from `path`. `format` is `:csv`, `:dat` (space-delimited with a
 header), `:arrow`, `:tick` (MarketTickStreamer compacted files: `time_ns` and
 `price`) or `:auto` (from the extension). Columns are selected by 1-based index
-or name. Numeric time stamps are integers in `epoch_unit`; textual ones are
-parsed with `time_format` or as ISO 8601; both are converted to `time_unit`
-since the UNIX epoch and must be exact multiples of the unit. Values that are
-absent or unparsable become `missing` under `missing_policy = :drop` or raise
-under `:error`. Equal time stamps are resolved by `tie_policy` (`:error`,
-`:first`, `:last`, `:mean`).
+or name. Time stamps are parsed with `time_format` when it is given; otherwise
+they are integers in `epoch_unit` or ISO 8601 date-times with up to nine
+fractional digits. They are converted to `time_unit` since the UNIX epoch and
+must be exact multiples of the unit. Values that are absent or unparsable
+become `missing` under `missing_policy = :drop` or raise under `:error`. Equal
+time stamps are resolved by `tie_policy` (`:error`, `:first`, `:last`,
+`:mean`).
 """
 function read_series(path::AbstractString; format::Symbol = :auto,
         value_column::Union{Integer, AbstractString},
@@ -88,7 +89,7 @@ function read_series(path::AbstractString; format::Symbol = :auto,
         epoch_unit = :nanosecond
         time_unit === :sample && (time_unit = :nanosecond)
     end
-    table = read_table(path, format; delimiter, header)
+    table = read_table(path, format; delimiter, header, time_column)
     values = parse_values(column(table, value_column, "value_column"), missing_policy)
     record = PreparationRecord(path; sha256 = file_sha256(path))
     times = nothing
@@ -119,17 +120,26 @@ function infer_format(path::AbstractString)
     throw(ArgumentError("cannot infer the format of $path; pass format explicitly"))
 end
 
-function read_table(path, format; delimiter, header)
-    if format === :arrow
-        return DataFrame(Arrow.Table(path))
-    elseif format === :dat
+# Unparsable cells become `missing` and are handled by `parse_values`; CSV 1
+# replaced `silencewarnings` by `on_error`.
+const QUIET_PARSE = pkgversion(CSV) < v"1" ? (; silencewarnings = true) :
+                    (; on_error = :collect)
+
+# The time column is read as text (integers for tick files) and converted by
+# `time_to_ns`, so that time stamps do not depend on the date-time inference of
+# the installed CSV version (`DateTime` in 0.10, nanosecond time stamps in 1.x).
+function read_table(path, format; delimiter, header, time_column = nothing)
+    format === :arrow && return DataFrame(Arrow.Table(path))
+    types = time_column === nothing ? nothing :
+            Dict(time_column => format === :tick ? Int64 : String)
+    common = (; header, stringtype = String, types, validate = false, QUIET_PARSE...)
+    if format === :dat
         return CSV.read(
             path, DataFrame; delim = isempty(delimiter) ? ' ' : only(delimiter),
-            ignorerepeated = true, header = header, silencewarnings = true, stringtype = String)
+            ignorerepeated = true, common...)
     else
         kwargs = isempty(delimiter) ? (;) : (; delim = only(delimiter))
-        return CSV.read(path, DataFrame; header = header, ignoreemptyrows = false,
-            silencewarnings = true, stringtype = String, kwargs...)
+        return CSV.read(path, DataFrame; ignoreemptyrows = false, common..., kwargs...)
     end
 end
 
@@ -190,10 +200,26 @@ function time_to_ns(v::Real, epoch_unit, _, i)
     return Int64(v) * UNIT_NANOSECONDS[epoch_unit]
 end
 time_to_ns(v::DateTime, _, _, _) = Dates.value(v - unix2datetime(0)) * 10^6
+
+"ISO 8601 date-time with a fraction finer than the millisecond held by `DateTime`"
+const ISO_SUBMILLISECOND = r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{4,9})$"
+
+# With `time_format` the stamps are text in that format; otherwise integers
+# (or integral numbers) in `epoch_unit`, else ISO 8601 up to nanoseconds.
 function time_to_ns(v::AbstractString, epoch_unit, fmt, i)
     s = strip(v)
-    numeric = tryparse(Int64, s)
-    numeric === nothing || return time_to_ns(numeric, epoch_unit, fmt, i)
+    if fmt === nothing
+        numeric = tryparse(Int64, s)
+        numeric === nothing && (numeric = tryparse(Float64, s))
+        numeric === nothing || return time_to_ns(numeric, epoch_unit, fmt, i)
+        m = match(ISO_SUBMILLISECOND, s)
+        if m !== nothing
+            whole = tryparse(DateTime, m[1])
+            whole === nothing ||
+                return time_to_ns(whole, epoch_unit, fmt, i) +
+                       parse(Int64, rpad(m[2], 9, '0'))
+        end
+    end
     dt = fmt === nothing ? tryparse(DateTime, s) : tryparse(DateTime, s, fmt)
     dt === nothing && throw(ArgumentError("cannot parse time stamp at row $i: $(repr(v))"))
     return time_to_ns(dt, epoch_unit, fmt, i)

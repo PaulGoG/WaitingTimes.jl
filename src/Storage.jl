@@ -60,8 +60,13 @@ function write_table(path::AbstractString, table::DataFrame, format::Symbol;
     return file_sha256(path)
 end
 
+# Text columns are plain `String` and unpooled under every supported CSV version,
+# so that consumers of the read side see the same column types.
+const CSV_READ_TYPES = (; stringtype = String, pool = false)
+
 function read_table(path::AbstractString)
-    endswith(path, ".arrow") ? DataFrame(Arrow.Table(path)) : CSV.read(path, DataFrame)
+    endswith(path, ".arrow") ? DataFrame(Arrow.Table(path)) :
+    CSV.read(path, DataFrame; CSV_READ_TYPES...)
 end
 
 """
@@ -324,7 +329,8 @@ One row per threshold with the counts and statistics of `summary.csv`.
 """
 function summary_table(c::Collection)
     path = joinpath(c.dir, "summary.csv")
-    isfile(path) && return CSV.read(path, DataFrame; types = Dict(:delta => String))
+    isfile(path) &&
+        return CSV.read(path, DataFrame; types = Dict(:delta => String), CSV_READ_TYPES...)
     return DataFrame([Symbol(col) => [get(e, col, missing) for e in c.index]
                       for col in SUMMARY_COLUMNS])
 end

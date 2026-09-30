@@ -334,6 +334,25 @@ end
         @test_throws ArgumentError read_series(
             csv; value_column = "value", time_column = "stamp", time_unit = :day)
         @test_throws ArgumentError read_series(csv; value_column = "value", time_column = "stamp")
+        @test_throws ArgumentError read_series(
+            csv; value_column = "value", time_column = "nope", time_unit = :hour)
+        # sub-millisecond ISO fractions, integral epochs, digit-only formats
+        fine = joinpath(dir, "fine.csv")
+        write(fine, "stamp,value\n2020-01-01T00:00:00.000001,1\n2020-01-01T00:00:00.000004,2\n")
+        rs_fine = read_series(fine; value_column = 2, time_column = 1, time_unit = :microsecond)
+        @test rs_fine.times[2] - rs_fine.times[1] == 3
+        @test_throws ArgumentError read_series(
+            fine; value_column = 2, time_column = 1, time_unit = :millisecond)
+        epochs = joinpath(dir, "epochs.dat")
+        write(epochs, "t v\n1599999960 1\n1600000020.0 2\n")
+        rs_epochs = read_series(epochs; value_column = "v", time_column = "t",
+            time_unit = :minute)
+        @test rs_epochs.times == [26666666, 26666667]
+        dated = joinpath(dir, "dated.csv")
+        write(dated, "20200101,1\n20200103,2\n")
+        rs_dated = read_series(dated; header = false, value_column = 2, time_column = 1,
+            time_unit = :day, time_format = "yyyymmdd")
+        @test rs_dated.times == [18262, 18264]
         tick = joinpath(dir, "ticks.csv")
         write(tick,
             "symbol,time_ns,price,size\nX,1000000000,10.0,1\nX,1000000000,10.5,2\nX,2500000000,11.0,1\n")
@@ -456,6 +475,7 @@ end
         @test_throws ArgumentError distribution(c, Threshold(5, 3))
         st = summary_table(c)
         @test nrow(st) == 12 && st.delta[1] == "0.0005"
+        @test st.delta isa Vector{String} && st.mode isa Vector{String}
         loaded = load_series(c)
         @test length(loaded) == 11572 && loaded.digits == 4
         listing = list_collections(dir)
