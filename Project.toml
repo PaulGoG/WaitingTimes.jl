@@ -1,6 +1,6 @@
 name = "WaitingTimes"
 uuid = "78cbc771-1cb5-4db9-b01d-2cca60acb935"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Paul-Adrian Gogîță"]
 
 [deps]
