@@ -77,6 +77,7 @@ WaitingTimes.discrete_distribution
 Settings
 load_settings
 threshold_list
+WaitingTimes.Config.threshold_decimals
 effective_config
 prepare
 generate
