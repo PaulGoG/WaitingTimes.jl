@@ -37,9 +37,10 @@
 - O. Berkman, B. Schieber, U. Vishkin, Optimal doubly logarithmic parallel
   algorithms based on finding all nearest smaller values, *J. Algorithms*
   **14**, 344 (1993), [doi:10.1006/jagm.1993.1018](https://doi.org/10.1006/jagm.1993.1018).
-  The all-nearest-larger-values problem, whose stack solution is the
-  ``\delta = 0`` oracle; `StreamingSearch` generalises it with a priority
-  queue.
+  The all-nearest-larger-values problem: at ``\delta = 0`` the passage of
+  an index is its nearest larger-or-equal value to the right, found with a
+  monotone stack; `StreamingSearch` generalises the stack to ``\delta > 0``
+  with a priority queue.
 - E. N. Gilbert, Capacity of a burst-noise channel, *Bell Syst. Tech. J.*
   **39**, 1253 (1960),
   [doi:10.1002/j.1538-7305.1960.tb03959.x](https://doi.org/10.1002/j.1538-7305.1960.tb03959.x);

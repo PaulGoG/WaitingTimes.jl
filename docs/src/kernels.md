@@ -9,7 +9,7 @@ comparable with `==` across kernels and backends.
 | [`NaiveSearch`](@ref) | ``O(\sum_n \tau_n)``, worst ``O(N^2)`` | over indices, chunked dynamic scheduling | the definition; permanent reference kernel |
 | [`GuardedSearch`](@ref) | same, censored indices skipped in ``O(1)`` | over indices | reference kernel with the suffix-maximum censoring proof |
 | [`SegmentTreeSearch`](@ref) | ``O(N \log N)``, insensitive to ``\delta`` | over indices | production kernel |
-| [`FenwickSweep`](@ref) | ``O(N \log V)``; any number of thresholds per sweep | over thresholds | dense grids, few cores, small memory |
+| [`FenwickSweep`](@ref) | ``O(N \log V)``; any number of thresholds per sweep | none (sequential in ``n``) | dense grids, few cores, small memory |
 | [`StreamingSearch`](@ref) | ``O(N \log N)``, one pass, no lookahead | none | live pipelines; equals the reference kernel on every prefix |
 | [`DeviceSearch`](@ref) | ``O(\sum_n \tau_n)`` | one work-item per index on a KernelAbstractions backend | reference kernel on GPUs |
 
@@ -28,7 +28,10 @@ while the naive scan needs about 7 s at ``10^6`` points.
 Sweeping the series from the end, a Fenwick tree over the ranks of the
 distinct values holds the smallest index seen for each value; the passage of
 an index is the minimum index among values at least its target, a
-prefix-minimum query. Several thresholds share one sweep.
+prefix-minimum query. Several thresholds share one sweep through
+`waiting_times(s, deltas, FenwickSweep())`, which saves the tree updates but
+not the per-threshold queries (at most a factor 1.5 over separate sweeps);
+[`run_pipeline`](@ref) evaluates one threshold at a time with any kernel.
 
 ## Streaming
 
