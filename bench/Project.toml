@@ -7,3 +7,9 @@ WaitingTimes = "78cbc771-1cb5-4db9-b01d-2cca60acb935"
 
 [sources]
 WaitingTimes = {path = ".."}
+
+[compat]
+BenchmarkTools = "1"
+Chairmarks = "1"
+Printf = "1"
+StableRNGs = "1"
