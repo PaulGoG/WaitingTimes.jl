@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
-## [Unreleased]
+## [0.2.0] - 2026-10-01
 
 ### Added
 
@@ -28,6 +28,15 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   prints the sensitivity table.
 - `WaitingTimes.ks_distance`, the exact two-sample Kolmogorov–Smirnov
   distance between two waiting-time distributions.
+
+### Changed
+
+- `WaitingTimeDistribution` has a twelfth field, `horizon` (`nothing`
+  without one), included in equality and hashing; the eleven-argument
+  constructor remains.
+- `Settings.digits` is `nothing` under `digits = "auto"`; the resolved value
+  is the `digits` of the prepared series.
+- The test matrix includes the minimum supported Julia version (1.12).
 
 ### Fixed
 
