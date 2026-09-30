@@ -5,11 +5,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    # To group all GitHub Actions updates into a single PR, uncomment the following:
-    # groups:
-    #   github-actions:
-    #     patterns:
-    #       - "*"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
   - package-ecosystem: "julia"
     directories:
       - "/"
@@ -17,8 +16,11 @@ updates:
       - "/test"
     schedule:
       interval: "weekly"
-    # To group all Julia dependency updates into a single PR, uncomment the following:
-    # groups:
-    #   julia-dependencies:
-    #     patterns:
-    #       - "*"
+    # JET releases follow the Julia minor versions; the test environment
+    # resolves it unconstrained
+    ignore:
+      - dependency-name: "JET"
+    groups:
+      julia-dependencies:
+        patterns:
+          - "*"
