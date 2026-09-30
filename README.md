@@ -174,9 +174,10 @@ push!(est, t_ns, price)                        # one sample; snapshot(est) gives
 | Configuration, storage, provenance, preprocessing, scripts | done; quickstart end to end in the tests |
 | Distributions.jl and CairoMakie extensions | done |
 | KernelAbstractions device kernel | done; CPU backend in the default tests, oneAPI verified on an Intel Arc GPU |
-| Preprocessing after the published treatment (round, fluctuations with denominator and offset, pruning with row deletion, `clip_sigma`) | done; Table 1 of the paper reproduced for the raw datasets |
+| Preprocessing after the published treatment (round, fluctuations with denominator and offset, the pruning loop of the 2024 code with the slot kept or deleted, `clip_sigma`) | done; Table 1 of the paper reproduced for the raw datasets |
+| Automatic choice of `digits` (`digits = "auto"`, `suggest_digits`, `digits_sensitivity`) | done |
 | Collection read side (`load_collection`, `distribution`, `summary_table`, `export_legacy`), per-collection README | done |
-| Online estimator for live streams (`OnlineWaitingTimes`) | done; equal to the batch result on every prefix |
+| Online estimator for live streams (`OnlineWaitingTimes`) | done; equal to the batch result on every prefix; memory bounded by a declared upper bound or a horizon |
 | Worked consumers against MarketTickStreamer.jl and DeepSpaceTelemetry.jl; Table 1 reproduction | done, `examples/` |
 | Load latency | precompile workload; first result below 0.1 s after `using WaitingTimes` |
 | Documentation site | done |
