@@ -10,6 +10,7 @@ using WaitingTimes.Preprocessing: RawSeries, apply_steps, centered_moving_averag
                                   differences,
                                   exclude_intervals, log_returns, quantized_series,
                                   read_series, resolution_digits, round_values,
+                                  digits_sensitivity, increment_scale, suggest_digits,
                                   sampling_summary, select_range, terminal_overview,
                                   trailing_mean_fluctuations, value_summary
 using WaitingTimes.Storage: load_distributions, partition_path, read_distribution,
@@ -131,6 +132,26 @@ end
             D("steps" =>
                 Any[D("op" => "clip_sigma", "k" => 2.5, "center" => "median",
                     "scale" => "mad", "splice" => false)])))).steps) == 1
+        # digits = "auto": the fixture's 26 values finer than 10^-4 lie below the
+        # tolerance, so the choice is the configured 4
+        auto = load_settings(write_config(D("quantization" => D("digits" => "auto"))))
+        @test auto.digits === nothing && auto.auto_max_digits == 8 &&
+              WaitingTimes.Config.threshold_decimals(auto) == 4
+        s_auto, _ = prepare(auto)
+        @test s_auto.digits == 4
+        chosen = only(filter(step -> step.op === :suggest_digits, s_auto.record.steps))
+        @test chosen.summary["rule"] == "sensitivity" && chosen.summary["digits"] == 4
+        @test_throws ArgumentError load_settings(write_config(D("quantization" =>
+            D("digits" => "manual"))))
+        @test_throws ArgumentError load_settings(write_config(D("quantization" =>
+            D("digits" => "auto", "auto_max_digits" => 3))))
+        @test_throws ArgumentError load_settings(write_config(D("quantization" =>
+            D("digits" => "auto", "auto_tolerance" => 0.0))))
+        @test_throws ArgumentError load_settings(write_config(D("quantization" =>
+            D("digits" => "auto", "auto_step_ratio" => 0.0))))
+        strict = load_settings(write_config(D("quantization" =>
+            D("digits" => "auto", "auto_max_digits" => 4, "auto_tolerance" => 1e-5))))
+        @test_throws ArgumentError prepare(strict)
         log_settings = load_settings(write_config(D("thresholds" =>
             D("mode" => "log", "min" => 0.001, "max" => 1.0, "points_per_decade" => 3))))
         ts = threshold_list(log_settings, s)
@@ -315,6 +336,34 @@ end
     @test resolution_digits(raw_from([1 / 3, 2 / 3]); max_digits = 15, tolerance = 1.0) == 0
     @test_throws ArgumentError resolution_digits(raw_from([1.0]); max_digits = 16)
     @test_throws ArgumentError resolution_digits(raw_from([missing, missing]))
+    # automatic digits
+    walk = cumsum(randn(StableRNG(5), 20_000))
+    on_grid = raw_from(round.(walk; digits = 2))
+    @test suggest_digits(on_grid).digits == 2 &&
+          suggest_digits(on_grid).rule === :recorded_resolution
+    @test suggest_digits(on_grid; min_digits = 3).digits == 3
+    off_grid = raw_from(walk .* π)
+    choice = suggest_digits(off_grid)
+    @test choice.rule === :sensitivity && choice.ks < 1e-3 &&
+          choice.digits >= choice.dispersion_digits
+    @test 10.0^-choice.dispersion_digits <= 0.1 * increment_scale(off_grid) <
+          10.0^(1 - choice.dispersion_digits)
+    scan = digits_sensitivity(off_grid; digits = 0:(choice.digits), deltas = [0.0, 0.5])
+    at_zero = scan[scan.delta .== 0.0, :]
+    @test at_zero.ks[end] == choice.ks
+    @test all(at_zero.ks[(at_zero.digits .>= choice.dispersion_digits) .& (at_zero.digits .< choice.digits)] .>=
+              1e-3)
+    @test ismissing(only(scan.ks[(scan.digits .== 0) .& (scan.delta .== 0.5)]))
+    @test issorted(at_zero.n_distinct) && isempty(off_grid.record.steps)
+    @test suggest_digits(off_grid; max_digits = choice.dispersion_digits - 1).rule ===
+          :max_digits
+    @test increment_scale(raw_from([1.0, 1.0, 1.0, 2.0])) == 1.0
+    @test_throws ArgumentError increment_scale(raw_from([1.0, 1.0, 1.0]))
+    @test_throws ArgumentError suggest_digits(off_grid; tolerance = 0)
+    @test_throws ArgumentError suggest_digits(off_grid; step_ratio = 2)
+    @test_throws ArgumentError suggest_digits(off_grid; max_digits = 15)
+    @test_throws ArgumentError suggest_digits(off_grid; min_digits = 9)
+    @test_throws ArgumentError digits_sensitivity(off_grid; digits = 14:15)
     io = IOBuffer()
     terminal_overview(io, raw_from(sin.(1:200)))
     @test occursin("value", String(take!(io)))

@@ -22,7 +22,7 @@ cadence = 1                                 # >= 1; sample spacing treated as co
 mode = "elapsed"                            # one of: "elapsed" | "exact"
 
 [quantization]
-digits = 4                                  # 0:15; decimal grid 10^-digits
+digits = 4                                  # 0:15, or "auto"; decimal grid 10^-digits
 
 [thresholds]
 mode = "linear"                             # one of: "linear" | "log" | "explicit"

@@ -13,16 +13,18 @@ using Dates: DateTime, DateFormat, Dates, unix2datetime
 using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
 using Statistics: mean, median, quantile, std
 using UnicodePlots: UnicodePlots
-using ..WaitingTimes: MAX_DIGITS, PreparationRecord, QuantizedSeries, TIME_UNITS,
-                      declare_gaps, record!
+using ..WaitingTimes: MAX_DIGITS, AbstractSearch, PreparationRecord, QuantizedSeries,
+                      SegmentTreeSearch, TIME_UNITS, Threshold, declare_gaps,
+                      empirical_distribution, ks_distance, record!, threshold,
+                      waiting_times
 using ..Provenance: file_sha256, read_toml
 
 export RawSeries, read_series, select_range, exclude_intervals, round_values,
        trailing_mean_fluctuations, log_returns, differences, centered_moving_average,
        clip_quantile, clip_sigma, clip_extremes, collapse_ties, sampling_summary,
        value_summary,
-       resolution_digits, terminal_overview, quantized_series, apply_steps,
-       read_gap_intervals
+       resolution_digits, increment_scale, digits_sensitivity, suggest_digits,
+       terminal_overview, quantized_series, apply_steps, read_gap_intervals
 
 """
     RawSeries
@@ -821,6 +823,136 @@ function resolution_digits(rs::RawSeries; max_digits::Integer = MAX_DIGITS,
         all(v -> abs(v * scale - round(v * scale)) <= tolerance, x) && return Int(d)
     end
     return nothing
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Scale on which the series moves between samples: the median absolute
+difference of consecutive observed values, or of the non-zero differences
+when more than half of them vanish.
+"""
+function increment_scale(rs::RawSeries)
+    _, x = observed(rs)
+    length(x) >= 2 || throw(ArgumentError("at least two observed values are required"))
+    Δ = abs.(diff(x))
+    m = median(Δ)
+    m > 0 && return m
+    moving = filter(>(0), Δ)
+    isempty(moving) && throw(ArgumentError("the observed values are constant"))
+    return median(moving)
+end
+
+# The series quantised at `digits` for a trial, with a record of its own so the
+# preparation record of `rs` is left untouched; no gap detection (the elapsed
+# distribution does not depend on it).
+function trial_series(rs::RawSeries, digits::Integer)
+    return QuantizedSeries(rs.values, digits; times = rs.times, cadence = nothing,
+        time_unit = rs.time_unit, epoch = rs.epoch, record = PreparationRecord())
+end
+
+function trial_distribution(s::QuantizedSeries, δ::Threshold, kernel::AbstractSearch)
+    return empirical_distribution(waiting_times(s, δ, kernel), δ, s)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Sensitivity of the waiting-time distributions to the grid: one row per
+`digits` value ``d`` and threshold `δ` (real units) with the distinct values
+retained at ``d``, the ratio of the grid step to the increment scale
+(`step_ratio`, see [`increment_scale`](@ref)), and the Kolmogorov–Smirnov
+distance `ks` between the elapsed distributions at ``d`` and ``d + 1``
+(`missing` when `δ` is not on the ``10^{-d}`` grid). A distance that stays
+below the analysis tolerance from some ``d`` on marks the grids at which the
+product no longer depends on the choice.
+"""
+function digits_sensitivity(rs::RawSeries; digits = 0:8, deltas = [0.0],
+        kernel::AbstractSearch = SegmentTreeSearch())
+    ds = sort!(unique(collect(Int, digits)))
+    isempty(ds) && throw(ArgumentError("digits must not be empty"))
+    (first(ds) >= 0 && last(ds) < MAX_DIGITS) ||
+        throw(ArgumentError("digits must lie in 0:$(MAX_DIGITS - 1)"))
+    scale = increment_scale(rs)
+    cache = Dict{Int, QuantizedSeries}()
+    series_at(d) = get!(() -> trial_series(rs, d), cache, d)
+    rows = NamedTuple[]
+    for d in ds, δ in deltas
+
+        s_d = series_at(d)
+        on_grid = abs(δ * 10.0^d - round(δ * 10.0^d)) <= 1e-6
+        ks = on_grid ?
+             ks_distance(trial_distribution(s_d, threshold(δ, d), kernel),
+            trial_distribution(series_at(d + 1), threshold(δ, d + 1), kernel)) :
+             missing
+        push!(rows,
+            (digits = d, delta = Float64(δ), n_distinct = length(unique(s_d.values)),
+                step_ratio = 10.0^-d / scale, ks = ks))
+    end
+    return DataFrame(rows)
+end
+
+"smallest number of decimals whose grid step does not exceed `step`"
+function dispersion_digits(step::Real)
+    d = 0
+    while 10.0^-d > step * (1 + 1e-12)
+        d += 1
+    end
+    return d
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Choice of `digits` by the rules of the configuration guide. A series whose
+values lie on a decimal grid (as recorded, rounded, or differenced) takes its
+recorded resolution ([`resolution_digits`](@ref)), raised to `min_digits`
+(the decimals the threshold grid needs). Otherwise the choice is the smallest
+``d \\ge`` `min_digits` whose grid step is at most `step_ratio` times the
+increment scale and at which the δ = 0 distribution changes by less than
+`tolerance` in Kolmogorov–Smirnov distance when one more decimal is kept.
+
+Returns a named tuple `(digits, rule, resolution, min_digits,
+dispersion_digits, increment_scale, ks)` with `rule` one of
+`:recorded_resolution`, `:sensitivity`, or `:max_digits` when no
+``d \\le`` `max_digits` meets the tolerance (then `digits = max_digits`).
+"""
+function suggest_digits(rs::RawSeries; min_digits::Integer = 0, tolerance::Real = 1e-3,
+        step_ratio::Real = 0.1, max_digits::Integer = 8,
+        kernel::AbstractSearch = SegmentTreeSearch())
+    0 <= max_digits < MAX_DIGITS ||
+        throw(ArgumentError("max_digits must lie in 0:$(MAX_DIGITS - 1), got $max_digits"))
+    0 <= min_digits <= max_digits || throw(ArgumentError(
+        "min_digits must lie in 0:$max_digits, got $min_digits",
+    ))
+    0 < tolerance < 1 ||
+        throw(ArgumentError("tolerance must lie in (0, 1), got $tolerance"))
+    0 < step_ratio <= 1 ||
+        throw(ArgumentError("step_ratio must lie in (0, 1], got $step_ratio"))
+    resolution = resolution_digits(rs; max_digits = max_digits)
+    if resolution !== nothing
+        return (digits = max(resolution, Int(min_digits)), rule = :recorded_resolution,
+            resolution = resolution, min_digits = Int(min_digits), dispersion_digits = nothing,
+            increment_scale = nothing, ks = nothing)
+    end
+    scale = increment_scale(rs)
+    dispersion = dispersion_digits(step_ratio * scale)
+    result(d, rule, ks) = (digits = d, rule = rule, resolution = nothing,
+        min_digits = Int(min_digits), dispersion_digits = dispersion,
+        increment_scale = scale, ks = ks)
+    d = max(Int(min_digits), dispersion)
+    d > max_digits && return result(Int(max_digits), :max_digits, nothing)
+    δ0(k) = Threshold{Int64}(0, k)
+    current = trial_distribution(trial_series(rs, d), δ0(d), kernel)
+    ks = NaN
+    while d <= max_digits
+        finer = trial_distribution(trial_series(rs, d + 1), δ0(d + 1), kernel)
+        ks = ks_distance(current, finer)
+        ks < tolerance && return result(d, :sensitivity, ks)
+        current = finer
+        d += 1
+    end
+    return result(Int(max_digits), :max_digits, ks)
 end
 
 """

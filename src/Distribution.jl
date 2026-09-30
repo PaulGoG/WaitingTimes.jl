@@ -158,3 +158,34 @@ function Base.show(io::IO, d::WaitingTimeDistribution)
         ", censored = ", d.n_right_censored, "/", d.n_candidates,
         d.horizon === nothing ? "" : ", horizon = $(d.horizon)", ")")
 end
+
+"""
+$(TYPEDSIGNATURES)
+
+Two-sample Kolmogorov–Smirnov distance ``\\sup_k |F_a(k) - F_b(k)|`` between
+the cumulative distributions of two waiting-time distributions on the same
+time unit, evaluated exactly on the union of their integer supports; `NaN`
+when either is empty.
+"""
+function ks_distance(a::WaitingTimeDistribution, b::WaitingTimeDistribution)
+    a.time_unit === b.time_unit || throw(ArgumentError(
+        "distributions on different time units (:$(a.time_unit), :$(b.time_unit))",
+    ))
+    (isempty(a.support) || isempty(b.support)) && return NaN
+    i = j = 1
+    Fa = Fb = D = 0.0
+    while i <= length(a.support) || j <= length(b.support)
+        k = min(i <= length(a.support) ? a.support[i] : typemax(Int64),
+            j <= length(b.support) ? b.support[j] : typemax(Int64))
+        if i <= length(a.support) && a.support[i] == k
+            Fa = a.cdf[i]
+            i += 1
+        end
+        if j <= length(b.support) && b.support[j] == k
+            Fb = b.cdf[j]
+            j += 1
+        end
+        D = max(D, abs(Fa - Fb))
+    end
+    return D
+end
