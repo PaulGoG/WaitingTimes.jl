@@ -48,6 +48,7 @@ WaitingTimes.scan_work
 StreamingState
 update!
 pending
+WaitingTimes.compact!
 DistributionAccumulator
 OnlineWaitingTimes
 snapshot

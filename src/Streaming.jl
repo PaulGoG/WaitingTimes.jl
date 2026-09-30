@@ -19,49 +19,110 @@ struct StreamingSearch <: AbstractSearch end
 
 workspace(::StreamingSearch, ::QuantizedSeries) = nothing
 
+"heap length below which a state with a horizon is never compacted"
+const MIN_COMPACTION = 1024
+
 """
     StreamingState{Tv,Tt}
 
 Mutable state of an online evaluation at one threshold. Feed samples with
 [`update!`](@ref); pending indices are those not yet resolved.
 
+Without options the pending set grows as ``E[\\min(\\tau, t)]`` after ``t``
+samples: logarithmically for independent values, as ``\\sqrt{t}`` for a random
+walk, and linearly when a fraction of the indices never resolves (a downward
+drift, or bounded values at a threshold near their range). Two options bound
+it. `upper_bound` declares the largest attainable value on the grid: an index
+whose target exceeds it cannot resolve and is counted as censored on arrival
+instead of being stored, which leaves every result unchanged as long as the
+data respect the bound. `horizon` is the longest wait, in time units, kept
+pending: an index older than the horizon is evicted and counted as censored,
+so resolved waits satisfy ``\\tau \\le H`` and memory stays below twice the
+number of samples within one horizon.
+
 $(TYPEDFIELDS)
 """
 mutable struct StreamingState{Tv <: Integer, Tt <: Integer}
     "threshold on the grid"
     const delta::Threshold{Tv}
+    "largest attainable value on the grid, `nothing` when undeclared"
+    const upper_bound::Union{Nothing, Tv}
+    "longest wait kept pending, in time units; `nothing` for none"
+    const horizon::Union{Nothing, Tt}
     "pending indices as `(target, index, time)`"
-    const pending::BinaryMinHeap{Tuple{Tv, Int, Tt}}
+    pending::BinaryMinHeap{Tuple{Tv, Int, Tt}}
     "samples seen so far"
     n_seen::Int
     "time of the last sample"
     last_time::Tt
     "indices resolved so far"
     n_resolved::Int
+    "indices whose target exceeds `upper_bound`, censored on arrival"
+    n_unreachable::Int
+    "indices evicted at the horizon without a passage"
+    n_evicted::Int
+    "heap length at which expired entries are next removed"
+    compact_at::Int
 end
 
 """
 $(TYPEDSIGNATURES)
 
-Fresh state for threshold `δ` with value type `Tv` and time type `Tt`.
+Fresh state for threshold `δ` with value type `Tv` and time type `Tt`;
+`upper_bound` is on the integer grid, `horizon` in time units.
 """
-function StreamingState{Tv, Tt}(δ::Threshold) where {Tv <: Integer, Tt <: Integer}
-    return StreamingState{Tv, Tt}(Threshold{Tv}(δ.d, δ.digits),
-        BinaryMinHeap{Tuple{Tv, Int, Tt}}(), 0, zero(Tt), 0)
+function StreamingState{Tv, Tt}(
+        δ::Threshold; upper_bound::Union{Nothing, Integer} = nothing,
+        horizon::Union{Nothing, Integer} = nothing) where {Tv <: Integer, Tt <: Integer}
+    horizon === nothing || horizon >= 1 ||
+        throw(ArgumentError("horizon must be at least 1, got $horizon"))
+    ub = upper_bound === nothing ? nothing : Tv(upper_bound)
+    H = horizon === nothing ? nothing : Tt(horizon)
+    return StreamingState{Tv, Tt}(Threshold{Tv}(δ.d, δ.digits), ub, H,
+        BinaryMinHeap{Tuple{Tv, Int, Tt}}(), 0, zero(Tt), 0, 0, 0, MIN_COMPACTION)
 end
-function StreamingState(s::QuantizedSeries{Tv, Tt}, δ::Threshold) where {Tv, Tt}
-    StreamingState{Tv, Tt}(δ)
+function StreamingState(s::QuantizedSeries{Tv, Tt}, δ::Threshold; kwargs...) where {Tv, Tt}
+    StreamingState{Tv, Tt}(δ; kwargs...)
 end
 
-"number of indices without an observed passage so far"
-pending(state::StreamingState) = length(state.pending)
+"""
+$(TYPEDSIGNATURES)
+
+Number of indices awaiting a passage (within the horizon, when one is set).
+"""
+function pending(state::StreamingState)
+    state.horizon === nothing || compact!(state)
+    return length(state.pending)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Remove the pending indices older than the horizon at the time of the last
+sample and count them as evicted. Called by [`update!`](@ref) whenever the
+heap has doubled since the previous call, so the cost is amortised
+``O(\\log h)`` per sample.
+"""
+function compact!(state::StreamingState{Tv, Tt}) where {Tv, Tt}
+    H = state.horizon
+    H === nothing && return state
+    entries = extract_all!(state.pending)
+    n_before = length(entries)
+    t = state.last_time
+    filter!(e -> t - e[3] <= H, entries)
+    state.n_evicted += n_before - length(entries)
+    state.pending = BinaryMinHeap{Tuple{Tv, Int, Tt}}(entries)
+    state.compact_at = max(2 * length(entries), MIN_COMPACTION)
+    return state
+end
 
 """
 $(TYPEDSIGNATURES)
 
 Feed the sample `(t, q)` to the state; `f(n, τ)` is called for every index
 `n` resolved by this sample with its waiting time `τ`. Times must strictly
-increase between calls. Returns the number of indices resolved.
+increase between calls, and `q` must not exceed a declared upper bound.
+Returns the number of indices resolved.
 """
 function update!(f, state::StreamingState{Tv, Tt}, t::Tt, q::Tv) where {Tv, Tt}
     state.n_seen > 0 && t <= state.last_time &&
@@ -72,17 +133,29 @@ function update!(f, state::StreamingState{Tv, Tt}, t::Tt, q::Tv) where {Tv, Tt}
     q <= typemax(Tv) - d || throw(OverflowError(
         "value $q plus threshold $(format_threshold(state.delta)) overflows $Tv",
     ))
+    ub, H = state.upper_bound, state.horizon
+    ub === nothing || q <= ub ||
+        throw(ArgumentError("value $q exceeds the declared upper bound $ub"))
     heap = state.pending
     resolved = 0
     while !isempty(heap) && first(heap)[1] <= q
         _, n, t_n = pop!(heap)
-        f(n, t - t_n)
-        resolved += 1
+        if H === nothing || t - t_n <= H
+            f(n, t - t_n)
+            resolved += 1
+        else
+            state.n_evicted += 1
+        end
     end
     state.n_seen += 1
     state.last_time = t
     state.n_resolved += resolved
-    push!(heap, (q + d, state.n_seen, t))
+    if ub === nothing || q + d <= ub
+        push!(heap, (q + d, state.n_seen, t))
+    else
+        state.n_unreachable += 1
+    end
+    H === nothing || length(heap) < state.compact_at || compact!(state)
     return resolved
 end
 
@@ -139,7 +212,8 @@ $(TYPEDSIGNATURES)
 
 Distribution of the waiting times accumulated so far, with the accounting of
 the streaming state: candidates are the samples seen but the last, resolved
-indices count as exact (gaps are not known to a stream), the rest are pending.
+indices count as exact (gaps are not known to a stream), the rest (pending,
+evicted at the horizon, above the upper bound) are right-censored.
 """
 function empirical_distribution(
         acc::DistributionAccumulator{Tt}, state::StreamingState{Tv, Tt};
@@ -153,7 +227,8 @@ function empirical_distribution(
     n_pending = n_candidates - state.n_resolved
     return WaitingTimeDistribution{Tt}(
         Threshold{Int64}(state.delta.d, state.delta.digits), time_unit, :elapsed, support,
-        counts, pmf, cdf, n_candidates, state.n_resolved, 0, n_pending)
+        counts, pmf, cdf, n_candidates, state.n_resolved, 0, n_pending,
+        state.horizon === nothing ? nothing : Int64(state.horizon))
 end
 
 function waiting_times!(τ::AbstractVector{Tt}, s::QuantizedSeries{Tv, Tt}, δ::Threshold,

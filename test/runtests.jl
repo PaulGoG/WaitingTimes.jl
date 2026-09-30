@@ -461,6 +461,83 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         @test_throws ArgumentError OnlineWaitingTimes([0.25], 1)
     end
 
+    @testset "Bounded streaming memory" begin
+        rng = StableRNG(53)
+        # downward drift: a fixed fraction of the indices never resolves
+        x = random_walk(rng, 20_000; drift = -0.5)
+        s = QuantizedSeries(x, 2)
+        q, t = s.values, s.times
+        δ = threshold(0.5, s)
+        τ = waiting_times(s, δ, NaiveSearch())
+        H = 200
+        free = StreamingState(s, δ)
+        bounded = StreamingState(s, δ; horizon = H)
+        acc = DistributionAccumulator{Int64}()
+        partial = zeros(Int64, length(s))
+        peak = 0
+        for m in eachindex(q)
+            update!(free, t[m], q[m])
+            update!(bounded, t[m], q[m]) do n, τ_n
+                partial[n] = τ_n
+                push!(acc, τ_n)
+            end
+            peak = max(peak, length(bounded.pending))
+        end
+        @test partial == [τ_n <= H ? τ_n : 0 for τ_n in τ]
+        @test pending(free) == count(==(0), τ) > 20 * H
+        @test peak <= max(2 * (H + 1), WT.MIN_COMPACTION)
+        @test pending(bounded) <= H + 1
+        @test bounded.n_resolved + bounded.n_evicted + pending(bounded) == length(s)
+        d_batch = empirical_distribution(τ, δ, s; horizon = H)
+        @test empirical_distribution(acc, bounded) == d_batch
+        @test d_batch.horizon == H && maximum(WT.support(d_batch)) <= H
+        @test d_batch != empirical_distribution(τ, δ, s)
+        @test occursin("horizon = 200", sprint(show, d_batch))
+        @test_throws ArgumentError StreamingState(s, δ; horizon = 0)
+        @test_throws ArgumentError empirical_distribution(τ, δ, s; horizon = 0)
+        # bounded values: targets above the declared maximum never resolve
+        u = iid_series(rng, 5_000; distribution = :uniform)
+        su = QuantizedSeries(u, 2)
+        δu = threshold(0.3, su)
+        τu = waiting_times(su, δu, NaiveSearch())
+        capped = StreamingState(su, δu; upper_bound = 100)
+        acc_u = DistributionAccumulator{Int64}()
+        for m in eachindex(su.values)
+            update!(acc_u, capped, su.times[m], su.values[m])
+        end
+        @test empirical_distribution(acc_u, capped) == empirical_distribution(τu, δu, su)
+        @test capped.n_unreachable == count(>(100 - δu.d), su.values) > 0
+        @test pending(capped) + capped.n_unreachable == count(==(0), τu)
+        @test_throws ArgumentError update!(capped, su.times[end] + 1, eltype(su.values)(101))
+        # the estimator with both options equals the batch evaluation
+        est = OnlineWaitingTimes([0.3, 0.6], 2; upper_bound = 1.0, horizon = 50)
+        foreach(v -> push!(est, v), u)
+        for (δr, d) in zip([0.3, 0.6], snapshot(est))
+            thr = threshold(δr, su)
+            @test d == empirical_distribution(waiting_times(su, thr), thr, su; horizon = 50)
+        end
+        @test all(r.resolved + r.evicted + r.unreachable + r.pending == length(u)
+        for r in status(est))
+        # a value above the bound is skipped as a missing observation
+        spiky = copy(u)
+        spiky[[100, 2_000]] .= 1.5
+        skip = OnlineWaitingTimes([0.3], 2; upper_bound = 1.0, bound_policy = :skip)
+        foreach(v -> push!(skip, v), spiky)
+        @test skip.n_above_bound == 2 && skip.n_seen == length(u) - 2
+        @test occursin("2 above bound", sprint(show, skip))
+        holed = Union{Missing, Float64}[i in (100, 2_000) ? missing : v
+                                        for (i, v) in enumerate(u)]
+        sm = QuantizedSeries(holed, 2)
+        thr = threshold(0.3, sm)
+        d_skip = only(snapshot(skip))
+        d_holed = empirical_distribution(waiting_times(sm, thr), thr, sm)
+        @test WT.support(d_skip) == WT.support(d_holed) &&
+              WT.counts(d_skip) == WT.counts(d_holed) &&
+              d_skip.n_right_censored == d_holed.n_right_censored
+        @test_throws ArgumentError push!(OnlineWaitingTimes([0.3], 2; upper_bound = 1.0), 1.5)
+        @test_throws ArgumentError OnlineWaitingTimes([0.3], 2; bound_policy = :clip)
+    end
+
     @testset "Device search selection" begin
         @test device_search(:none) isa DeviceSearch{<:WaitingTimes.Backends.CPU}
         @test device_search(:auto) isa DeviceSearch{<:WaitingTimes.Backends.CPU}
