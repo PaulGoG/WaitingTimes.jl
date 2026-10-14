@@ -678,12 +678,17 @@ function Base.show(io::IO, ::MIME"text/plain", c::Collection)
     end
     print(io, "  sessions    ", length(get(c.metadata, "sessions", Any[])))
 end
-"schema and run identifier of a source descriptor, as far as it states them"
+"producer, version and run or session of a source descriptor, as far as it states them"
 function source_label(descriptor::AbstractDict)
-    schema = string(get(descriptor, "schema", ""))
+    summary = Provenance.source_summary(descriptor)
+    label = isempty(summary["producer"]) ?
+            (isempty(summary["schema"]) ? "descriptor without schema" : summary["schema"]) :
+            strip(summary["producer"] * " " * summary["producer_version"])
     run = string(get(descriptor, "run_id", ""))
-    label = isempty(schema) ? "descriptor without schema" : schema
-    return isempty(run) ? label : label * ", run " * run
+    session = get(descriptor, "session", nothing)
+    isempty(run) && session isa AbstractDict && (run = string(get(session, "id", "")))
+    identity = summary["identity"] ? "" : ", no code identity"
+    return (isempty(run) ? label : label * ", run " * run) * identity
 end
 
 function Base.show(io::IO, c::Collection)
@@ -710,9 +715,19 @@ function write_collection_readme(dir::AbstractString, meta::AbstractDict,
         println(io, "Waiting-time distributions of the series `", series["slug"],
             "` (dataset `", meta["dataset"]["slug"], "`), one per threshold δ, in `",
             meta["identity"]["mode"], "` mode. Computed by WaitingTimes.jl.\n")
+        axis = String(get(series, "time_axis", "elapsed"))
         println(io, "- Series: ", series["n_observations"], " observations, ",
             series["n_gaps"], " recorded gaps, values on a grid of ", series["digits"],
-            " decimals, time in ", unit, "s.")
+            " decimals, time in ", unit, "s",
+            axis == "index" ?
+            " (index axis: the row ordinal of the input; its clock in " *
+            String(get(series, "time_unit_original", "")) * "s is `time_original`)." : ".")
+        kinds = get(series, "gap_kinds", Dict{String, Any}())
+        isempty(kinds) || println(io, "- Gaps by kind: ",
+            join(["$(k) $(kinds[k])" for k in sort!(collect(keys(kinds)))], ", "), ".")
+        haskey(series, "n_segments") && println(io, "- Record: ", series["record_length"],
+            " grid positions (sampling step ", series["sampling_step"], "), ",
+            series["n_segments"], " segments between gaps.")
         isempty(steps) || println(io, "- Preprocessing: ", join(steps, " → "), ".")
         isempty(deltas) ||
             println(io, "- Thresholds: ", length(deltas), " from ", first(deltas), " to ",
@@ -726,18 +741,26 @@ function write_collection_readme(dir::AbstractString, meta::AbstractDict,
         println(io, "|---|---|")
         println(io, "| `distributions/delta=<δ>.", ext,
             "` | one table per threshold: `tau` (waiting time in ", unit,
-            "s), `count`, `pmf` (probability mass), `cdf`, `ccdf` (survival) |")
+            "s), `count`, `pmf` (probability mass), `cdf`, `ccdf` (survival), `count_exact` and `count_gap_crossing` (`count` split by class) |")
+        println(io, "| `censoring/delta=<δ>.", ext,
+            "` | histogram of the lower bounds of the right-censored indices: `lower`, `count` |")
         println(io,
             "| `summary.csv` | one row per threshold: candidates, exact, gap-crossing and right-censored indices, number of waiting times, minimum, maximum, mean and median waiting time, kernel, session |")
         println(io, "| `series.", ext,
-            "`, `gaps.csv`, `series.toml` | the prepared series (grid values and times), its gaps `[start, stop)`, its preparation record |")
+            "`, `series.toml` | the prepared series (`values`, `times`, the input row `row` and the original clock `time_original`) and its description and preparation record |")
+        println(io,
+            "| `gaps.csv`, `segments.csv` | the gaps `[start, stop)` with `kind` and `source`; the runs of observations between them (`start`, `stop`, `length`, `kind_before`, `kind_after`) |")
+        axis == "index" && println(io,
+            "| `gaps_original.csv` | the gaps of the original clock, with kinds |")
         println(io,
             "| `waiting_times/delta=<δ>.", ext,
             "` | optional: every index's waiting time with class and bounds (`store_waiting_times = true`) |")
         println(io,
             "| `index.toml`, `catalog.csv` | machine index of the partitions with checksums |")
         println(io,
-            "| `metadata.toml`, `config.toml`, `sessions/` | provenance: identity, dataset descriptor, per-session records, configuration snapshots, hardware |")
+            "| `metadata.toml`, `config.toml`, `sessions/` | provenance: identity, dataset descriptor, source summary, code identity of WaitingTimes (`[producer]`), environment, per-session records, configuration snapshots, hardware |")
+        println(io, "| `", MANIFEST_FILE,
+            "` | the resolved manifest of the latest session (every session's under `sessions/`) |")
         haskey(meta, "source") && println(io, "| `", SOURCE_FILE,
             "` | the source descriptor of the input, byte for byte as the producer wrote it |")
         println(io, "| `run.log`, `hardware.txt` | log of the runs and platform report |\n")
@@ -749,6 +772,9 @@ function write_collection_readme(dir::AbstractString, meta::AbstractDict,
             "\")            # a WaitingTimeDistribution")
         println(io, "WaitingTimes.support(d), WaitingTimes.probabilities(d), WaitingTimes.survival(d)")
         println(io, "summary_table(c)                    # the per-threshold statistics")
+        println(
+            io, "WaitingTimes.class_counts(c, \"", isempty(deltas) ? "0" : first(deltas),
+            "\")    # exact and gap-crossing waits per support value")
         println(io, "export_legacy(c, \"out\")            # WTS_<slug>_deltais<δ>.dat files: time pdf cdf")
         println(io, "```\n")
         println(io,

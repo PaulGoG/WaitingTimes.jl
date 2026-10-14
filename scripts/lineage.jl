@@ -1,6 +1,6 @@
 # Print the lineage of a collection directory or of a file inside one:
 # collection, series (with its preparation steps), dataset and source
-# descriptor, plus sessions.
+# descriptor, the code identity and environment of WaitingTimes, plus sessions.
 #
 #   julia scripts/lineage.jl PATH
 include(joinpath(dirname(@__DIR__), "activate.jl"))
@@ -37,6 +37,17 @@ if haskey(meta, "source")
     for (k, v) in source["descriptor"]
         v isa AbstractDict || println("    ", k, ": ", v)
     end
+end
+if haskey(meta, "producer")
+    producer = meta["producer"]
+    println("producer   ", producer["name"], " ", producer["version"], "  tree ",
+        producer["git_tree_sha1"], producer["git_dirty"] ? " (dirty)" : "", "  commit ",
+        isempty(producer["git_commit"]) ? "-" : producer["git_commit"], "  from the ",
+        producer["identity_source"])
+end
+if haskey(meta, "environment")
+    println("environment manifest ", meta["environment"]["manifest_file"], "  sha256 ",
+        meta["environment"]["manifest_sha256"])
 end
 println("sessions   ", length(meta["sessions"]))
 for s in meta["sessions"]
