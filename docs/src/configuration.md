@@ -163,7 +163,7 @@ descriptor is copied into the collection's metadata.
 A dataset descriptor describes a raw file; a source descriptor identifies
 where the data of a run came from when they were produced by another
 program, so that every distribution of the collection traces to that
-producer's run, version, commit and configuration.
+producer's run, version, code and configuration.
 `[input].source_descriptor` names any TOML file, by a path relative to the
 configuration or absolute; it must exist and parse. The file is recorded,
 not interpreted: it is copied byte for byte to `source.toml` in the
@@ -177,7 +177,9 @@ The first producer to write one is DeepSpaceTelemetry.jl (2.5 and later):
 `deepspacetelemetry-run/1`, with the run identifier, the producer's version,
 the identity of its code, the configuration hash, the clock mode, the seed,
 the payload geometry and the size and SHA-256 of every table of the run
-(`examples/telemetry_run.jl`). The code is identified by `git_tree_sha1`
-with `git_dirty = false`, and by `git_commit` when that is not empty; since
-DeepSpaceTelemetry 2.6.1 both are recorded also for a copy installed by Pkg,
-which is how a consumer obtains it.
+(`examples/telemetry_run.jl`). The authoritative key of the producer's code
+is `git_tree_sha1` with `git_dirty = false`; `git_commit` is filled when the
+producer ran from a checkout or was pinned by a full commit hash, and adds
+the history. Both are recorded since DeepSpaceTelemetry 2.6.1, also for a
+copy installed by Pkg; in a descriptor written before, a missing key means
+unknown and `git_commit` of an installed copy is empty.

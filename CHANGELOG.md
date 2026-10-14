@@ -8,7 +8,7 @@ Keep a Changelog and the project adheres to Semantic Versioning.
 ### Added
 
 - `[input].source_descriptor` names a TOML file that identifies where the
-  input came from (a producer's run, version, commit and configuration). The
+  input came from (a producer's run, version, code and configuration). The
   collection keeps it byte for byte as `source.toml`, records its table and
   SHA-256 in the `[source]` section of `metadata.toml`, and includes the
   SHA-256 in the dataset identity; `source_descriptor(c)` returns the table

@@ -56,10 +56,10 @@ A collection generated with `[input].source_descriptor` names its source:
 `source_descriptor(c)` returns the descriptor's table (for a
 DeepSpaceTelemetry.jl run `run_id`, `package_version`, `git_tree_sha1`,
 `git_dirty`, `git_commit`, `config_sha256`, `rng_seed`, the checksums of the
-run's tables; the producer's code is `git_tree_sha1` with `git_dirty =
-false`), and
-`source.toml` in the collection directory is the file as the producer wrote
-it.
+run's tables; the producer's code is keyed by `git_tree_sha1` with
+`git_dirty = false`, and `git_commit` is filled when the producer was pinned
+by a full commit hash), and `source.toml` in the collection directory is the
+file as the producer wrote it. A key the descriptor lacks is unknown.
 
 Two lower-level readers remain for tabular work:
 

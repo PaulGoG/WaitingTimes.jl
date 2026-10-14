@@ -345,15 +345,17 @@ $(TYPEDSIGNATURES)
 The source descriptor of the collection's input, as configured by
 `[input].source_descriptor`: the producer's identity of the data (for a
 DeepSpaceTelemetry.jl run its `descriptor.toml`: run identifier, producer
-version and commit, configuration hash, seed, product checksums), or
+version and code identity, configuration hash, seed, product checksums), or
 `nothing` when the collection was generated without one. The file itself is
 copied verbatim to `source.toml` in the collection directory, and its SHA-256
-is recorded beside the table in `metadata.toml`.
+is recorded beside the table in `metadata.toml`. Keys are the producer's;
+a key a descriptor lacks is unknown.
 
 ```julia
 c = load_collection(dir)
 source = source_descriptor(c)
-source === nothing || println(source["run_id"], " ", source["git_commit"])
+# a DeepSpaceTelemetry.jl run: the producer's code is git_tree_sha1 with git_dirty = false
+source === nothing || println(source["run_id"], " ", get(source, "git_tree_sha1", "unknown"))
 ```
 """
 function source_descriptor(c::Collection)
