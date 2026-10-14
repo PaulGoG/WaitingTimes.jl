@@ -24,7 +24,7 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   settled `holes.csv` feed), and the collection carries the run's
   `descriptor.toml` as its source, whose producer identity (source tree hash,
   commit, dirty flag) it reports. The examples environment pins
-  DeepSpaceTelemetry.jl 2.6.1 and MarketTickStreamer.jl 0.3.0, both on
+  DeepSpaceTelemetry.jl 2.6.2 and MarketTickStreamer.jl 0.3.0, both on
   CSV.jl 1.1, and reads JSON with JSON.jl.
 
 ### Fixed
