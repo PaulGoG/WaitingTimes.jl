@@ -14,9 +14,10 @@ using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
 using Statistics: mean, median, quantile, std
 using UnicodePlots: UnicodePlots
 using ..WaitingTimes: MAX_DIGITS, AbstractSearch, PreparationRecord, QuantizedSeries,
-                      SegmentTreeSearch, TIME_UNITS, Threshold, declare_gaps,
+                      SegmentTreeSearch, TIME_UNITS, Threshold, declare_gaps, detect_gaps,
+                      merge_gaps,
                       empirical_distribution, ks_distance, record!, threshold,
-                      waiting_times
+                      waiting_times, with_step
 using ..Provenance: file_sha256, read_toml
 
 export RawSeries, read_series, select_range, exclude_intervals, round_values,
@@ -24,7 +25,7 @@ export RawSeries, read_series, select_range, exclude_intervals, round_values,
        clip_quantile, clip_sigma, clip_extremes, collapse_ties, sampling_summary,
        value_summary,
        resolution_digits, increment_scale, digits_sensitivity, suggest_digits,
-       terminal_overview, quantized_series, apply_steps, read_gap_intervals
+       terminal_overview, quantized_series, apply_steps, read_gap_intervals, index_series
 
 """
     RawSeries
@@ -233,8 +234,8 @@ end
 # --- transformations ---------------------------------------------------------
 
 function with_values(rs::RawSeries, values, op::Symbol, parameters, summary)
-    record!(rs.record, op, Dict{String, Any}(parameters), Dict{String, Any}(summary))
-    return RawSeries(values, rs.times, rs.time_unit, rs.epoch, rs.record)
+    record = with_step(rs.record, op, Dict{String, Any}(parameters), Dict{String, Any}(summary))
+    return RawSeries(values, rs.times, rs.time_unit, rs.epoch, record)
 end
 
 """
@@ -274,9 +275,10 @@ function collapse_ties(rs::RawSeries, policy::Symbol)
         push!(new_times, times[i])
         i = j + 1
     end
-    record!(rs.record, :collapse_ties, Dict{String, Any}("policy" => String(policy)),
+    record = with_step(
+        rs.record, :collapse_ties, Dict{String, Any}("policy" => String(policy)),
         Dict{String, Any}("n_ties" => n_ties, "n_rows" => length(new_values)))
-    return RawSeries(new_values, new_times, rs.time_unit, rs.epoch, rs.record)
+    return RawSeries(new_values, new_times, rs.time_unit, rs.epoch, record)
 end
 
 """
@@ -290,9 +292,10 @@ function select_range(rs::RawSeries; from::Real = -Inf, to::Real = Inf)
     any(keep) || throw(ArgumentError("select_range [$from, $to] keeps no row"))
     values = rs.values[keep]
     times = rs.times === nothing ? nothing : rs.times[keep]
-    record!(rs.record, :select_range, Dict{String, Any}("from" => from, "to" => to),
+    record = with_step(
+        rs.record, :select_range, Dict{String, Any}("from" => from, "to" => to),
         Dict{String, Any}("n_rows" => length(values)))
-    return RawSeries(values, times, rs.time_unit, rs.epoch, rs.record)
+    return RawSeries(values, times, rs.time_unit, rs.epoch, record)
 end
 
 """
@@ -348,10 +351,10 @@ function exclude_intervals(rs::RawSeries, intervals::AbstractVector; splice::Boo
         values[inside] .= missing
         times = rs.times
     end
-    record!(rs.record, :exclude_intervals,
+    record = with_step(rs.record, :exclude_intervals,
         Dict{String, Any}("intervals" => [[a, b] for (a, b) in ivs], "splice" => splice),
         Dict{String, Any}("n_removed" => removed, "n_rows" => length(values)))
-    return RawSeries(values, times, rs.time_unit, rs.epoch, rs.record)
+    return RawSeries(values, times, rs.time_unit, rs.epoch, record)
 end
 
 "observed positions and values"
@@ -392,9 +395,11 @@ set to zero. `denominator` selects the normalisation:
 - `:none`, the deviation in data units.
 
 `offset` shifts the series before the computation and applies to `:mean`
-only: `:auto` shifts so that the smallest value equals 1 (the rule of the
-original analysis, which avoids a division by zero when the trailing mean
-crosses zero), a number is added as given, `:none` shifts nothing.
+only: `:auto` adds ``1 - \\min_k x_k`` when the smallest value is below 1, so
+that it becomes 1, and leaves a series whose smallest value is at least 1
+unshifted (the rule of the original analysis, which avoids a division by zero
+when the trailing mean crosses zero); a number is added as given; `:none`
+shifts nothing.
 `on_nonpositive` decides what happens at a non-positive trailing mean under
 `:mean`: `:error` aborts naming the observation, `:missing` records the
 observation as missing (a recorded gap) and continues, for live pipelines.
@@ -565,8 +570,8 @@ function remove_rows(rs::RawSeries, remove::AbstractVector{Bool}, op::Symbol, pa
         end
         times = shifted[keep]
     end
-    record!(rs.record, op, parameters, summary)
-    return RawSeries(values, times, rs.time_unit, rs.epoch, rs.record)
+    record = with_step(rs.record, op, parameters, summary)
+    return RawSeries(values, times, rs.time_unit, rs.epoch, record)
 end
 
 """
@@ -734,12 +739,34 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Gap intervals `[start, stop)` from a TOML file with `intervals = [[a, b], ...]`.
+Declared gap intervals `[start, stop)` from a TOML file, as named tuples
+`(start, stop, kind, source)` in the time unit of the series. The file holds
+`intervals = [[a, b], ...]`, whose kind and source are the top-level `kind`
+(default `"declared"`) and `source` (default the file's base name), and/or
+`[[gaps]]` tables with `start`, `stop` and optionally their own `kind` and
+`source`. Kinds are those of `GAP_KINDS` other than `"detected"`.
 """
 function read_gap_intervals(path::AbstractString)
     table = read_toml(path)
-    haskey(table, "intervals") || throw(ArgumentError("$path has no intervals key"))
-    return [(Int64(iv[1]), Int64(iv[2])) for iv in table["intervals"]]
+    haskey(table, "intervals") || haskey(table, "gaps") ||
+        throw(ArgumentError("$path has neither intervals nor [[gaps]] tables"))
+    kind = String(get(table, "kind", "declared"))
+    source = String(get(table, "source", basename(path)))
+    entries = NamedTuple{
+        (:start, :stop, :kind, :source), Tuple{Int64, Int64, String, String}}[]
+    for iv in get(table, "intervals", Any[])
+        length(iv) == 2 || throw(ArgumentError("$path: an interval must be [start, stop]"))
+        push!(entries, (
+            start = Int64(iv[1]), stop = Int64(iv[2]), kind = kind, source = source))
+    end
+    for g in get(table, "gaps", Any[])
+        (haskey(g, "start") && haskey(g, "stop")) ||
+            throw(ArgumentError("$path: every [[gaps]] table needs start and stop"))
+        push!(entries,
+            (start = Int64(g["start"]), stop = Int64(g["stop"]),
+                kind = String(get(g, "kind", kind)), source = String(get(g, "source", source))))
+    end
+    return entries
 end
 
 """
@@ -747,7 +774,9 @@ $(TYPEDSIGNATURES)
 
 Quantise a prepared series: values to the `digits` grid, missing rows kept as
 elapsed time, gaps detected by `detect` (`:none`, `:cadence` with `cadence`,
-`:threshold` with `threshold`) and merged with `declared` intervals.
+`:threshold` with `threshold`) and merged with `declared` intervals (pairs, or
+named tuples with `kind` and `source` as returned by
+[`read_gap_intervals`](@ref)).
 """
 function quantized_series(rs::RawSeries, digits::Integer; detect::Symbol = :cadence,
         cadence::Integer = 1, threshold::Integer = 0,
@@ -762,6 +791,59 @@ function quantized_series(rs::RawSeries, digits::Integer; detect::Symbol = :cade
         time_unit = rs.time_unit, epoch = rs.epoch, record = rs.record, narrow = narrow)
     isempty(declared) && return s
     return declare_gaps(s, declared)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+The series `s`, quantised from `rs` on the clock of `rs`, placed on the index
+axis: every observation at the ordinal of its row in `rs`, counted from the
+first observed row (time 1, time unit `:sample`). Rows of `rs` whose value is
+missing keep their ordinal; with `detect = true` their runs become detected
+gaps. Gaps of `s` other than detected ones are carried over with their kinds
+and sources, mapped to the ordinals of the rows they cover; a gap that covers
+no row of `rs` (a closure, a stretch of the clock without rows) closes. The
+record gains an `index_axis` step with the numbers of carried and closed
+gaps.
+"""
+function index_series(rs::RawSeries, s::QuantizedSeries; detect::Bool = true)
+    observed_rows = findall(!ismissing, rs.values)
+    length(observed_rows) == length(s) || throw(DimensionMismatch(
+        "the raw series has $(length(observed_rows)) observed rows, the series $(length(s)) observations",
+    ))
+    first_row = observed_rows[1]
+    row_times = rs.times === nothing ? collect(Int64, 1:length(rs)) .- (first_row - 1) :
+                rs.times
+    t = Vector{Int64}(observed_rows .- (first_row - 1))
+    source = basename(rs.record.source)
+    entries = NamedTuple{
+        (:start, :stop, :kind, :source), Tuple{Int64, Int64, String, String}}[]
+    if detect
+        for (a, b) in detect_gaps(t, 1)
+            push!(entries, (start = a, stop = b, kind = "detected", source = source))
+        end
+    end
+    n_closed = 0
+    for ((a, b), kind, src) in zip(s.gaps, s.gap_kinds, s.gap_sources)
+        kind == "detected" && continue
+        lo = searchsortedfirst(row_times, a)
+        hi = searchsortedfirst(row_times, b) - 1
+        if hi < lo
+            n_closed += 1
+            continue
+        end
+        push!(entries,
+            (start = Int64(lo - first_row + 1), stop = Int64(hi - first_row + 2),
+                kind = kind, source = src))
+    end
+    merged = merge_gaps(entries)
+    record = with_step(s.record, :index_axis, Dict{String, Any}("detect" => detect),
+        Dict{String, Any}("n_gaps" => length(merged), "n_closed" => n_closed,
+            "n_rows" => length(rs)))
+    return QuantizedSeries(
+        s.values, t, s.digits; gaps = [(e.start, e.stop) for e in merged],
+        gap_kinds = [e.kind for e in merged], gap_sources = [e.source for e in merged],
+        time_unit = :sample, epoch = nothing, record = record)
 end
 
 # --- diagnostics -------------------------------------------------------------

@@ -60,11 +60,26 @@ estimator with the same horizon.
 function empirical_distribution(
         τ::AbstractVector{Tt}, δ::Threshold, s::QuantizedSeries{Tv, Tt};
         mode::Symbol = :elapsed, horizon::Union{Nothing, Integer} = nothing) where {Tv, Tt}
+    class, _, _ = classify(τ, s)
+    return empirical_distribution(τ, δ, s, class; mode, horizon)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Empirical distribution from waiting times whose classes ([`classify`](@ref))
+are already known; `class` is modified when a `horizon` reclassifies waits.
+"""
+function empirical_distribution(
+        τ::AbstractVector{Tt}, δ::Threshold, s::QuantizedSeries{Tv, Tt},
+        class::AbstractVector{UInt8}; mode::Symbol = :elapsed,
+        horizon::Union{Nothing, Integer} = nothing) where {Tv, Tt}
     mode in (:elapsed, :exact) ||
         throw(ArgumentError("mode must be :elapsed or :exact, got :$mode"))
     horizon === nothing || horizon >= 1 ||
         throw(ArgumentError("horizon must be at least 1, got $horizon"))
-    class, _, _ = classify(τ, s)
+    length(class) == length(τ) ||
+        throw(DimensionMismatch("$(length(class)) classes for $(length(τ)) waiting times"))
     if horizon !== nothing
         @inbounds for n in 1:(length(τ) - 1)
             class[n] != CLASS_RIGHT_CENSORED && τ[n] > horizon &&
@@ -102,6 +117,42 @@ function run_lengths(sorted::AbstractVector{Tt}) where {Tt}
         end
     end
     return support, counts
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Counts of exact and of gap-crossing waits at every support value of `d`,
+which was computed from `τ` with the classes `class`: in `:elapsed` mode they
+add up to `counts(d)`; in `:exact` mode the gap-crossing column is zero, the
+distribution holding exact waits only.
+"""
+function class_columns(τ::AbstractVector, class::AbstractVector{UInt8},
+        d::WaitingTimeDistribution)
+    exact = zeros(Int, length(d.support))
+    gap_crossing = zeros(Int, length(d.support))
+    @inbounds for n in 1:(length(τ) - 1)
+        c = class[n]
+        c == CLASS_RIGHT_CENSORED && continue
+        c == CLASS_GAP_CROSSING && d.mode === :exact && continue
+        d.horizon !== nothing && τ[n] > d.horizon && continue
+        i = searchsortedfirst(d.support, τ[n])
+        c == CLASS_EXACT ? (exact[i] += 1) : (gap_crossing[i] += 1)
+    end
+    return exact, gap_crossing
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Histogram of the lower bounds of the right-censored candidate indices
+(`1:N-1`): the distinct bounds in increasing order and their counts. With the
+bounds from [`classify`](@ref) it carries the information a censored-data
+estimator needs beyond the distribution itself.
+"""
+function censoring_counts(class::AbstractVector{UInt8}, lower::AbstractVector{Tt}) where {Tt}
+    bounds = Tt[lower[n] for n in 1:(length(class) - 1) if class[n] == CLASS_RIGHT_CENSORED]
+    return run_lengths(sort!(bounds))
 end
 
 "sorted distinct waiting times"

@@ -1,6 +1,6 @@
 module WaitingTimesCairoMakieExt
 
-using CairoMakie: CairoMakie, Axis, Figure, Legend, LineElement, PolyElement, Theme,
+using CairoMakie: CairoMakie, Axis, Figure, Legend, LineElement, PolyElement, Theme, hist!,
                   linkxaxes!, lines!, save, scatter!, stairs!, text!, vspan!, with_theme
 using CairoMakie.Makie.MathTeXEngine: texfont
 using WaitingTimes: WaitingTimes, QuantizedSeries, WaitingTimeDistribution, duration,
@@ -103,6 +103,45 @@ function WaitingTimes.plot_series(s::QuantizedSeries; quantity_label::AbstractSt
         fig
     end
     return fig
+end
+
+"""
+    WaitingTimes.plot_values(s::QuantizedSeries; quantity_label = "", unit_label = "",
+                             bins = :auto, size = (900, 600))
+
+Histogram of the values of `s` in data units. With `bins = :auto` the bin
+width is the Freedman–Diaconis width rounded up to a whole number of grid
+steps ``10^{-\\mathrm{digits}}``, so that every grid value falls inside one
+bin, with at most 200 bins; an integer gives that many bins. The number of
+observations and the median are stated in the axis.
+"""
+function WaitingTimes.plot_values(s::QuantizedSeries; quantity_label::AbstractString = "",
+        unit_label::AbstractString = "", bins = :auto, size = (900, 600))
+    scale = 10.0^s.digits
+    q = sort(s.values)
+    N = length(q)
+    lo, hi = Int64(first(q)), Int64(last(q))
+    edges = if bins === :auto
+        iqr = q[clamp(round(Int, 0.75 * N), 1, N)] - q[clamp(round(Int, 0.25 * N), 1, N)]
+        width = max(1, ceil(Int64, 2 * iqr / cbrt(N)), cld(hi - lo + 1, 200))
+        (lo - 0.5):width:(hi + width - 0.5)
+    else
+        bins isa Integer && bins >= 1 ||
+            throw(ArgumentError("bins must be :auto or a positive integer, got $bins"))
+        range(lo - 0.5, hi + 0.5; length = bins + 1)
+    end
+    label = isempty(quantity_label) ? "Value" : uppercasefirst(quantity_label)
+    xlabel = isempty(unit_label) ? label : label * " [" * unit_label * "]"
+    median_value = q[cld(N, 2)] / scale
+    return with_theme(WaitingTimes.figure_theme()) do
+        fig = Figure(; size = size)
+        ax = Axis(fig[1, 1]; xlabel = xlabel, ylabel = "Count", ytickformat = integer_ticks)
+        hist!(ax, Float64.(q) ./ scale; bins = collect(edges) ./ scale,
+            color = (:steelblue, 0.35), strokecolor = :steelblue4, strokewidth = 2.5)
+        text!(ax, 0.97, 0.95; space = :relative, align = (:right, :top), fontsize = 21,
+            text = "N = $(N), median $(median_value)")
+        fig
+    end
 end
 
 """

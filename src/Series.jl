@@ -29,7 +29,9 @@ end
     PreparationRecord
 
 Ordered provenance of a series: the source it came from and every step applied
-to it. Steps are appended in place; the record travels with the series.
+to it. Transformations return a new record with one more step
+([`with_step`](@ref)) and leave their argument unchanged; the record travels
+with the series.
 
 $(TYPEDFIELDS)
 """
@@ -46,11 +48,41 @@ function PreparationRecord(source::AbstractString = ""; sha256::AbstractString =
     PreparationRecord(String(source), String(sha256), PreparationStep[])
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Append a step to `record` in place and return it. Transformations use the
+non-mutating [`with_step`](@ref).
+"""
 function record!(record::PreparationRecord, op::Symbol, parameters::Dict{String, Any},
         summary::Dict{String, Any})
     push!(record.steps, PreparationStep(op, parameters, summary))
     return record
 end
+
+"""
+$(TYPEDSIGNATURES)
+
+Copy of `record` with the step `op` appended; `record` is unchanged.
+"""
+function with_step(record::PreparationRecord, op::Symbol, parameters::AbstractDict,
+        summary::AbstractDict)
+    step = PreparationStep(op, Dict{String, Any}(parameters), Dict{String, Any}(summary))
+    return PreparationRecord(record.source, record.source_sha256, [record.steps; step])
+end
+
+"""
+Kinds of a gap, by where it comes from: `"detected"` from the spacing of the
+time stamps (cadence or threshold rule), `"declared"` from a declaration
+without a producer (`declare_gaps`, `[gaps].declared`), `"hole"` from the
+declared-hole feed of a DeepSpaceTelemetry.jl run (`holes.csv`), `"gap"` from
+its gap table (`masks/gaps.csv`), and `"session"` from a session calendar or
+an exchange closure (MarketTickStreamer.jl). Overlapping declarations of
+different kinds give a gap whose kind joins them with `+`, in the order of
+this tuple reversed; `"unknown"` marks gaps read from collections written
+before the kinds were recorded.
+"""
+const GAP_KINDS = ("detected", "declared", "hole", "gap", "session")
 
 """
     QuantizedSeries{Tv<:Integer,Tt<:Integer}
@@ -59,7 +91,8 @@ Scalar series on the decimal integer grid with an explicit time axis and an
 explicit list of data gaps. Gaps are intervals `[start, stop)` of the time
 axis that contain no observation; they are diagnostics for the analyst and
 never alter a waiting time (elapsed-time semantics, as in the original
-analysis).
+analysis). Every gap carries its kind (one of [`GAP_KINDS`](@ref), or several
+joined by `+`) and the source it was declared from.
 
 $(TYPEDFIELDS)
 """
@@ -70,6 +103,10 @@ struct QuantizedSeries{Tv <: Integer, Tt <: Integer}
     times::Vector{Tt}
     "sorted, disjoint gap intervals `[start, stop)` inside the record"
     gaps::Vector{Tuple{Tt, Tt}}
+    "kind of each gap (see [`GAP_KINDS`](@ref))"
+    gap_kinds::Vector{String}
+    "source each gap was detected in or declared from (a file name), or empty"
+    gap_sources::Vector{String}
     "decimal digits of the grid"
     digits::Int
     "time unit, one of `TIME_UNITS`"
@@ -80,7 +117,8 @@ struct QuantizedSeries{Tv <: Integer, Tt <: Integer}
     record::PreparationRecord
 
     function QuantizedSeries{Tv, Tt}(values::Vector{Tv}, times::Vector{Tt},
-            gaps::Vector{Tuple{Tt, Tt}}, digits::Integer, time_unit::Symbol,
+            gaps::Vector{Tuple{Tt, Tt}}, gap_kinds::Vector{String},
+            gap_sources::Vector{String}, digits::Integer, time_unit::Symbol,
             epoch::Union{Nothing, DateTime}, record::PreparationRecord) where {
             Tv <: Integer, Tt <: Integer}
         length(values) == length(times) || throw(DimensionMismatch(
@@ -96,9 +134,22 @@ struct QuantizedSeries{Tv <: Integer, Tt <: Integer}
             ))
         end
         validate_gaps(gaps, times)
-        return new{Tv, Tt}(
-            values, times, gaps, check_digits(digits), time_unit, epoch, record)
+        length(gap_kinds) == length(gaps) == length(gap_sources) || throw(DimensionMismatch(
+            "$(length(gaps)) gaps with $(length(gap_kinds)) kinds and $(length(gap_sources)) sources",
+        ))
+        foreach(check_gap_kind, gap_kinds)
+        return new{Tv, Tt}(values, times, gaps, gap_kinds, gap_sources,
+            check_digits(digits), time_unit, epoch, record)
     end
+end
+
+"a gap kind is one of `GAP_KINDS`, several of them joined by `+`, or `unknown`"
+function check_gap_kind(kind::AbstractString)
+    kind == "unknown" && return kind
+    all(in(GAP_KINDS), split(kind, '+')) || throw(ArgumentError(
+        "gap kind $(repr(kind)) is not one of $(join(GAP_KINDS, ", ")) (or several joined by +)",
+    ))
+    return kind
 end
 
 function validate_gaps(gaps::AbstractVector{Tuple{Tt, Tt}}, times::AbstractVector{Tt}) where {Tt}
@@ -120,17 +171,21 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Series from grid integers and times. `gaps` default to none; `time_unit`
-defaults to `:sample`.
+Series from grid integers and times. `gaps` default to none; their kinds
+default to `"declared"` and their sources to empty. `time_unit` defaults to
+`:sample`.
 """
 function QuantizedSeries(
         values::AbstractVector{Tv}, times::AbstractVector{Tt}, digits::Integer;
-        gaps::AbstractVector{Tuple{Tt, Tt}} = Tuple{Tt, Tt}[], time_unit::Symbol = :sample,
-        epoch::Union{Nothing, DateTime} = nothing,
+        gaps::AbstractVector{Tuple{Tt, Tt}} = Tuple{Tt, Tt}[],
+        gap_kinds::AbstractVector{<:AbstractString} = fill("declared", length(gaps)),
+        gap_sources::AbstractVector{<:AbstractString} = fill("", length(gaps)),
+        time_unit::Symbol = :sample, epoch::Union{Nothing, DateTime} = nothing,
         record::PreparationRecord = PreparationRecord()) where {
         Tv <: Integer, Tt <: Integer}
     return QuantizedSeries{Tv, Tt}(Vector{Tv}(values), Vector{Tt}(times),
-        Vector{Tuple{Tt, Tt}}(gaps), digits, time_unit, epoch, record)
+        Vector{Tuple{Tt, Tt}}(gaps), Vector{String}(gap_kinds), Vector{String}(gap_sources),
+        digits, time_unit, epoch, record)
 end
 
 """
@@ -141,8 +196,10 @@ removed from the observation set but keep their time position: with the default
 sample-index axis the first observation gets time 1 and every later observation
 keeps its original offset, so missing samples count as elapsed time. Runs of
 missing samples inside the record become gaps (`cadence = 1`); with explicit
-`times` no gaps are detected unless `cadence` is given. Values are quantised
-with [`quantize`](@ref) and narrowed to `Int32` when possible (`narrow`).
+`times` no gaps are detected unless `cadence` is given. Detected gaps have the
+kind `"detected"` and the base name of the record's source as their source.
+Values are quantised with [`quantize`](@ref) and narrowed to `Int32` when
+possible (`narrow`).
 """
 function QuantizedSeries(x::AbstractVector{<:Union{Missing, Real}}, digits::Integer;
         times::Union{Nothing, AbstractVector{<:Integer}} = nothing,
@@ -162,14 +219,16 @@ function QuantizedSeries(x::AbstractVector{<:Union{Missing, Real}}, digits::Inte
     q64 = quantize(collect(skipmissing(x)), digits)
     q = narrow ? narrow_integer(q64) : q64
     gaps = cadence === nothing ? Tuple{Int64, Int64}[] : detect_gaps(t, cadence)
-    record!(record, :quantize,
+    record = with_step(record, :quantize,
         Dict{String, Any}("digits" => Int(digits), "cadence" => cadence, "narrow" =>
             narrow),
         Dict{String, Any}("n_rows" => length(x), "n_observed" => length(observed),
             "n_missing" => length(x) - length(observed), "n_gaps" => length(gaps),
             "value_type" => string(eltype(q))))
-    return QuantizedSeries(q, t, digits; gaps = gaps, time_unit = time_unit, epoch = epoch,
-        record = record)
+    return QuantizedSeries(
+        q, t, digits; gaps = gaps, gap_kinds = fill("detected", length(gaps)),
+        gap_sources = fill(basename(record.source), length(gaps)), time_unit = time_unit,
+        epoch = epoch, record = record)
 end
 
 Base.length(s::QuantizedSeries) = length(s.values)

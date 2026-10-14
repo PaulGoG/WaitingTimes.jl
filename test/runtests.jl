@@ -150,7 +150,8 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         s = declare_gaps(QuantizedSeries(Int32[1, 2, 3], [1, 5, 9], 0), [
             (2, 3), (3, 5), (6, 9)])
         @test s.gaps == [(2, 5), (6, 9)]
-        @test gap_table(s)[1] == (start = 2, stop = 5, length = 3)
+        @test gap_table(s)[1] ==
+              (start = 2, stop = 5, length = 3, kind = "declared", source = "")
     end
 
     @testset "Kernels on hand-computed series" begin
@@ -650,4 +651,5 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
 
     include("pipeline_tests.jl")
     include("identity_tests.jl")
+    include("structure_tests.jl")
 end
