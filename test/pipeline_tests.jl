@@ -593,7 +593,7 @@ end
         @test source["products"]["masks/gaps.csv"]["bytes"] == 13702
         @test c.metadata["source"]["sha256"] ==
               WaitingTimes.Provenance.file_sha256(descriptor)
-        @test occursin("source      deepspacetelemetry-run/1, run RUN_cfg",
+        @test occursin("source      DeepSpaceTelemetry, run RUN_cfg",
             sprint(show, MIME("text/plain"), c))
         @test occursin("`source.toml`", read(joinpath(handle.dir, "README.md"), String))
         @test run_pipeline(cfg).id == handle.id                 # resumes the same collection
