@@ -23,11 +23,13 @@
 # declared gaps of the series and a cross-check of the gaps detected from the
 # sample spacing, which cannot tell the causes apart and cannot see a hole
 # before the first or after the last delivered sample. `descriptor.toml` is
-# the run's identity (run, producer version, source tree hash and commit,
-# configuration hash, seed, product checksums); `[input].source_descriptor`
-# carries it into the collection. The producer's code is identified by
-# `git_tree_sha1` with `git_dirty = false`, and by `git_commit` when present
-# (both recorded for an installed copy since DeepSpaceTelemetry 2.6.1). The delivered payload of the synthetic scenario is a flag
+# the run's identity (run, producer version and code identity, configuration
+# hash, seed, product checksums); `[input].source_descriptor` carries it into
+# the collection. The authoritative key of the producer's code is
+# `git_tree_sha1` with `git_dirty = false`; `git_commit` is filled when the
+# producer was pinned by a full commit hash, as here (DeepSpaceTelemetry
+# 2.6.1 and later; in an older run the keys are missing, which means
+# unknown). The delivered payload of the synthetic scenario is a flag
 # series, so a second series is built by masking a random walk with the same
 # availability, which shows the gap classification on a signal with
 # structure.
@@ -244,5 +246,6 @@ mktempdir() do dir
         "producer code: tree ", isempty(tree) ? "not recorded (run before 2.6.1)" : tree,
         ", commit ", isempty(commit) ? "not recorded" : commit,
         isempty(origin_of_identity) ? "" : " (from the $(origin_of_identity))",
-        source["git_dirty"] ? ", modified after installation or uncommitted changes" : "")
+        get(source, "git_dirty", false) === true ?
+        ", modified after installation or uncommitted changes" : "")
 end
