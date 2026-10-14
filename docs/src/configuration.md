@@ -175,6 +175,9 @@ that the same input from another source run is another collection.
 The first producer to write one is DeepSpaceTelemetry.jl (2.5 and later):
 `descriptor.toml` at the root of a finished run directory, schema
 `deepspacetelemetry-run/1`, with the run identifier, the producer's version,
-commit and dirty flag, the configuration hash, the clock mode, the seed, the
-payload geometry and the size and SHA-256 of every table of the run
-(`examples/telemetry_run.jl`).
+the identity of its code, the configuration hash, the clock mode, the seed,
+the payload geometry and the size and SHA-256 of every table of the run
+(`examples/telemetry_run.jl`). The code is identified by `git_tree_sha1`
+with `git_dirty = false`, and by `git_commit` when that is not empty; since
+DeepSpaceTelemetry 2.6.1 both are recorded also for a copy installed by Pkg,
+which is how a consumer obtains it.

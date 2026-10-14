@@ -17,13 +17,14 @@ Keep a Changelog and the project adheres to Semantic Versioning.
 
 ### Changed
 
-- `examples/telemetry_run.jl` follows DeepSpaceTelemetry.jl 2.6.0: the
+- `examples/telemetry_run.jl` follows DeepSpaceTelemetry.jl 2.6: the
   scenario runs on the tick clock, the series is placed on the payload grid,
   the holes of `masks/gaps.csv` are its declared gaps (counted by cause and
   checked against the gaps found from the sample spacing, and against the
   settled `holes.csv` feed), and the collection carries the run's
-  `descriptor.toml` as its source. The examples environment pins
-  DeepSpaceTelemetry.jl 2.6.0 and MarketTickStreamer.jl 0.3.0, both on
+  `descriptor.toml` as its source, whose producer identity (source tree hash,
+  commit, dirty flag) it reports. The examples environment pins
+  DeepSpaceTelemetry.jl 2.6.1 and MarketTickStreamer.jl 0.3.0, both on
   CSV.jl 1.1, and reads JSON with JSON.jl.
 
 ### Fixed
