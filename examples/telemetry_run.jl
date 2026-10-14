@@ -23,9 +23,11 @@
 # declared gaps of the series and a cross-check of the gaps detected from the
 # sample spacing, which cannot tell the causes apart and cannot see a hole
 # before the first or after the last delivered sample. `descriptor.toml` is
-# the run's identity (run, producer version and commit, configuration hash,
-# seed, product checksums); `[input].source_descriptor` carries it into the
-# collection. The delivered payload of the synthetic scenario is a flag
+# the run's identity (run, producer version, source tree hash and commit,
+# configuration hash, seed, product checksums); `[input].source_descriptor`
+# carries it into the collection. The producer's code is identified by
+# `git_tree_sha1` with `git_dirty = false`, and by `git_commit` when present
+# (both recorded for an installed copy since DeepSpaceTelemetry 2.6.1). The delivered payload of the synthetic scenario is a flag
 # series, so a second series is built by masking a random walk with the same
 # availability, which shows the gap classification on a signal with
 # structure.
@@ -230,8 +232,17 @@ mktempdir() do dir
     read(joinpath(c.dir, "source.toml")) == read(descriptor_path) ||
         error("source.toml of $(c.id) differs from the run's descriptor.toml")
     println("source: run ", source["run_id"], ", DeepSpaceTelemetry ",
-        source["package_version"], ", commit ",
-        isempty(source["git_commit"]) ? "not recorded by the producer" :
-        source["git_commit"],
-        ", configuration ", first(source["config_sha256"], 16), ", seed ", source["rng_seed"])
+        source["package_version"], ", configuration ", first(source["config_sha256"], 16),
+        ", seed ", source["rng_seed"])
+    tree = get(source, "git_tree_sha1", "")
+    commit = get(source, "git_commit", "")
+    origin_of_identity = get(
+        Dict("work_tree" => "git work tree",
+            "manifest" => "manifest entry", "directory" => "directory content"),
+        get(source, "identity_source", ""), "")
+    println(
+        "producer code: tree ", isempty(tree) ? "not recorded (run before 2.6.1)" : tree,
+        ", commit ", isempty(commit) ? "not recorded" : commit,
+        isempty(origin_of_identity) ? "" : " (from the $(origin_of_identity))",
+        source["git_dirty"] ? ", modified after installation or uncommitted changes" : "")
 end
