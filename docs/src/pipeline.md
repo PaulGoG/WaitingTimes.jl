@@ -24,7 +24,8 @@ records the session. The collection directory is
 ```
 data/<collection id>/
 ├── config.toml            effective configuration of the first session
-├── metadata.toml          identity, series and dataset provenance, session list
+├── metadata.toml          identity, series, dataset and source provenance, session list
+├── source.toml            the source descriptor of the input, when configured
 ├── hardware.txt           fingerprint of the latest session
 ├── sessions/<id>.toml     per-session record: kernel, backend, git, timings, reference checks
 ├── sessions/<id>.config.toml   effective configuration of that session

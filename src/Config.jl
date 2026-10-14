@@ -7,6 +7,7 @@ module Config
 using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
 using ..WaitingTimes: TIME_UNITS, QuantizedSeries, threshold, check_digits
 using ..Provenance: effective_config
+using TOML: TOML
 
 export Settings, load_settings, threshold_list, threshold_decimals, KNOWN_KEYS
 
@@ -30,6 +31,8 @@ Base.@kwdef struct Settings
     input_format::Symbol
     "dataset descriptor slug, or empty"
     dataset::String
+    "absolute path of the source descriptor (TOML) of the input, or empty"
+    source_descriptor::String
     "value column, by 1-based index or name"
     value_column::Union{Int, String}
     "time column, by index or name; `nothing` for the sample index"
@@ -128,7 +131,8 @@ end
 const KNOWN_KEYS = Dict(
     "" => ["base_config", "input", "preprocessing", "gaps", "quantization", "thresholds",
         "algorithm", "limits", "output", "run"],
-    "input" => ["path", "format", "dataset", "value_column", "time_column", "time_unit",
+    "input" => ["path", "format", "dataset", "source_descriptor",
+        "value_column", "time_column", "time_unit",
         "time_format", "epoch_unit", "delimiter", "header", "missing_policy", "tie_policy",
         "quantity_label", "unit_label"],
     "preprocessing" => ["steps"],
@@ -305,6 +309,10 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
     isfile(input_path) || throw(ArgumentError("[input] path does not exist: $input_path"))
     input_format = as_symbol(fetch(inp, "input", "format", "csv"), "input", "format",
         (:csv, :dat, :arrow, :tick))
+    source_raw = as_string(
+        fetch(inp, "input", "source_descriptor", ""), "input", "source_descriptor")
+    source_descriptor = isempty(source_raw) ? "" : resolve_path(source_raw, config_dir)
+    isempty(source_descriptor) || validate_source_descriptor(source_descriptor)
     time_column_raw = fetch(inp, "input", "time_column", "")
     time_column = time_column_raw == "" ? nothing :
                   as_column(time_column_raw, "input", "time_column")
@@ -450,6 +458,7 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
     return Settings(;
         config_path, config_dir, input_path, input_format,
         dataset = as_string(fetch(inp, "input", "dataset", ""), "input", "dataset"),
+        source_descriptor,
         value_column = as_column(require(inp, "input", "value_column"), "input", "value_column"),
         time_column, time_unit,
         time_format = as_string(fetch(inp, "input", "time_format", ""), "input", "time_format"),
@@ -472,6 +481,15 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
         max_ram_gb, max_vram_gb, max_reference_work,
         output_root = root, output_format, store_waiting_times, overwrite,
         seed, log_level, raw)
+end
+
+"a source descriptor must exist and parse as a TOML table"
+function validate_source_descriptor(path::AbstractString)
+    isfile(path) ||
+        throw(ArgumentError("[input] source_descriptor does not exist: $path"))
+    TOML.tryparsefile(path) isa TOML.ParserError &&
+        throw(ArgumentError("[input] source_descriptor is not valid TOML: $path"))
+    return path
 end
 
 "whether `value` is a multiple of `10^-digits` to within `1e-6` grid units"

@@ -3,7 +3,8 @@ Collection storage: per-threshold distribution partitions (CSV or Arrow with
 schema metadata), optional dense waiting-time files, the prepared series,
 the regenerated `index.toml`, `summary.csv` and `catalog.csv`, the
 collection `README.md`, and the read side: [`Collection`](@ref),
-[`load_collection`](@ref), [`distribution`](@ref), [`export_legacy`](@ref).
+[`load_collection`](@ref), [`distribution`](@ref), [`source_descriptor`](@ref),
+[`export_legacy`](@ref).
 """
 module Storage
 
@@ -21,7 +22,7 @@ export distribution_table, partition_path, write_distribution, read_distribution
        write_waiting_times, read_waiting_times, write_series_files, read_series_files,
        write_index, read_index, write_summary, write_catalog, write_collection_readme,
        load_distributions, Collection, load_collection, list_collections, distribution,
-       thresholds, summary_table, load_series, export_legacy
+       thresholds, summary_table, load_series, export_legacy, source_descriptor, SOURCE_FILE
 
 function file_extension(format::Symbol)
     format === :arrow ? "arrow" :
@@ -265,6 +266,9 @@ function preprocessing_steps(series::AbstractDict)
                   if String(st["op"]) ∉ ("read_series", "quantize", "declare_gaps")]
 end
 
+"file name of the verbatim copy of the source descriptor in a collection directory"
+const SOURCE_FILE = "source.toml"
+
 """
 $(TYPEDSIGNATURES)
 
@@ -338,6 +342,29 @@ end
 """
 $(TYPEDSIGNATURES)
 
+The source descriptor of the collection's input, as configured by
+`[input].source_descriptor`: the producer's identity of the data (for a
+DeepSpaceTelemetry.jl run its `descriptor.toml`: run identifier, producer
+version and commit, configuration hash, seed, product checksums), or
+`nothing` when the collection was generated without one. The file itself is
+copied verbatim to `source.toml` in the collection directory, and its SHA-256
+is recorded beside the table in `metadata.toml`.
+
+```julia
+c = load_collection(dir)
+source = source_descriptor(c)
+source === nothing || println(source["run_id"], " ", source["git_commit"])
+```
+"""
+function source_descriptor(c::Collection)
+    source = get(c.metadata, "source", nothing)
+    source === nothing && return nothing
+    return Dict{String, Any}(source["descriptor"])
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 The prepared series of the collection as a `QuantizedSeries`.
 """
 load_series(c::Collection) = read_series_files(c.dir, c.digits, c.time_unit)
@@ -406,6 +433,8 @@ function Base.show(io::IO, ::MIME"text/plain", c::Collection)
         c.n_gaps, " gaps, digits = ", c.digits, ", unit = :", c.time_unit, ")")
     isempty(c.steps) || println(io, "  steps       ", join(c.steps, " → "))
     println(io, "  mode        :", c.mode)
+    source = source_descriptor(c)
+    source === nothing || println(io, "  source      ", source_label(source))
     if isempty(c.index)
         println(io, "  thresholds  none")
     else
@@ -415,6 +444,14 @@ function Base.show(io::IO, ::MIME"text/plain", c::Collection)
     end
     print(io, "  sessions    ", length(get(c.metadata, "sessions", Any[])))
 end
+"schema and run identifier of a source descriptor, as far as it states them"
+function source_label(descriptor::AbstractDict)
+    schema = string(get(descriptor, "schema", ""))
+    run = string(get(descriptor, "run_id", ""))
+    label = isempty(schema) ? "descriptor without schema" : schema
+    return isempty(run) ? label : label * ", run " * run
+end
+
 function Base.show(io::IO, c::Collection)
     print(io, "Collection(", c.id, ", ", length(c.index),
         " thresholds)")
@@ -446,6 +483,9 @@ function write_collection_readme(dir::AbstractString, meta::AbstractDict,
         isempty(deltas) ||
             println(io, "- Thresholds: ", length(deltas), " from ", first(deltas), " to ",
                 last(deltas), ".")
+        haskey(meta, "source") &&
+            println(io, "- Source: ", source_label(meta["source"]["descriptor"]),
+                "; the descriptor is copied verbatim to `", SOURCE_FILE, "`.")
         println(io, "- Sessions: ", length(get(meta, "sessions", Any[])), ".\n")
         println(io, "## Files\n")
         println(io, "| File | Content |")
@@ -464,6 +504,8 @@ function write_collection_readme(dir::AbstractString, meta::AbstractDict,
             "| `index.toml`, `catalog.csv` | machine index of the partitions with checksums |")
         println(io,
             "| `metadata.toml`, `config.toml`, `sessions/` | provenance: identity, dataset descriptor, per-session records, configuration snapshots, hardware |")
+        haskey(meta, "source") && println(io, "| `", SOURCE_FILE,
+            "` | the source descriptor of the input, byte for byte as the producer wrote it |")
         println(io, "| `run.log`, `hardware.txt` | log of the runs and platform report |\n")
         println(io, "## Loading\n")
         println(io, "```julia")

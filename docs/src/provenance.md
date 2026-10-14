@@ -8,7 +8,7 @@ serialisation of its identity fields (keys sorted, values only).
 
 | Kind | Identity |
 |---|---|
-| `dataset` | SHA-256 of the raw file, value column, time column |
+| `dataset` | SHA-256 of the raw file, value column, time column, and the SHA-256 of the source descriptor when one is configured |
 | `series` | dataset identifier, time unit and epoch unit, missing and tie policies, preprocessing steps, digits, gap declaration and detection settings |
 | `collection` | series identifier, distribution mode |
 
@@ -22,7 +22,9 @@ identity, so a collection can be extended with more thresholds later.
 `metadata.toml` holds the schema version, the `[artefact]` section
 (identifier, kind, creation time, parents), the `[identity]`, the `[series]`
 section with the full preparation record, the `[dataset]` section with the
-descriptor, and the `[[sessions]]` list. Each session also has its own file
+descriptor, the `[source]` section when `[input].source_descriptor` is set
+(the descriptor's table, its file `source.toml` and its SHA-256), and the
+`[[sessions]]` list. Each session also has its own file
 under `sessions/` with the kernel and backend, thread count, package version,
 git state (commit, tags, dirty flag), Julia version, hardware fingerprint
 (host, CPU, cores, memory, BLAS threads, and the device report of a GPU
@@ -50,4 +52,5 @@ batch of files can be inspected and selected from names alone.
 ## Lineage
 
 `scripts/lineage.jl <path>` prints the collection, its series with every
-preparation step, the dataset with its descriptor, and the sessions.
+preparation step, the dataset with its descriptor, the source descriptor,
+and the sessions.

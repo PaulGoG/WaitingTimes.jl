@@ -1,5 +1,6 @@
 # Print the lineage of a collection directory or of a file inside one:
-# collection, series (with its preparation steps) and dataset, plus sessions.
+# collection, series (with its preparation steps), dataset and source
+# descriptor, plus sessions.
 #
 #   julia scripts/lineage.jl PATH
 include(joinpath(dirname(@__DIR__), "activate.jl"))
@@ -28,6 +29,13 @@ println("dataset    ", dataset["id"], "  ", dataset["identity"])
 if !isempty(dataset["descriptor"])
     for (k, v) in dataset["descriptor"]
         println("    ", k, ": ", v)
+    end
+end
+if haskey(meta, "source")
+    source = meta["source"]
+    println("source     ", source["file"], "  sha256 ", source["sha256"])
+    for (k, v) in source["descriptor"]
+        v isa AbstractDict || println("    ", k, ": ", v)
     end
 end
 println("sessions   ", length(meta["sessions"]))
