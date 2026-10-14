@@ -1,6 +1,4 @@
-# TRUSTEE synthetic driving data, instantaneous fuel consumption per second,
-# with the outlier pruning of the published analysis (Table 1 of Gogîță et
-# al. 2026): the pruning loop of the 2024 code with the pruned slots kept.
+# TRUSTEE synthetic driving data, fuel consumption per second, pruned.
 base_config = "quickstart.toml"
 
 [input]

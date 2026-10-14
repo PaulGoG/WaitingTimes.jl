@@ -19,9 +19,19 @@ PreparationRecord
 PreparationStep
 detect_gaps
 declare_gaps
+WaitingTimes.GAP_KINDS
+WaitingTimes.merge_gaps
 gap_table
 classify
 class_counts
+WaitingTimes.with_step
+WaitingTimes.sampling_step
+WaitingTimes.record_length
+WaitingTimes.observed_mask
+WaitingTimes.segment_lengths
+WaitingTimes.segment_table
+WaitingTimes.describe
+WaitingTimes.SeriesDescription
 ```
 
 ## Kernels
@@ -104,6 +114,8 @@ WaitingTimes.Preprocessing.clip_extremes
 WaitingTimes.Preprocessing.remove_rows
 WaitingTimes.Preprocessing.collapse_ties
 WaitingTimes.Preprocessing.quantized_series
+WaitingTimes.Preprocessing.index_series
+WaitingTimes.Preprocessing.read_gap_intervals
 WaitingTimes.Preprocessing.sampling_summary
 WaitingTimes.Preprocessing.value_summary
 WaitingTimes.Preprocessing.resolution_digits
@@ -122,6 +134,13 @@ WaitingTimes.Provenance.slugify
 WaitingTimes.Provenance.git_state
 WaitingTimes.Provenance.hardware_fingerprint
 WaitingTimes.Provenance.backup_existing!
+WaitingTimes.Provenance.tree_hash
+WaitingTimes.Provenance.active_manifest
+WaitingTimes.Provenance.manifest_entry
+WaitingTimes.Provenance.source_identity
+WaitingTimes.Provenance.package_identity
+WaitingTimes.Provenance.source_summary
+WaitingTimes.Provenance.MINIMUM_PRODUCER_VERSION
 WaitingTimes.Naming.artefact_name
 WaitingTimes.Naming.parse_artefact_name
 WaitingTimes.Storage.partition_path
@@ -134,6 +153,7 @@ thresholds
 summary_table
 load_series
 source_descriptor
+WaitingTimes.censoring_histogram
 export_legacy
 WaitingTimes.Storage.write_collection_readme
 ```
@@ -148,6 +168,7 @@ WaitingTimes.figure_theme
 WaitingTimes.decade_ticks
 WaitingTimes.plot_series
 WaitingTimes.plot_distribution
+WaitingTimes.plot_values
 WaitingTimes.save_figure
 ```
 

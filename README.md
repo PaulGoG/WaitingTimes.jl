@@ -121,23 +121,30 @@ julia --threads=auto bench/run_benchmarks.jl                                   #
 julia --threads=auto test/device/runtests.jl                                   # opt-in GPU tests (oneAPI)
 julia docs/make.jl                                                             # documentation site into docs/build/
 JULIA_PKG_USE_CLI_GIT=true julia examples/check_environment.jl                 # instantiate the examples environment (clones two packages)
-julia --threads=auto examples/tick_stream.jl                                   # online estimator on a tick stream, checked against batch
-julia --threads=3 examples/telemetry_run.jl                                    # telemetry run → declared gaps → collection naming its source run
+julia --threads=auto examples/tick_stream.jl                                   # tick stream: online = batch; collections on both axes, contract asserted
+julia --threads=3 examples/telemetry_run.jl                                    # telemetry run → declared gaps → collections naming their run, contract asserted
 julia -e 'using Pkg; Pkg.activate("JuliaFormatter"; shared = true); Pkg.add("JuliaFormatter"); using JuliaFormatter; format(".")'   # formatting
 ```
 
 Raw inputs are expected under `data/raw/` (gitignored); the configurations in
 `configs/` reference them relative to the configuration file. A run writes a
-collection directory `data/<collection id>/` holding `config.toml`,
-`metadata.toml`, `hardware.txt`, the prepared series, one partition per
-threshold under `distributions/`, per-session records and configuration
-snapshots under `sessions/`, and the regenerated `index.toml`, `summary.csv`
-and `catalog.csv`. When `[input].source_descriptor` names the identity file
-of the program that produced the input (a DeepSpaceTelemetry.jl run's
-`descriptor.toml`, for instance), the collection keeps a verbatim copy as
-`source.toml` and records it in `metadata.toml`. Rerunning with a wider threshold grid adds partitions and
-appends a session; existing partitions are never rewritten unless
-`[output].overwrite = true`, in which case they are backed up first.
+collection directory `data/<collection id>/` (provenance schema 3) holding
+`config.toml`, `metadata.toml`, `hardware.txt`, the resolved manifest, the
+prepared series with its gaps by kind (`gaps.csv`) and the segments between
+them (`segments.csv`), one partition per threshold under `distributions/`
+with its counts split into exact and gap-crossing waits, the censoring
+histograms under `censoring/`, per-session records, configuration snapshots
+and manifests under `sessions/`, and the regenerated `index.toml`,
+`summary.csv` and `catalog.csv`. When `[input].source_descriptor` names the
+identity file of the program that produced the input (a DeepSpaceTelemetry.jl
+run's `descriptor.toml`, a MarketTickStreamer.jl session sidecar), the
+collection keeps a verbatim copy as `source.toml` and records it in
+`metadata.toml` with the producer's code identity. `[input].time_axis =
+"index"` places the series on the row ordinal of the input (the trade count
+of a tick stream), closures closed. Rerunning with a wider threshold grid
+adds partitions and appends a session; existing partitions are never
+rewritten unless `[output].overwrite = true`, in which case they are backed
+up first.
 
 Every collection directory carries a `README.md` describing its own files.
 
@@ -156,7 +163,9 @@ From a collection on disk, and in real time:
 
 ```julia
 c = load_collection("data/<collection id>")   # overview when shown; thresholds(c), summary_table(c)
-source_descriptor(c)                           # identity of the input's producer run, or nothing
+source_descriptor(c)                           # the producer's descriptor of the input, verbatim, or nothing
+WaitingTimes.source_summary(c)                 # its producer, version and code identity (git_tree_sha1)
+WaitingTimes.class_counts(c, "0.0005")         # exact and gap-crossing waits per support value
 d = distribution(c, "0.0005")                  # one WaitingTimeDistribution
 export_legacy(c, "outputData/<id>")           # WTS_<slug>_deltais<δ>.dat files of the 2024 analysis
 
@@ -180,10 +189,11 @@ push!(est, t_ns, price)                        # one sample; snapshot(est) gives
 | KernelAbstractions device kernel | done; CPU backend in the default tests, oneAPI verified on an Intel Arc GPU |
 | Preprocessing after the published treatment (round, fluctuations with denominator and offset, the pruning loop of the 2024 code with the slot kept or deleted, `clip_sigma`) | done; Table 1 of the paper reproduced for the raw datasets |
 | Automatic choice of `digits` (`digits = "auto"`, `suggest_digits`, `digits_sensitivity`) | done |
-| Collection read side (`load_collection`, `distribution`, `summary_table`, `source_descriptor`, `export_legacy`), per-collection README | done |
-| Source identity of a collection (`[input].source_descriptor`) | done; DeepSpaceTelemetry.jl run descriptors carried verbatim |
+| Collection read side (`load_collection`, `distribution`, `summary_table`, `class_counts`, `censoring_histogram`, `source_descriptor`, `source_summary`, `segment_lengths`, `export_legacy`), per-collection README | done |
+| Source identity of a collection (`[input].source_descriptor`) and code identity of every session (tree hash, commit, manifest snapshot) | done; DeepSpaceTelemetry.jl run descriptors and MarketTickStreamer.jl session sidecars |
+| Gap kinds and sources, record structure (segments, record length), index time axis | done |
 | Online estimator for live streams (`OnlineWaitingTimes`) | done; equal to the batch result on every prefix; memory bounded by a declared upper bound or a horizon |
-| Worked consumers against MarketTickStreamer.jl and DeepSpaceTelemetry.jl; Table 1 reproduction | done, `examples/` |
+| Worked consumers against MarketTickStreamer.jl and DeepSpaceTelemetry.jl, asserting the collection contract in CI; Table 1 reproduction | done, `examples/` |
 | Load latency | precompile workload; first result below 0.1 s after `using WaitingTimes` |
 | Documentation site | done |
 
@@ -230,7 +240,8 @@ WaitingTimes.jl/
 │   ├── WaitingTimes.jl           # module root: imports, includes, exports
 │   ├── Quantization.jl           # decimal integer grid, Threshold, formatting
 │   ├── Series.jl                 # PreparationRecord, QuantizedSeries with explicit gaps
-│   ├── Gaps.jl                   # gap detection and declaration, classification of waits
+│   ├── Gaps.jl                   # gap detection, declaration with kinds, record structure, classification
+│   ├── Describe.jl               # describe(s): summary of a series
 │   ├── Kernels.jl                # NaiveSearch (reference kernel), GuardedSearch, scan_work
 │   ├── SegmentTree.jl            # SegmentTreeSearch, the production kernel
 │   ├── FenwickSweep.jl           # FenwickSweep, multi-threshold sweep
@@ -270,17 +281,19 @@ WaitingTimes.jl/
 │   ├── Project.toml, activate.jl
 │   ├── runtests.jl               # static QA, unit, equivalence, fixture tests
 │   ├── pipeline_tests.jl         # provenance, config, preprocessing, storage, end-to-end runs
+│   ├── identity_tests.jl         # tree hash, manifest resolution, code identity
+│   ├── structure_tests.jl        # gap kinds, record structure, time axes, partitions, round trip
 │   ├── device/                   # opt-in oneAPI tests on a local Intel GPU (own environment)
 │   └── fixtures/                 # EUR-USD input and legacy outputs for regression
 ├── docs/
 │   ├── Project.toml, activate.jl, make.jl
 │   └── src/                      # formulation, kernels, pipeline, configuration, provenance,
-│       └── literate/             #   validation, interfacing, API, references; executable example
+│       └── literate/             #   validation, interfacing, producers, API, references; executable example
 ├── examples/                     # own environment: the two public packages from GitHub
 │   ├── Project.toml, activate.jl, check_environment.jl
-│   ├── tick_stream.jl            # Channel{Trade} of MarketTickStreamer.jl → OnlineWaitingTimes, batch check
-│   └── telemetry_run.jl          # DeepSpaceTelemetry.jl run directory → series with declared gaps → collection
-├── .github/, codecov.yml         # CI (tests on Julia 1 and pre, coverage, docs deploy), Dependabot
+│   ├── tick_stream.jl            # MarketTickStreamer.jl: online = batch; session sidecar, closures, both axes
+│   └── telemetry_run.jl          # DeepSpaceTelemetry.jl run directory → declared gaps → collections on both axes
+├── .github/, codecov.yml         # CI (tests on Julia min, 1 and pre, producer examples, coverage, docs), Dependabot
 ├── CITATION.cff, CHANGELOG.md, LICENSE, .JuliaFormatter.toml
 ```
 

@@ -16,6 +16,7 @@ source_descriptor = ""            # TOML identity of the data's origin (e.g. a p
 value_column = 9                  # column name or 1-based index
 time_column = ""                  # column name or index; "" = sample index
 time_unit = "sample"              # "sample" | "nanosecond" | "microsecond" | "millisecond" | "second" | "minute" | "hour" | "day"
+time_axis = "elapsed"             # "elapsed" | "index"
 time_format = ""                  # Dates format for textual stamps; "" = ISO 8601 or numeric
 epoch_unit = "second"             # unit of numeric stamps in the file
 delimiter = ""                    # "" = format default
@@ -33,7 +34,7 @@ steps = [                         # applied in order; see Preprocessing steps be
 ]
 
 [gaps]
-declared = ""                     # TOML with intervals = [[start, stop], ...]; "" = none
+declared = ""                     # TOML of declared gaps (intervals and/or [[gaps]] tables); "" = none
 detect = "cadence"                # "none" | "cadence" | "threshold"
 cadence = 1                       # >= 1
 threshold = 0                     # > 0 in time units when detect = "threshold"
@@ -68,13 +69,67 @@ max_reference_work = 1e12         # >= 0; element comparisons of one reference c
 [output]
 root = "../data"                  # collections under root/<collection id>
 format = "arrow"                  # "csv" | "arrow"
-store_waiting_times = false
+store_waiting_times = false       # write waiting_times/delta=<δ> (one row per index)
 overwrite = false
 
 [run]
 seed = 12345
 log_level = "info"                # "debug" | "info" | "warn"
 ```
+
+## Time axis
+
+`time_axis = "elapsed"` (the default) keeps the clock of the input: the time
+column in `time_unit`, or the sample index when there is none, and waiting
+times are elapsed times on that clock, closures and outages included. With
+`time_axis = "index"` the series is placed on the row ordinal of the
+prepared input: observation `k` at the position of its row, counted from the
+first observed row. A row whose value is missing keeps its ordinal and stays
+a gap, whereas a stretch of the clock that holds no row at all (a market
+closure, a timestamp gap of an event stream) closes, so a wait across it is
+shorter by its length. For the three kinds of input this is
+
+| Input | `elapsed` | `index` |
+|---|---|---|
+| sampled file | the time column, or the row | the row of the file |
+| MarketTickStreamer.jl ticks | exchange time at the stream's resolution | the trade count |
+| DeepSpaceTelemetry.jl payload | mission time on the payload grid | the payload row, when the hole rows are written as missing values (`examples/telemetry_run.jl`) |
+
+The original clock is kept: `series.<ext>` carries the row ordinal (`row`)
+and the original time (`time_original`) of every observation, so the
+collection can be rebuilt on the other axis, and on the index axis the gaps
+of the original clock are written to `gaps_original.csv`. The time axis
+enters the series identity only when it is `index`, so elapsed collections
+keep their identifiers.
+
+## Gap kinds
+
+Every gap carries a kind and a source. Gaps detected from the spacing of
+the time stamps (`detect`) are `detected`, with the input file as source.
+Gaps declared in the `[gaps].declared` file take the kind and source given
+there:
+
+```toml
+kind = "gap"                      # default kind of the intervals: "declared" | "hole" | "gap" | "session"
+source = "masks/gaps.csv"         # default source; the file's name when absent
+intervals = [[0, 600000], [7200000, 9600000]]   # [start, stop) in the series' time unit
+
+[[gaps]]                          # or one table per gap, with its own kind and source
+start = 151200000
+stop = 153000000
+kind = "session"
+source = "exchange calendar"
+```
+
+`hole` and `gap` name the declared-hole feed (`holes.csv`) and the gap
+table (`masks/gaps.csv`) of a DeepSpaceTelemetry.jl run, `session` a session
+calendar or an exchange closure, `declared` any other declaration. A
+detected gap that overlaps declared ones is absorbed into them (they keep
+their kind and extend to cover it), so a producer's hole is one gap of the
+producer's kind. Declarations of one kind that overlap or touch merge;
+touching declarations of different kinds stay separate gaps; overlapping
+ones of different kinds merge, with the kinds joined by `+` (`session+hole`).
+A declared interval must lie inside the record and contain no observation.
 
 ## Choosing `digits`
 
@@ -146,6 +201,13 @@ published tables pruned 0.4 % in whole magnitude levels, and only that rule
 reproduces Table 1 of the paper for the Trieste and fuel-consumption series.
 The shipped `trieste_sea_level.toml` and `trustee_fuel.toml` state it.
 
+The two rules differ by a factor of ten in the pruned share: Rom. J. Phys.
+69, 111 (2024), §2.3
+([doi:10.59277/RomJPhys.2024.69.111](https://doi.org/10.59277/RomJPhys.2024.69.111)),
+states 0.04 %, whereas `trieste_sea_level.toml` keeps the `fraction = 0.004`
+of the code. A configuration that wants the stated share replaces the step by
+`{ op = "clip_quantile", q = 0.9996 }`.
+
 Thresholds are generated on the grid: a linear grid from `min` to `max` by
 `step`; a logarithmic grid with `points_per_decade` between `min > 0` and
 `max`, snapped to the grid and de-duplicated; or the explicit `values`.
@@ -172,12 +234,26 @@ section of `metadata.toml`, and the SHA-256 enters the dataset identity, so
 that the same input from another source run is another collection.
 [`source_descriptor`](@ref) returns the table from a loaded collection.
 
+Beside the verbatim table, `[source]` holds a summary in the same keys for
+every producer ([`source_summary`](@ref WaitingTimes.Provenance.source_summary)):
+`producer`, `producer_version`, `git_tree_sha1`, `git_dirty`, `git_commit`,
+`identity` (whether `git_tree_sha1` is present), and the check of the
+producer's version against the oldest one whose file contract this version
+reads (`producer_compat`, `compat_checked`, `compat_satisfied`;
+[`MINIMUM_PRODUCER_VERSION`](@ref WaitingTimes.Provenance.MINIMUM_PRODUCER_VERSION):
+DeepSpaceTelemetry.jl 2.5.0, MarketTickStreamer.jl 0.3.0). A version below
+the minimum is recorded with a warning; a descriptor without `git_tree_sha1`
+is recorded as having no code identity, never rejected.
+
 The first producer to write one is DeepSpaceTelemetry.jl (2.5 and later):
 `descriptor.toml` at the root of a finished run directory, schema
 `deepspacetelemetry-run/1`, with the run identifier, the producer's version,
 the identity of its code, the configuration hash, the clock mode, the seed,
 the payload geometry and the size and SHA-256 of every table of the run
-(`examples/telemetry_run.jl`). The authoritative key of the producer's code
+(`examples/telemetry_run.jl`). MarketTickStreamer.jl writes a session
+sidecar, `<session>.meta.toml`, with the session, the producer's version,
+commit and dirty flag, the hardware and the configuration
+(`examples/tick_stream.jl`); it records no tree hash. The authoritative key of the producer's code
 is `git_tree_sha1` with `git_dirty = false`; `git_commit` is filled when the
 producer ran from a checkout or was pinned by a full commit hash, and adds
 the history. Both are recorded since DeepSpaceTelemetry 2.6.1, also for a
