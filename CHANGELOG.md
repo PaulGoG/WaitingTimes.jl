@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
-## [Unreleased]
+## [0.2.1] - 2026-10-14
 
 ### Added
 
@@ -17,6 +17,9 @@ Keep a Changelog and the project adheres to Semantic Versioning.
 
 ### Changed
 
+- `Settings` has a field `source_descriptor`, the absolute path of the
+  configured descriptor or `""`; code that constructs `Settings` directly
+  instead of through `load_settings` passes it.
 - `examples/telemetry_run.jl` follows DeepSpaceTelemetry.jl 2.6: the
   scenario runs on the tick clock, the series is placed on the payload grid,
   the holes of `masks/gaps.csv` are its declared gaps (counted by cause and
