@@ -3,6 +3,85 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
+## [0.3.0] - 2026-10-14
+
+### Added
+
+- Gap kinds and sources. Every gap carries a kind (`detected`, `declared`,
+  `hole`, `gap`, `session`; overlapping declarations join theirs with `+`)
+  and the source it came from; `gaps.csv` has the columns `kind` and
+  `source`. A gap found from the spacing of the time stamps that overlaps a
+  declared interval is absorbed into it. Declared-gap files take a kind and a
+  source per file or per `[[gaps]]` table; `declare_gaps` takes `kind` and
+  `source` or named tuples.
+- Record structure: `sampling_step`, `record_length` (grid positions in
+  sampling steps), `observed_mask`, `segment_lengths` and `segment_table`;
+  `segments.csv` in every collection and `record_length`, `n_observed`,
+  `n_segments`, `sampling_step` in its metadata, so the erosion weight
+  ``w(k) = \sum_s (L_s - k)_+`` needs no series. `record_length(c)` and
+  `segment_lengths(c)` read them from a collection.
+- `[input].time_axis = "index"`: the series on the row ordinal of the input
+  (the payload row of a telemetry run, the trade count of a tick stream),
+  rows with missing values kept as gaps, closures closed. `series.<ext>`
+  keeps the row ordinal and the original clock of every observation, and
+  `gaps_original.csv` the gaps of the original clock; `[series]` records the
+  time axis and the time unit and epoch of the input's clock.
+- Per-class counts in every partition, `count_exact` and
+  `count_gap_crossing`, and the histogram of the lower bounds of the
+  right-censored indices under `censoring/`; `class_counts(c, δ)` and
+  `censoring_histogram(c, δ)` read them (`nothing` on schema-2 collections).
+- Code identity of every session: `Provenance.source_identity` and
+  `package_identity` (`git_tree_sha1`, `git_commit`, `git_dirty`,
+  `repo_url`, `repo_rev`, `identity_source`) for a git checkout, a copy
+  installed by Pkg and a bare directory, with `tree_hash`,
+  `active_manifest` and `manifest_entry`. `metadata.toml` gains
+  `[producer]` and `[environment]`, and every session a copy of the resolved
+  manifest (`manifest_snapshot.toml`, `sessions/<id>.manifest.toml`).
+- Normalised identity of a source descriptor, `source_summary` (in
+  `[source]` of `metadata.toml` and as `source_summary(c)`): producer,
+  version, `git_tree_sha1`, `git_dirty`, `git_commit`, whether an identity
+  is present, and the version check against `MINIMUM_PRODUCER_VERSION`
+  (DeepSpaceTelemetry.jl 2.5.0, MarketTickStreamer.jl 0.3.0).
+- `describe(s)`, a summary of a series, and `plot_values(s)`, its value
+  histogram, in the CairoMakie extension.
+- `push!(est, missing)` advances a sample-indexed online estimator over a
+  missing sample.
+- `load_collection` validates the provenance schema and the time axis.
+- The producer examples run in CI against the pinned producer versions and
+  assert the collection contract; `tick_stream.jl` writes a MarketTickStreamer
+  session sidecar and declares the exchange closures as session gaps.
+- Public declarations of the read side, the series tools and the figure
+  functions; the documentation states the public contract, including the
+  field layout and constructors of `WaitingTimeDistribution`. A page on the
+  producers.
+
+### Changed
+
+- Provenance schema `waitingtimes-provenance/3`. Collections of schema 2 are
+  still read (time axis `elapsed`, gap kinds `unknown`).
+- `QuantizedSeries` has the fields `gap_kinds` and `gap_sources`; its
+  keyword constructor takes them (default kind `declared`), the positional
+  inner constructor takes them after `gaps`. `gap_table` rows carry `kind` and
+  `source`; `read_gap_intervals` returns named tuples with them.
+- `Collection` has the field `time_axis`; `Settings` has `time_axis`.
+- Preparation transforms return a new record instead of appending to their
+  argument's (`with_step`); `record!` remains for explicit in-place use.
+- Session identifiers carry the commit or tree hash of the code instead of
+  the `git describe` string, which an installed copy did not have.
+- With the Fenwick sweep the pipeline serves the thresholds of a session in
+  one pass per batch, the batch bounded by `[limits].max_ram_gb`.
+- The configurations `trieste_sea_level.toml` and `trustee_fuel.toml` carry a
+  one-line description; the configuration page notes the pruned share stated
+  in Rom. J. Phys. 69, 111 (2024), §2.3, against the rule of the code.
+
+### Fixed
+
+- `load_series` returned the series without its epoch, preparation record
+  and value type; it now reproduces the stored series.
+- The `offset = :auto` docstring of `trailing_mean_fluctuations` stated that
+  the minimum is shifted to 1 in every case; the shift applies when the
+  minimum is below 1.
+
 ## [0.2.1] - 2026-10-14
 
 ### Added
