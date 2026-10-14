@@ -5,6 +5,16 @@ Keep a Changelog and the project adheres to Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- `[input].source_descriptor` names a TOML file that identifies where the
+  input came from (a producer's run, version, commit and configuration). The
+  collection keeps it byte for byte as `source.toml`, records its table and
+  SHA-256 in the `[source]` section of `metadata.toml`, and includes the
+  SHA-256 in the dataset identity; `source_descriptor(c)` returns the table
+  of a loaded collection. Collections generated without one keep their
+  identifiers.
+
 ### Fixed
 
 - The Distributions extension defined its `DiscreteNonParametric` method

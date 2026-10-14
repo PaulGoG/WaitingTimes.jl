@@ -132,7 +132,10 @@ collection directory `data/<collection id>/` holding `config.toml`,
 `metadata.toml`, `hardware.txt`, the prepared series, one partition per
 threshold under `distributions/`, per-session records and configuration
 snapshots under `sessions/`, and the regenerated `index.toml`, `summary.csv`
-and `catalog.csv`. Rerunning with a wider threshold grid adds partitions and
+and `catalog.csv`. When `[input].source_descriptor` names the identity file
+of the program that produced the input (a DeepSpaceTelemetry.jl run's
+`descriptor.toml`, for instance), the collection keeps a verbatim copy as
+`source.toml` and records it in `metadata.toml`. Rerunning with a wider threshold grid adds partitions and
 appends a session; existing partitions are never rewritten unless
 `[output].overwrite = true`, in which case they are backed up first.
 
@@ -153,6 +156,7 @@ From a collection on disk, and in real time:
 
 ```julia
 c = load_collection("data/<collection id>")   # overview when shown; thresholds(c), summary_table(c)
+source_descriptor(c)                           # identity of the input's producer run, or nothing
 d = distribution(c, "0.0005")                  # one WaitingTimeDistribution
 export_legacy(c, "outputData/<id>")           # WTS_<slug>_deltais<δ>.dat files of the 2024 analysis
 
@@ -176,7 +180,8 @@ push!(est, t_ns, price)                        # one sample; snapshot(est) gives
 | KernelAbstractions device kernel | done; CPU backend in the default tests, oneAPI verified on an Intel Arc GPU |
 | Preprocessing after the published treatment (round, fluctuations with denominator and offset, the pruning loop of the 2024 code with the slot kept or deleted, `clip_sigma`) | done; Table 1 of the paper reproduced for the raw datasets |
 | Automatic choice of `digits` (`digits = "auto"`, `suggest_digits`, `digits_sensitivity`) | done |
-| Collection read side (`load_collection`, `distribution`, `summary_table`, `export_legacy`), per-collection README | done |
+| Collection read side (`load_collection`, `distribution`, `summary_table`, `source_descriptor`, `export_legacy`), per-collection README | done |
+| Source identity of a collection (`[input].source_descriptor`) | done; DeepSpaceTelemetry.jl run descriptors carried verbatim |
 | Online estimator for live streams (`OnlineWaitingTimes`) | done; equal to the batch result on every prefix; memory bounded by a declared upper bound or a horizon |
 | Worked consumers against MarketTickStreamer.jl and DeepSpaceTelemetry.jl; Table 1 reproduction | done, `examples/` |
 | Load latency | precompile workload; first result below 0.1 s after `using WaitingTimes` |

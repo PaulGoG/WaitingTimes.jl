@@ -548,6 +548,67 @@ end
     end
 end
 
+@testset "Source descriptor" begin
+    mktempdir() do dir
+        base = TOML.parsefile(joinpath(CONFIGS, "quickstart.toml"))
+        base["input"]["path"] = load_settings(joinpath(CONFIGS, "quickstart.toml")).input_path
+        base["thresholds"] = Dict{String, Any}("mode" => "explicit",
+            "values" => [0.0005, 0.001])
+        base["output"]["root"] = joinpath(dir, "collections")
+        function write_config(name, cfg)
+            path = joinpath(dir, name)
+            open(io -> TOML.print(io, cfg), path, "w")
+            return path
+        end
+        descriptor = joinpath(dir, "descriptor.toml")
+        write(descriptor,
+            """
+            schema = "deepspacetelemetry-run/1"
+            run_id = "RUN_cfg=b8e9871f_pid=1_t=20261014_120000"
+            git_commit = "48fd43696544e64dff59e8833396531a70b48de0"
+            payload_columns = ["Amplitude"]
+
+            [products."masks/gaps.csv"]
+            bytes = 13702
+            sha256 = "78bdc59ad081c57d3b5254afa45a2a121deedaa682fc82e6845a7fd9220dcef1"
+            """)
+        plain = run_pipeline(write_config("plain.toml", base))
+        @test source_descriptor(load_collection(plain.dir)) === nothing
+        @test !isfile(joinpath(plain.dir, "source.toml"))
+
+        base["input"]["source_descriptor"] = "descriptor.toml"   # relative to the config
+        cfg = write_config("sourced.toml", base)
+        settings = load_settings(cfg)
+        @test settings.source_descriptor == descriptor
+        _, ids = prepare(settings)
+        @test ids.dataset_identity["source_sha256"] ==
+              WaitingTimes.Provenance.file_sha256(descriptor)
+        handle = run_pipeline(cfg)
+        @test handle.id != plain.id && handle.series_id != plain.series_id
+        @test read(joinpath(handle.dir, "source.toml")) == read(descriptor)
+        c = load_collection(handle.dir)
+        source = source_descriptor(c)
+        @test source["run_id"] == "RUN_cfg=b8e9871f_pid=1_t=20261014_120000" &&
+              source["git_commit"] == "48fd43696544e64dff59e8833396531a70b48de0"
+        @test source["products"]["masks/gaps.csv"]["bytes"] == 13702
+        @test c.metadata["source"]["sha256"] ==
+              WaitingTimes.Provenance.file_sha256(descriptor)
+        @test occursin("source      deepspacetelemetry-run/1, run RUN_cfg",
+            sprint(show, MIME("text/plain"), c))
+        @test occursin("`source.toml`", read(joinpath(handle.dir, "README.md"), String))
+        @test run_pipeline(cfg).id == handle.id                 # resumes the same collection
+
+        write(descriptor, replace(read(descriptor, String), "pid=1" => "pid=2"))
+        @test run_pipeline(cfg).id ∉ (handle.id, plain.id)      # another source, another collection
+
+        base["input"]["source_descriptor"] = "absent.toml"
+        @test_throws ArgumentError load_settings(write_config("absent_source.toml", base))
+        write(joinpath(dir, "broken.toml"), "schema = \n")
+        base["input"]["source_descriptor"] = "broken.toml"
+        @test_throws ArgumentError load_settings(write_config("broken_source.toml", base))
+    end
+end
+
 @testset "Distributions extension" begin
     rng = StableRNG(9)
     s = QuantizedSeries(rounded_walk(rng, 3_000), 2)

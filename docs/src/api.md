@@ -133,6 +133,7 @@ distribution
 thresholds
 summary_table
 load_series
+source_descriptor
 export_legacy
 WaitingTimes.Storage.write_collection_readme
 ```

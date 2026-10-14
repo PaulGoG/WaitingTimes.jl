@@ -49,7 +49,15 @@ d = distribution(c, 1.0)                  #   by real value on the grid,
 d = distribution(c, threshold(1.0, c.digits))   # or by Threshold
 summary_table(c)                          # one row per threshold: counts and statistics
 s = load_series(c)                        # the prepared QuantizedSeries
+source_descriptor(c)                      # identity of the data's origin, or nothing
 ```
+
+A collection generated with `[input].source_descriptor` names its source:
+`source_descriptor(c)` returns the descriptor's table (for a
+DeepSpaceTelemetry.jl run `run_id`, `package_version`, `git_commit`,
+`config_sha256`, `rng_seed`, the checksums of the run's tables), and
+`source.toml` in the collection directory is the file as the producer wrote
+it.
 
 Two lower-level readers remain for tabular work:
 

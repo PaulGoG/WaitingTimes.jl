@@ -25,9 +25,9 @@ using ..Provenance: artefact_id, backup_existing!, content_hash, file_sha256, gi
                     toml_ready, write_hardware_fingerprint, write_toml
 using ..Preprocessing: apply_steps, quantized_series, read_gap_intervals, read_series,
                        resolution_digits, suggest_digits
-using ..Storage: partition_path, read_index, write_catalog, write_collection_readme,
-                 write_distribution, write_index, write_series_files, write_summary,
-                 write_waiting_times
+using ..Storage: SOURCE_FILE, partition_path, read_index, write_catalog,
+                 write_collection_readme, write_distribution, write_index,
+                 write_series_files, write_summary, write_waiting_times
 using ..Monitoring: run_progress, with_run_logging
 using ..Backends: backend_name, device_fingerprint
 using KernelAbstractions: CPU
@@ -81,6 +81,19 @@ function dataset_descriptor(settings::Settings)
         isfile(path) && return read_toml(path)
     end
     throw(ArgumentError("dataset descriptor $(settings.dataset) not found"))
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Source descriptor named by `[input].source_descriptor` as `(path, sha256,
+descriptor)`, the last the parsed table; `nothing` when the setting is empty.
+Any TOML file is accepted; its content is recorded, not interpreted.
+"""
+function source_record(settings::Settings)
+    isempty(settings.source_descriptor) && return nothing
+    path = settings.source_descriptor
+    return (path = path, sha256 = file_sha256(path), descriptor = read_toml(path))
 end
 
 # --- kernels -----------------------------------------------------------------
@@ -179,8 +192,10 @@ function prepare(settings::Settings)
     s = quantized_series(rs, digits; detect = settings.gap_detect,
         cadence = settings.gap_cadence, threshold = settings.gap_threshold, declared = declared)
 
+    source = source_record(settings)
     dataset_identity = Dict{String, Any}("sha256" => rs.record.source_sha256,
         "value_column" => settings.value_column, "time_column" => settings.time_column)
+    source === nothing || (dataset_identity["source_sha256"] = source.sha256)
     dataset_slug = descriptor === nothing ?
                    slugify(splitext(basename(settings.input_path))[1] * "-" *
                            string(settings.value_column)) :
@@ -201,7 +216,7 @@ function prepare(settings::Settings)
     ids = (dataset_id = dataset_id, dataset_slug = dataset_slug,
         dataset_identity = dataset_identity,
         series_id = series_id, series_slug = series_slug, series_identity = series_identity,
-        descriptor = descriptor, raw = rs)
+        descriptor = descriptor, source = source, raw = rs)
     return s, ids
 end
 
@@ -261,6 +276,9 @@ function initial_metadata(id, ids, settings::Settings, s::QuantizedSeries)
                 ids.descriptor === nothing ? Dict{String, Any}() : ids.descriptor),
         "sessions" => Any[]
     )
+    ids.source === nothing ||
+        (meta["source"] = Dict{String, Any}("file" => SOURCE_FILE,
+            "sha256" => ids.source.sha256, "descriptor" => ids.source.descriptor))
     return meta
 end
 
@@ -323,6 +341,8 @@ function generate(settings::Settings)
         config_snapshot = joinpath(dir, "config.toml")
         isfile(config_snapshot) || write_toml(config_snapshot, settings.raw)
         write_toml(joinpath(dir, "sessions", session * ".config.toml"), settings.raw)
+        ids.source === nothing || isfile(joinpath(dir, SOURCE_FILE)) ||
+            cp(ids.source.path, joinpath(dir, SOURCE_FILE))
         meta_path = joinpath(dir, "metadata.toml")
         meta = isfile(meta_path) ? read_toml(meta_path) :
                initial_metadata(id, ids, settings, s)

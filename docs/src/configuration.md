@@ -12,6 +12,7 @@ raise errors naming the key.
 path = "../data/raw/meteostatGeisenheim.csv"   # relative to this file unless absolute
 format = "csv"                    # one of: "csv" | "dat" | "arrow" | "tick"
 dataset = "geisenheim-wind_speed" # descriptor in configs/datasets/, or ""
+source_descriptor = ""            # TOML identity of the data's origin (e.g. a producer run), or ""
 value_column = 9                  # column name or 1-based index
 time_column = ""                  # column name or index; "" = sample index
 time_unit = "sample"              # "sample" | "nanosecond" | "microsecond" | "millisecond" | "second" | "minute" | "hour" | "day"
@@ -156,3 +157,24 @@ Thresholds are generated on the grid: a linear grid from `min` to `max` by
 citation, quantity, unit, sampling and SHA-256 of a raw file. When
 `[input].dataset` names one, the checksum is verified before the run and the
 descriptor is copied into the collection's metadata.
+
+## Source descriptors
+
+A dataset descriptor describes a raw file; a source descriptor identifies
+where the data of a run came from when they were produced by another
+program, so that every distribution of the collection traces to that
+producer's run, version, commit and configuration.
+`[input].source_descriptor` names any TOML file, by a path relative to the
+configuration or absolute; it must exist and parse. The file is recorded,
+not interpreted: it is copied byte for byte to `source.toml` in the
+collection directory, its table and SHA-256 are written to the `[source]`
+section of `metadata.toml`, and the SHA-256 enters the dataset identity, so
+that the same input from another source run is another collection.
+[`source_descriptor`](@ref) returns the table from a loaded collection.
+
+The first producer to write one is DeepSpaceTelemetry.jl (2.5 and later):
+`descriptor.toml` at the root of a finished run directory, schema
+`deepspacetelemetry-run/1`, with the run identifier, the producer's version,
+commit and dirty flag, the configuration hash, the clock mode, the seed, the
+payload geometry and the size and SHA-256 of every table of the run
+(`examples/telemetry_run.jl`).
