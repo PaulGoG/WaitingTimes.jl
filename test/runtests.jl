@@ -649,4 +649,5 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
     end
 
     include("pipeline_tests.jl")
+    include("identity_tests.jl")
 end
