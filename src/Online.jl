@@ -28,8 +28,10 @@ censored; the distributions then carry the horizon and equal
 `:error` throws, `:skip` counts it in `n_above_bound` and treats it as a
 missing observation (on a sample-indexed stream it keeps its index).
 
-Feed with [`push!`](@ref) (`push!(est, t, x)`, or `push!(est, x)` on a
-sample-indexed stream); read with [`snapshot`](@ref) (the distributions so
+Feed with [`push!`](@ref): `push!(est, t, x)` with the time of every
+observation, or on a sample-indexed stream `push!(est, x)` with
+`push!(est, missing)` for a missing sample, which advances the index so that
+time passes through it; read with [`snapshot`](@ref) (the distributions so
 far), [`pending`](@ref) and [`status`](@ref).
 """
 mutable struct OnlineWaitingTimes{Tv <: Integer, Tt <: Integer}
@@ -47,6 +49,8 @@ mutable struct OnlineWaitingTimes{Tv <: Integer, Tt <: Integer}
     n_late::Int
     "samples rejected for a value above the upper bound"
     n_above_bound::Int
+    "missing samples of a sample-indexed stream (`push!(est, missing)`)"
+    n_missing::Int
     "time of the last accepted sample"
     last_time::Tt
 end
@@ -71,7 +75,7 @@ function OnlineWaitingTimes(deltas::AbstractVector, digits::Integer;
     states = [StreamingState{Tv, Tt}(δ; upper_bound = ub, horizon) for δ in thresholds]
     accumulators = [DistributionAccumulator{Tt}() for _ in thresholds]
     return OnlineWaitingTimes{Tv, Tt}(check_digits(digits), time_unit, thresholds, states,
-        accumulators, late_policy, ub, bound_policy, 0, 0, 0, zero(Tt))
+        accumulators, late_policy, ub, bound_policy, 0, 0, 0, 0, zero(Tt))
 end
 
 "quantise one real value to the grid of the estimator, as `quantize` does"
@@ -122,12 +126,23 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Feed the value `x` at the next sample index (`time_unit = :sample`).
+Feed the value `x` at the next sample index (`time_unit = :sample`). A
+`missing` value advances the index without an observation, so the elapsed
+time of later waits counts the missing sample as in the batch evaluation
+(where a missing row keeps its slot); it is counted in `n_missing`.
 """
 function Base.push!(est::OnlineWaitingTimes, x::Real)
     est.time_unit === :sample ||
         throw(ArgumentError("a time is required for time_unit = :$(est.time_unit)"))
-    return push!(est, est.n_seen + est.n_above_bound + 1, x)
+    return push!(est, est.n_seen + est.n_above_bound + est.n_missing + 1, x)
+end
+
+function Base.push!(est::OnlineWaitingTimes, ::Missing)
+    est.time_unit === :sample || throw(ArgumentError(
+        "a missing sample advances a sample-indexed stream only; on time_unit = :$(est.time_unit) feed push!(est, t, x) with the times of the observations",
+    ))
+    est.n_missing += 1
+    return 0
 end
 
 """

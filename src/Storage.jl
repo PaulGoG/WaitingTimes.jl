@@ -13,16 +13,22 @@ using CSV: CSV
 using DataFrames: DataFrame, nrow
 using Dates: DateTime
 using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
-using ..WaitingTimes: QuantizedSeries, Threshold, WaitingTimeDistribution, counts,
-                      cumulative, format_threshold, parse_threshold, probabilities, support,
+using ..WaitingTimes: WaitingTimes, QuantizedSeries, Threshold, WaitingTimeDistribution,
+                      counts,
+                      cumulative, format_threshold, gap_entries, parse_threshold,
+                      probabilities, record_length, segment_lengths, segment_table, support,
                       survival, nsamples, threshold
-using ..Provenance: file_sha256, read_toml, toml_ready, write_toml
+using ..Provenance: Provenance, dict_to_record, file_sha256, read_toml, toml_ready,
+                    write_toml
 
 export distribution_table, partition_path, write_distribution, read_distribution,
        write_waiting_times, read_waiting_times, write_series_files, read_series_files,
        write_index, read_index, write_summary, write_catalog, write_collection_readme,
        load_distributions, Collection, load_collection, list_collections, distribution,
-       thresholds, summary_table, load_series, export_legacy, source_descriptor, SOURCE_FILE
+       thresholds, summary_table, load_series, export_legacy, source_descriptor,
+       SOURCE_FILE,
+       MANIFEST_FILE,
+       censoring_path, write_censoring, write_gap_file, read_gap_file, censoring_histogram
 
 function file_extension(format::Symbol)
     format === :arrow ? "arrow" :
@@ -33,11 +39,17 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Table form of a distribution: columns `tau`, `count`, `pmf`, `cdf`, `ccdf`.
+Table form of a distribution: columns `tau`, `count`, `pmf`, `cdf`, `ccdf`,
+and, when the per-class counts are given (see `class_columns`),
+`count_exact` and `count_gap_crossing`.
 """
-function distribution_table(d::WaitingTimeDistribution)
-    DataFrame(tau = support(d), count = counts(d),
+function distribution_table(d::WaitingTimeDistribution; exact = nothing,
+        gap_crossing = nothing)
+    table = DataFrame(tau = support(d), count = counts(d),
         pmf = probabilities(d), cdf = cumulative(d), ccdf = survival(d))
+    exact === nothing || (table.count_exact = Vector{Int}(exact))
+    gap_crossing === nothing || (table.count_gap_crossing = Vector{Int}(gap_crossing))
+    return table
 end
 
 """
@@ -78,8 +90,34 @@ schema when applicable); returns the file's SHA-256.
 """
 function write_distribution(
         path::AbstractString, d::WaitingTimeDistribution, format::Symbol;
+        metadata::AbstractDict = Dict{String, String}(), exact = nothing,
+        gap_crossing = nothing)
+    return write_table(path, distribution_table(d; exact, gap_crossing), format;
+        metadata = metadata)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Path of the censoring histogram of threshold `δ` inside the collection
+directory.
+"""
+function censoring_path(dir::AbstractString, δ::Threshold, format::Symbol)
+    joinpath(dir, "censoring", "delta=" * format_threshold(δ) * "." *
+                               file_extension(format))
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Write the histogram of the lower bounds of the right-censored indices
+(columns `lower`, `count`); returns the file's SHA-256.
+"""
+function write_censoring(path::AbstractString, lower::AbstractVector,
+        count::AbstractVector, format::Symbol;
         metadata::AbstractDict = Dict{String, String}())
-    return write_table(path, distribution_table(d), format; metadata = metadata)
+    return write_table(path, DataFrame(lower = lower, count = Vector{Int}(count)), format;
+        metadata = metadata)
 end
 
 """
@@ -106,41 +144,95 @@ end
 "read a dense waiting-time file"
 read_waiting_times(path::AbstractString) = read_table(path)
 
+"text column read back from a table, `missing` (an empty CSV field) as empty"
+text_column(col) = String[ismissing(x) ? "" : String(x) for x in col]
+
 """
 $(TYPEDSIGNATURES)
 
-Write the prepared series as `series.<ext>` (values, times) and `gaps.csv`
-(start, stop) into `dir`; returns the two paths.
+Write a gap list as a CSV table `start, stop, kind, source` at `path`.
 """
-function write_series_files(dir::AbstractString, s::QuantizedSeries, format::Symbol)
+function write_gap_file(path::AbstractString, entries::AbstractVector)
+    CSV.write(path,
+        DataFrame(
+            start = Int64[e.start for e in entries], stop = Int64[e.stop for e in entries],
+            kind = String[e.kind for e in entries], source = String[e.source
+                                                                    for e in entries]))
+    return path
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Gap list of a table written by [`write_gap_file`](@ref), as named tuples
+`(start, stop, kind, source)`; tables of collections written before the kinds
+were recorded (columns `start, stop` only) read back with kind `"unknown"`.
+"""
+function read_gap_file(path::AbstractString)
+    table = read_table(path)
+    n = nrow(table)
+    starts = n == 0 ? Int64[] : Vector{Int64}(table.start)
+    stops = n == 0 ? Int64[] : Vector{Int64}(table.stop)
+    kinds = hasproperty(table, :kind) && n > 0 ? text_column(table.kind) :
+            fill("unknown", n)
+    sources = hasproperty(table, :source) && n > 0 ? text_column(table.source) : fill("", n)
+    return [(start = a, stop = b, kind = k, source = src)
+            for (a, b, k, src) in zip(starts, stops, kinds, sources)]
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Write the prepared series into `dir`: `series.<ext>` with the grid values and
+times on the collection's time axis and, when given, the row ordinal of every
+observation in the prepared input (`row`) and its time on the original clock
+(`time_original`), so the collection can be rebuilt on the other axis;
+`gaps.csv` (`start, stop, kind, source`); `segments.csv` (`start, stop,
+length, kind_before, kind_after`, see [`segment_table`](@ref)); and, when
+given, `gaps_original.csv`, the gaps of the original clock. Returns the path
+of the series file.
+"""
+function write_series_files(dir::AbstractString, s::QuantizedSeries, format::Symbol;
+        rows = nothing, time_original = nothing, gaps_original = nothing)
     mkpath(dir)
     series_path = joinpath(dir, "series." * file_extension(format))
-    write_table(series_path, DataFrame(values = s.values, times = s.times), format;
+    table = DataFrame(values = s.values, times = s.times)
+    rows === nothing || (table.row = Vector{Int64}(rows))
+    time_original === nothing || (table.time_original = Vector{Int64}(time_original))
+    write_table(series_path, table, format;
         metadata = Dict("digits" => string(s.digits), "time_unit" => String(s.time_unit)))
-    gaps_path = joinpath(dir, "gaps.csv")
-    CSV.write(gaps_path, DataFrame(start = first.(s.gaps), stop = last.(s.gaps)))
-    return series_path, gaps_path
+    write_gap_file(joinpath(dir, "gaps.csv"), gap_entries(s))
+    segments = segment_table(s)
+    CSV.write(joinpath(dir, "segments.csv"),
+        DataFrame(start = [r.start for r in segments], stop = [r.stop for r in segments],
+            length = [r.length for r in segments],
+            kind_before = [r.kind_before for r in segments],
+            kind_after = [r.kind_after for r in segments]))
+    gaps_original === nothing ||
+        write_gap_file(joinpath(dir, "gaps_original.csv"), gaps_original)
+    return series_path
 end
 
 """
 $(TYPEDSIGNATURES)
 
 Read the series written by [`write_series_files`](@ref) back into a
-`QuantizedSeries` (with an empty preparation record unless one is given).
+`QuantizedSeries` with the gap kinds and sources of `gaps.csv`, values of
+`value_type`, the given `epoch` and `record` (an empty record unless one is
+given).
 """
 function read_series_files(dir::AbstractString, digits::Integer, time_unit::Symbol;
-        epoch::Union{Nothing, DateTime} = nothing, record = nothing)
-    candidates = filter(f -> startswith(f, "series."), readdir(dir))
+        epoch::Union{Nothing, DateTime} = nothing, record = nothing,
+        value_type::Type{<:Integer} = Int64)
+    candidates = filter(f -> occursin(r"^series\.(csv|arrow)$", f), readdir(dir))
     isempty(candidates) && throw(ArgumentError("no series file in $dir"))
     table = read_table(joinpath(dir, first(candidates)))
-    gaps_table = read_table(joinpath(dir, "gaps.csv"))
-    times = Vector{Int64}(table.times)
-    gaps = Tuple{Int64, Int64}[(Int64(a), Int64(b))
-                               for (a, b) in zip(gaps_table.start, gaps_table.stop)]
-    values = Vector(table.values)
+    gaps = read_gap_file(joinpath(dir, "gaps.csv"))
     kwargs = record === nothing ? (;) : (; record = record)
-    return QuantizedSeries(values, times, digits; gaps = gaps, time_unit = time_unit,
-        epoch = epoch, kwargs...)
+    return QuantizedSeries(Vector{value_type}(table.values), Vector{Int64}(table.times),
+        digits; gaps = Tuple{Int64, Int64}[(e.start, e.stop) for e in gaps],
+        gap_kinds = [e.kind for e in gaps], gap_sources = [e.source for e in gaps],
+        time_unit = time_unit, epoch = epoch, kwargs...)
 end
 
 """
@@ -246,6 +338,8 @@ struct Collection
     digits::Int
     "time unit of the waiting times"
     time_unit::Symbol
+    "time axis of the series: `:elapsed` (the clock of the input) or `:index` (row ordinal)"
+    time_axis::Symbol
     "number of observations of the prepared series"
     n_observations::Int
     "number of recorded gaps"
@@ -263,30 +357,62 @@ function preprocessing_steps(series::AbstractDict)
     steps = get(get(series, "record", Dict()), "steps", Any[])
     return String[String(st["op"])
                   for st in steps
-                  if String(st["op"]) ∉ ("read_series", "quantize", "declare_gaps")]
+                  if String(st["op"]) ∉
+                     ("read_series", "quantize", "declare_gaps", "index_axis")]
 end
 
 "file name of the verbatim copy of the source descriptor in a collection directory"
 const SOURCE_FILE = "source.toml"
 
+"file name of the copy of the resolved manifest of the latest session"
+const MANIFEST_FILE = "manifest_snapshot.toml"
+
+"provenance schemas the read side understands"
+const READABLE_SCHEMAS = ("waitingtimes-provenance/2", "waitingtimes-provenance/3")
+
+"keys of the `[series]` section a schema-3 collection must carry"
+const SERIES_KEYS_3 = ("time_axis", "time_unit", "time_unit_original", "record_length",
+    "n_observed", "n_segments", "sampling_step", "gap_kinds", "value_type")
+
 """
 $(TYPEDSIGNATURES)
 
-Open the collection at `dir` (a directory holding `metadata.toml`).
+Open the collection at `dir` (a directory holding `metadata.toml`). The
+metadata are validated: the provenance schema must be one this version reads
+(`waitingtimes-provenance/2` or `/3`), and a schema-3 collection must state
+its time axis (`elapsed` or `index`), time units and record structure.
+Collections of schema 2 are read with time axis `:elapsed`.
 """
 function load_collection(dir::AbstractString)
     meta_path = joinpath(dir, "metadata.toml")
     isfile(meta_path) || throw(ArgumentError("no metadata.toml in $dir; not a collection"))
     meta = read_toml(meta_path)
+    schema = String(get(meta, "schema", ""))
+    schema in READABLE_SCHEMAS || throw(ArgumentError(
+        "$meta_path has provenance schema $(repr(schema)); this version reads $(join(READABLE_SCHEMAS, ", "))",
+    ))
     series = meta["series"]
+    if schema == "waitingtimes-provenance/3"
+        missing_keys = filter(k -> !haskey(series, k), SERIES_KEYS_3)
+        isempty(missing_keys) || throw(ArgumentError(
+            "$meta_path: [series] lacks $(join(missing_keys, ", "))",
+        ))
+    end
+    time_axis = Symbol(get(series, "time_axis", "elapsed"))
+    time_axis in (:elapsed, :index) || throw(ArgumentError(
+        "$meta_path: [series] time_axis = $(repr(String(time_axis))) is not \"elapsed\" or \"index\"",
+    ))
     entries = read_index(dir)
     sort!(entries; by = e -> parse(Float64, e["delta"]))
     steps = preprocessing_steps(series)
     return Collection(String(abspath(dir)), String(meta["artefact"]["id"]),
         String(series["slug"]), Symbol(meta["identity"]["mode"]), Int(series["digits"]),
-        Symbol(series["time_unit"]), Int(series["n_observations"]), Int(series["n_gaps"]),
-        steps, entries, meta)
+        Symbol(series["time_unit"]), time_axis, Int(series["n_observations"]),
+        Int(series["n_gaps"]), steps, entries, meta)
 end
+
+"provenance schema of a loaded collection"
+schema(c::Collection) = String(c.metadata["schema"])
 
 """
 $(TYPEDSIGNATURES)
@@ -326,6 +452,44 @@ function distribution(c::Collection, δ::AbstractString)
 end
 distribution(c::Collection, δ::Real) = distribution(c, threshold(δ, c.digits))
 
+as_threshold(c::Collection, δ::Threshold) = δ
+as_threshold(c::Collection, δ::AbstractString) = parse_threshold(δ, c.digits)
+as_threshold(c::Collection, δ::Real) = threshold(δ, c.digits)
+
+"""
+$(TYPEDSIGNATURES)
+
+Per-class counts of the partition at `δ` (a `Threshold`, a real value or a
+fixed-decimal string): `(support, exact, gap_crossing)`, the exact and
+gap-crossing waits at each support value (their sum is the `count` of the
+distribution in `:elapsed` mode). `nothing` for a collection written before
+the counts were recorded (provenance schema 2).
+"""
+function WaitingTimes.class_counts(c::Collection, δ)
+    entry = partition_entry(c, as_threshold(c, δ))
+    table = read_table(joinpath(c.dir, entry["file"]))
+    hasproperty(table, :count_exact) || return nothing
+    return (support = Vector{Int64}(table.tau), exact = Vector{Int}(table.count_exact),
+        gap_crossing = Vector{Int}(table.count_gap_crossing))
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Histogram of the lower bounds of the right-censored indices at `δ`:
+`(lower, count)`, the elapsed time from each censored index to the last
+observation before its first gap (or the end of the record), in increasing
+order. `nothing` for a collection written before the histograms were recorded
+(provenance schema 2).
+"""
+function censoring_histogram(c::Collection, δ)
+    entry = partition_entry(c, as_threshold(c, δ))
+    file = get(entry, "censoring_file", "")
+    isempty(file) && return nothing
+    table = read_table(joinpath(c.dir, file))
+    return (lower = Vector{Int64}(table.lower), count = Vector{Int}(table.count))
+end
+
 """
 $(TYPEDSIGNATURES)
 
@@ -337,6 +501,27 @@ function summary_table(c::Collection)
         return CSV.read(path, DataFrame; types = Dict(:delta => String), CSV_READ_TYPES...)
     return DataFrame([Symbol(col) => [get(e, col, missing) for e in c.index]
                       for col in SUMMARY_COLUMNS])
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Normalised identity of the source of the collection's input (see
+[`source_summary`](@ref WaitingTimes.Provenance.source_summary)): `producer`,
+`producer_version`, `git_tree_sha1` (authoritative with `git_dirty`),
+`git_dirty`, `git_commit`, `identity`, `producer_compat`, `compat_checked`,
+`compat_satisfied` and `schema`, as a named tuple; `nothing` without a source
+descriptor. For a collection written before the summary was recorded it is
+computed from the stored descriptor.
+"""
+function Provenance.source_summary(c::Collection)
+    source = get(c.metadata, "source", nothing)
+    source === nothing && return nothing
+    summary = haskey(source, "producer") ? source :
+              Provenance.source_summary(source["descriptor"])
+    keys_ = (:producer, :producer_version, :git_tree_sha1, :git_dirty, :git_commit,
+        :identity, :producer_compat, :compat_checked, :compat_satisfied, :schema)
+    return NamedTuple{keys_}(Tuple(summary[String(k)] for k in keys_))
 end
 
 """
@@ -364,12 +549,56 @@ function source_descriptor(c::Collection)
     return Dict{String, Any}(source["descriptor"])
 end
 
+"integer value types a series may be stored with"
+const VALUE_TYPES = Dict("Int8" => Int8, "Int16" => Int16, "Int32" => Int32,
+    "Int64" => Int64)
+
 """
 $(TYPEDSIGNATURES)
 
-The prepared series of the collection as a `QuantizedSeries`.
+The prepared series of the collection as a `QuantizedSeries`: values of the
+stored integer type, times, gaps with their kinds and sources, digits, time
+unit, epoch and preparation record as written, so that the series equals the
+one the collection was computed from (record values as they pass through
+TOML). A schema-2 collection has no stored epoch and its gaps read back with
+kind `"unknown"`.
 """
-load_series(c::Collection) = read_series_files(c.dir, c.digits, c.time_unit)
+function load_series(c::Collection)
+    series = c.metadata["series"]
+    epoch = get(series, "epoch", nothing)
+    value_type = get(VALUE_TYPES, String(get(series, "value_type", "Int64")), Int64)
+    return read_series_files(c.dir, c.digits, c.time_unit;
+        epoch = epoch === nothing ? nothing : DateTime(epoch),
+        record = dict_to_record(series["record"]), value_type = value_type)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Length of the record of a collection's series in sampling steps (see
+[`record_length`](@ref WaitingTimes.record_length)), from its metadata, or
+from the series for a schema-2 collection.
+"""
+function WaitingTimes.record_length(c::Collection)
+    haskey(c.metadata["series"], "record_length") &&
+        return Int(c.metadata["series"]["record_length"])
+    return record_length(load_series(c))
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Lengths of the segments of a collection's series (see
+[`segment_lengths`](@ref WaitingTimes.segment_lengths)), read from
+`segments.csv`, or computed from the series for a schema-2 collection; with
+them the erosion weight ``w(k) = \\sum_s (L_s - k)_+`` needs no series.
+"""
+function WaitingTimes.segment_lengths(c::Collection)
+    path = joinpath(c.dir, "segments.csv")
+    isfile(path) || return segment_lengths(load_series(c))
+    table = read_table(path)
+    return nrow(table) == 0 ? Int[] : Vector{Int}(table.length)
+end
 
 """
 $(TYPEDSIGNATURES)
@@ -433,6 +662,9 @@ function Base.show(io::IO, ::MIME"text/plain", c::Collection)
     println(io, "  directory   ", c.dir)
     println(io, "  series      ", c.slug, " (", c.n_observations, " observations, ",
         c.n_gaps, " gaps, digits = ", c.digits, ", unit = :", c.time_unit, ")")
+    c.time_axis === :index &&
+        println(io, "  time axis   index (row ordinal of the input; its clock in ",
+            get(c.metadata["series"], "time_unit_original", "?"), "s kept in the series file)")
     isempty(c.steps) || println(io, "  steps       ", join(c.steps, " → "))
     println(io, "  mode        :", c.mode)
     source = source_descriptor(c)

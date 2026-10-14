@@ -39,6 +39,8 @@ Base.@kwdef struct Settings
     time_column::Union{Nothing, Int, String}
     "time unit of the series, one of `TIME_UNITS`"
     time_unit::Symbol
+    "time axis of the collection: `:elapsed` (the clock of the input) or `:index` (row ordinal)"
+    time_axis::Symbol
     "`Dates` format of textual time stamps, or empty for ISO 8601 / numeric"
     time_format::String
     "unit of numeric time stamps in the file"
@@ -132,7 +134,7 @@ const KNOWN_KEYS = Dict(
     "" => ["base_config", "input", "preprocessing", "gaps", "quantization", "thresholds",
         "algorithm", "limits", "output", "run"],
     "input" => ["path", "format", "dataset", "source_descriptor",
-        "value_column", "time_column", "time_unit",
+        "value_column", "time_column", "time_unit", "time_axis",
         "time_format", "epoch_unit", "delimiter", "header", "missing_policy", "tie_policy",
         "quantity_label", "unit_label"],
     "preprocessing" => ["steps"],
@@ -326,6 +328,9 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
         throw(ArgumentError(
             "[input] a time_column requires a time_unit other than \"sample\"",
         ))
+    time_axis = as_symbol(
+        fetch(inp, "input", "time_axis", "elapsed"), "input", "time_axis",
+        (:elapsed, :index))
 
     pre = section(raw, "preprocessing")
     steps_raw = fetch(pre, "preprocessing", "steps", Any[])
@@ -460,7 +465,7 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
         dataset = as_string(fetch(inp, "input", "dataset", ""), "input", "dataset"),
         source_descriptor,
         value_column = as_column(require(inp, "input", "value_column"), "input", "value_column"),
-        time_column, time_unit,
+        time_column, time_unit, time_axis,
         time_format = as_string(fetch(inp, "input", "time_format", ""), "input", "time_format"),
         epoch_unit = as_symbol(
             fetch(inp, "input", "epoch_unit", "second"), "input", "epoch_unit",

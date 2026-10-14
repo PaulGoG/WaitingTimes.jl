@@ -24,6 +24,7 @@ const PACKAGE_ROOT = normpath(joinpath(@__DIR__, ".."))
 include("Quantization.jl")
 include("Series.jl")
 include("Gaps.jl")
+include("Describe.jl")
 include("Kernels.jl")
 include("SegmentTree.jl")
 include("FenwickSweep.jl")
@@ -57,6 +58,14 @@ Figure of a distribution (probability mass and survival function on
 logarithmic axes); provided by the CairoMakie extension.
 """
 function plot_distribution end
+
+"""
+$(TYPEDSIGNATURES)
+
+Histogram of the values of a series, in data units; provided by the
+CairoMakie extension.
+"""
+function plot_values end
 
 """
 $(TYPEDSIGNATURES)
@@ -95,8 +104,9 @@ include("Orchestrator.jl")
 using .Config: Settings, load_settings, threshold_list
 using .Orchestrator: CollectionHandle, generate, prepare, run_pipeline, validate
 using .Storage: Collection, load_collection, list_collections, distribution, thresholds,
-                summary_table, load_series, export_legacy, source_descriptor
-using .Provenance: effective_config
+                summary_table, load_series, export_legacy, source_descriptor,
+                censoring_histogram
+using .Provenance: effective_config, source_summary
 
 export Threshold, threshold, quantize, format_threshold, parse_threshold
 export PreparationStep, PreparationRecord, QuantizedSeries
@@ -115,9 +125,12 @@ public CLASS_EXACT, CLASS_GAP_CROSSING, CLASS_RIGHT_CENSORED, TIME_UNITS
 public narrow_integer, suffix_maximum, SearchWorkspace, MaxTree, FenwickWorkspace,
        workspace, scan_work,
        check_threshold, first_at_least, duration, record!
-public support, counts, probabilities, cumulative, survival, nsamples, mean_waiting_time
-public discrete_distribution, plot_series, plot_distribution, save_figure, figure_theme,
-       decade_ticks, PACKAGE_ROOT
+public support, counts, probabilities, cumulative, survival, nsamples, mean_waiting_time,
+       ks_distance
+public GAP_KINDS, with_step, sampling_step, record_length, observed_mask, segment_lengths,
+       segment_table, describe, SeriesDescription, censoring_histogram, source_summary
+public discrete_distribution, plot_series, plot_distribution, plot_values, save_figure,
+       figure_theme, decade_ticks, PACKAGE_ROOT
 public Synthetic, Backends, Provenance, Config, Naming, Preprocessing, Monitoring, Storage,
        Orchestrator
 
