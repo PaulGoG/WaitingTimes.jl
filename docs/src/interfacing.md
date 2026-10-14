@@ -48,9 +48,24 @@ d = distribution(c, "1.0")                # a WaitingTimeDistribution, by fixed-
 d = distribution(c, 1.0)                  #   by real value on the grid,
 d = distribution(c, threshold(1.0, c.digits))   # or by Threshold
 summary_table(c)                          # one row per threshold: counts and statistics
-s = load_series(c)                        # the prepared QuantizedSeries
-source_descriptor(c)                      # identity of the data's origin, or nothing
+s = load_series(c)                        # the prepared QuantizedSeries, as stored
+c.time_axis                               # :elapsed or :index
+WaitingTimes.class_counts(c, "1.0")       # (support, exact, gap_crossing) per support value
+WaitingTimes.censoring_histogram(c, "1.0")   # (lower, count) of the right-censored indices
+WaitingTimes.segment_lengths(c)           # runs of observations between gaps
+WaitingTimes.record_length(c)             # grid positions from the first to the last observation
+source_descriptor(c)                      # the producer's descriptor, verbatim, or nothing
+WaitingTimes.source_summary(c)            # its normalised identity, or nothing
+c.metadata["producer"]                    # code identity of WaitingTimes in the latest session
 ```
+
+`class_counts` and `censoring_histogram` return `nothing` for a collection of
+provenance schema 2. With the segment lengths ``L_s`` the number of index
+pairs `k` observations apart inside one segment, the erosion weight
+``w(k) = \sum_s (L_s - k)_+``, follows without the series. `describe(s)`
+summarises a series (observations, record length, time span, value
+statistics, sampling step, gaps by kind), and with CairoMakie loaded
+`WaitingTimes.plot_values(s)` draws its value histogram.
 
 A collection generated with `[input].source_descriptor` names its source:
 `source_descriptor(c)` returns the descriptor's table (for a
@@ -60,6 +75,32 @@ run's tables; the producer's code is keyed by `git_tree_sha1` with
 `git_dirty = false`, and `git_commit` is filled when the producer was pinned
 by a full commit hash), and `source.toml` in the collection directory is the
 file as the producer wrote it. A key the descriptor lacks is unknown.
+`source_summary(c)` gives the same identity for every producer: `producer`,
+`producer_version`, `git_tree_sha1`, `git_dirty`, `git_commit`, `identity`,
+and the version check (`producer_compat`, `compat_checked`,
+`compat_satisfied`). A downstream tool keys a collection's producer by
+`git_tree_sha1` and `git_dirty`, shows `git_commit` when it is not empty, and
+reports a source without `git_tree_sha1` (DeepSpaceTelemetry.jl 2.6.0 and
+earlier, MarketTickStreamer.jl) as having no code identity.
+
+## The public contract
+
+Downstream tools may rely on the exported names and on those declared
+`public`, among them the read side of collections (`load_collection`,
+`thresholds`, `distribution`, `class_counts`, `censoring_histogram`,
+`source_descriptor`, `source_summary`, `segment_lengths`, `record_length`),
+the series tools (`classify`, `gap_table`, `observed_mask`, `describe`), the
+accessors of a distribution (`support`, `counts`, `probabilities`,
+`cumulative`, `survival`, `nsamples`, `ks_distance`), the figure functions
+of the CairoMakie extension (`figure_theme`, `decade_ticks`, `save_figure`,
+`plot_series`, `plot_distribution`, `plot_values`), and the provenance and
+naming helpers (`Provenance.artefact_id`, `content_hash`, `canonical_toml`,
+`git_state`, `hardware_fingerprint`, `backup_existing!`, `session_id`,
+`write_toml`, `Naming.artefact_name`). The field layout of
+[`WaitingTimeDistribution`](@ref) (twelve fields, `horizon` last) and its
+constructors, the twelve-argument one and the eleven-argument one without a
+horizon, are part of the contract, as are the file layout and column names
+of a collection of provenance schema 3.
 
 Two lower-level readers remain for tabular work:
 
@@ -73,7 +114,9 @@ stats = read_index(dir)                              # per-threshold counts and 
 
 From any language: the partitions `distributions/delta=<δ>.csv` (or Arrow)
 are plain tables with a header row, `delta` in the file name has exactly
-`digits` decimals, and `summary.csv` holds the per-threshold statistics.
+`digits` decimals, `censoring/delta=<δ>` holds the censoring histograms,
+`gaps.csv` and `segments.csv` the gaps with their kinds and the segments
+between them, and `summary.csv` the per-threshold statistics.
 
 ### The format of the original analysis
 

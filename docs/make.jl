@@ -35,6 +35,7 @@ makedocs(;
         "Provenance" => "provenance.md",
         "Validation" => "validation.md",
         "Interfacing" => "interfacing.md",
+        "Producers" => "producers.md",
         "Downstream example" => "generated/downstream_fit.md",
         "API" => "api.md",
         "References" => "references.md"
