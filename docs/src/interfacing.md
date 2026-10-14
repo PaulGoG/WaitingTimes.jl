@@ -139,9 +139,12 @@ threshold fed with [`update!`](@ref), and a
 `examples/` holds three runnable consumers with their own environment:
 `tick_stream.jl` drives the online estimator from a `Channel{Trade}` of
 MarketTickStreamer.jl and checks it against the batch result on the same
-ticks; `telemetry_run.jl` runs a DeepSpaceTelemetry.jl mission, reads its run
-directory into a series with the undelivered batches as recorded gaps and
-generates a collection from it; `published_fits.jl` reproduces Table 1 of
-the paper with the fitting recipe of the 2024 analysis (`legacy_fit.jl`) on
-the shipped configurations. The [Downstream example](@ref) puts the
-in-memory pieces together for a model fit.
+ticks; `telemetry_run.jl` runs a DeepSpaceTelemetry.jl mission on the tick
+clock, reads its run directory into a series whose gaps are the holes the
+run declares in `masks/gaps.csv` (lost, undelivered, pruned, not generated),
+checks them against the gaps found from the sample spacing, and generates a
+collection that carries the run's `descriptor.toml` as its source;
+`published_fits.jl` reproduces Table 1 of the paper with the fitting recipe
+of the 2024 analysis (`legacy_fit.jl`) on the shipped configurations. The
+[Downstream example](@ref) puts the in-memory pieces together for a model
+fit.

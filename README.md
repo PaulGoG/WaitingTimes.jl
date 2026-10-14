@@ -122,7 +122,7 @@ julia --threads=auto test/device/runtests.jl                                   #
 julia docs/make.jl                                                             # documentation site into docs/build/
 JULIA_PKG_USE_CLI_GIT=true julia examples/check_environment.jl                 # instantiate the examples environment (clones two packages)
 julia --threads=auto examples/tick_stream.jl                                   # online estimator on a tick stream, checked against batch
-julia --threads=3 examples/telemetry_run.jl                                    # telemetry run directory → gaps → collection
+julia --threads=3 examples/telemetry_run.jl                                    # telemetry run → declared gaps → collection naming its source run
 julia -e 'using Pkg; Pkg.activate("JuliaFormatter"; shared = true); Pkg.add("JuliaFormatter"); using JuliaFormatter; format(".")'   # formatting
 ```
 
@@ -279,7 +279,7 @@ WaitingTimes.jl/
 ├── examples/                     # own environment: the two public packages from GitHub
 │   ├── Project.toml, activate.jl, check_environment.jl
 │   ├── tick_stream.jl            # Channel{Trade} of MarketTickStreamer.jl → OnlineWaitingTimes, batch check
-│   └── telemetry_run.jl          # DeepSpaceTelemetry.jl run directory → series with gaps → collection
+│   └── telemetry_run.jl          # DeepSpaceTelemetry.jl run directory → series with declared gaps → collection
 ├── .github/, codecov.yml         # CI (tests on Julia 1 and pre, coverage, docs deploy), Dependabot
 ├── CITATION.cff, CHANGELOG.md, LICENSE, .JuliaFormatter.toml
 ```
