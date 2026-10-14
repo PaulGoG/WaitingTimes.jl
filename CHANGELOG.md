@@ -15,8 +15,21 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   of a loaded collection. Collections generated without one keep their
   identifiers.
 
+### Changed
+
+- `examples/telemetry_run.jl` follows DeepSpaceTelemetry.jl 2.6.0: the
+  scenario runs on the tick clock, the series is placed on the payload grid,
+  the holes of `masks/gaps.csv` are its declared gaps (counted by cause and
+  checked against the gaps found from the sample spacing, and against the
+  settled `holes.csv` feed), and the collection carries the run's
+  `descriptor.toml` as its source. The examples environment pins
+  DeepSpaceTelemetry.jl 2.6.0 and MarketTickStreamer.jl 0.3.0, both on
+  CSV.jl 1.1, and reads JSON with JSON.jl.
+
 ### Fixed
 
+- A relative `--out` of `examples/telemetry_run.jl` was resolved against the
+  temporary configuration directory instead of the working directory.
 - The Distributions extension defined its `DiscreteNonParametric` method
   through an unqualified name, which Julia 1.12 and later deprecate.
 
