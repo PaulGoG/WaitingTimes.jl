@@ -1,6 +1,6 @@
 module WaitingTimesDistributionsExt
 
-using Distributions: DiscreteNonParametric
+using Distributions: Distributions, DiscreteNonParametric
 using WaitingTimes: WaitingTimes, WaitingTimeDistribution, nsamples, probabilities, support
 
 """
@@ -15,6 +15,8 @@ function WaitingTimes.discrete_distribution(d::WaitingTimeDistribution)
     return DiscreteNonParametric(support(d), probabilities(d))
 end
 
-DiscreteNonParametric(d::WaitingTimeDistribution) = WaitingTimes.discrete_distribution(d)
+function Distributions.DiscreteNonParametric(d::WaitingTimeDistribution)
+    WaitingTimes.discrete_distribution(d)
+end
 
 end # module

@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
+## [Unreleased]
+
+### Fixed
+
+- The Distributions extension defined its `DiscreteNonParametric` method
+  through an unqualified name, which Julia 1.12 and later deprecate.
+
 ## [0.2.0] - 2026-10-01
 
 ### Added
