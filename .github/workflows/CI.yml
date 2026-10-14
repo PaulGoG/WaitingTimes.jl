@@ -45,6 +45,25 @@ jobs:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
+  examples:
+    name: Producer examples
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions: # needed to allow julia-actions/cache to proactively delete old caches that it has created
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      - name: Examples environment
+        run: julia examples/check_environment.jl
+      - name: MarketTickStreamer collection contract
+        run: julia --threads=2 examples/tick_stream.jl
+      - name: DeepSpaceTelemetry collection contract
+        run: julia --threads=3 examples/telemetry_run.jl --out "${{ runner.temp }}/telemetry"
   docs:
     name: Documentation
     runs-on: ubuntu-latest

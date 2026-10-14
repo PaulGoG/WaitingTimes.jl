@@ -1,6 +1,7 @@
-# Worked consumer: a DeepSpaceTelemetry.jl run directory as the source of a
-# series with gaps, and a collection of waiting-time distributions that names
-# the run it came from.
+# Worked consumer and collection contract for DeepSpaceTelemetry.jl: a run
+# directory as the source of a series with gaps, and collections of
+# waiting-time distributions, on the elapsed and on the index axis, that name
+# the run they came from.
 #
 #   julia --threads=3 examples/telemetry_run.jl [RUN_DIRECTORY] [--out DIR]
 #
@@ -20,7 +21,7 @@
 # counted from the payload origin, so time `(r - 1) / sample_rate` is payload
 # row `r`. `masks/gaps.csv` declares every hole of the delivered record with
 # its cause (lost, pruned, undelivered, generation gaps): the holes are the
-# declared gaps of the series and a cross-check of the gaps detected from the
+# declared gaps of the series, of kind "gap", and a cross-check of the gaps detected from the
 # sample spacing, which cannot tell the causes apart and cannot see a hole
 # before the first or after the last delivered sample. `descriptor.toml` is
 # the run's identity (run, producer version and code identity, configuration
@@ -32,7 +33,8 @@
 # unknown). The delivered payload of the synthetic scenario is a flag
 # series, so a second series is built by masking a random walk with the same
 # availability, which shows the gap classification on a signal with
-# structure.
+# structure. The collections of the masked walk assert the collection
+# contract (see the last section).
 include(joinpath(@__DIR__, "activate.jl"))
 
 using CSV: CSV
@@ -148,7 +150,8 @@ inside = (holes.RowFirst .> first_row) .& (holes.RowLast .< last_row)
 outside = causes[.!inside]
 println(length(outside), " holes outside the delivered span: ",
     join(["$(count(==(c), outside)) $c" for c in sort(unique(outside))], ", "))
-declared = [((a - 1) * period_ms, b * period_ms)
+declared = [(start = (a - 1) * period_ms, stop = b * period_ms, kind = "gap",
+                source = "masks/gaps.csv")
             for (a, b) in zip(holes.RowFirst[inside], holes.RowLast[inside])]
 merged = Tuple{Int, Int}[]
 for (a, b) in sort(collect(zip(holes.RowFirst[inside], holes.RowLast[inside])))
@@ -192,60 +195,109 @@ for δ in (0.5, 5.0)
         WaitingTimes.mean_waiting_time(d))
 end
 
-# --- a collection on disk that names its source ----------------------------------------
+# --- collections that name their source ----------------------------------------------
+# One collection on the elapsed axis (milliseconds from the payload origin) and
+# one on the index axis. The series file holds every payload row from the first
+# to the last delivered sample, the rows of the holes as missing values, so the
+# index axis is the payload row (counted from the first delivered row) and the
+# declared holes stay gaps, of kind "gap", on both. The collection contract
+# (provenance schema 3, source summary, gap kinds, record structure, per-class
+# partitions) is asserted, so that a change of the producer that breaks it
+# fails here.
+"assert one clause of the collection contract, naming it when it fails"
+function contract(ok::Bool, clause::AbstractString)
+    ok || error("collection contract broken: $clause")
+end
+
 mktempdir() do dir
+    row(t) = t ÷ period_ms + 1
+    rows = row(first(times)):row(last(times))
+    full = Vector{Union{Missing, Float64}}(missing, length(rows))
+    full[row.(times) .- first(rows) .+ 1] .= walk
     csv = joinpath(dir, "masked_walk.csv")
-    CSV.write(csv, DataFrame(time_ms = signal.times, value = walk))
+    CSV.write(csv, DataFrame(time_ms = (rows .- 1) .* period_ms, value = full))
     holes_toml = joinpath(dir, "holes.toml")
-    open(io -> TOML.print(io, Dict("intervals" => [[a, b] for (a, b) in declared])),
-        holes_toml, "w")
-    config = joinpath(dir, "masked_walk.toml")
-    open(config, "w") do io
-        print(io, """
-        [input]
-        path = "$(csv)"
-        format = "csv"
-        value_column = "value"
-        time_column = "time_ms"
-        time_unit = "millisecond"
-        epoch_unit = "millisecond"
-        source_descriptor = "$(descriptor_path)"
-        [gaps]
-        declared = "$(holes_toml)"
-        detect = "threshold"
-        threshold = $(period_ms)
-        [quantization]
-        digits = 2
-        [thresholds]
-        mode = "explicit"
-        values = [0.5, 1.0, 2.0, 5.0]
-        [output]
-        root = "$(joinpath(out_dir, "collections"))"
-        format = "csv"
-        """)
+    open(
+        io -> TOML.print(io,
+            Dict("kind" => "gap", "source" => "masks/gaps.csv",
+                "intervals" => [[g.start, g.stop] for g in declared])),
+        holes_toml,
+        "w")
+    collections = Dict{String, Any}()
+    for axis in ("elapsed", "index")
+        config = joinpath(dir, "masked_walk_$(axis).toml")
+        open(config, "w") do io
+            TOML.print(io,
+                Dict(
+                    "input" =>
+                        Dict("path" => csv, "format" => "csv", "value_column" => "value",
+                            "time_column" => "time_ms", "time_unit" => "millisecond",
+                            "epoch_unit" => "millisecond", "time_axis" => axis,
+                            "source_descriptor" => descriptor_path),
+                    "gaps" => Dict("declared" => holes_toml, "detect" => "threshold",
+                        "threshold" => period_ms),
+                    "quantization" => Dict("digits" => 2),
+                    "thresholds" =>
+                        Dict("mode" => "explicit", "values" => [0.5, 1.0, 2.0, 5.0]),
+                    "output" =>
+                        Dict("root" => joinpath(out_dir, "collections"), "format" => "csv")))
+        end
+        collections[axis] = load_collection(run_pipeline(config).dir)
     end
-    handle = run_pipeline(config)
-    c = load_collection(handle.dir)
-    show(stdout, MIME("text/plain"), c)
+    ce, ci = collections["elapsed"], collections["index"]
+    show(stdout, MIME("text/plain"), ce)
     println()
-    println(summary_table(c)[:, [
+    println(summary_table(ce)[:, [
         :delta, :n_exact, :n_gap_crossing, :n_right_censored, :tau_mean]])
-    source = source_descriptor(c)
-    read(joinpath(c.dir, "source.toml")) == read(descriptor_path) ||
-        error("source.toml of $(c.id) differs from the run's descriptor.toml")
-    println("source: run ", source["run_id"], ", DeepSpaceTelemetry ",
-        source["package_version"], ", configuration ", first(source["config_sha256"], 16),
-        ", seed ", source["rng_seed"])
-    tree = get(source, "git_tree_sha1", "")
-    commit = get(source, "git_commit", "")
-    origin_of_identity = get(
-        Dict("work_tree" => "git work tree",
-            "manifest" => "manifest entry", "directory" => "directory content"),
-        get(source, "identity_source", ""), "")
-    println(
-        "producer code: tree ", isempty(tree) ? "not recorded (run before 2.6.1)" : tree,
-        ", commit ", isempty(commit) ? "not recorded" : commit,
-        isempty(origin_of_identity) ? "" : " (from the $(origin_of_identity))",
-        get(source, "git_dirty", false) === true ?
-        ", modified after installation or uncommitted changes" : "")
+
+    descriptor = TOML.parsefile(descriptor_path)
+    for c in (ce, ci)
+        contract(c.metadata["schema"] == "waitingtimes-provenance/3", "schema 3")
+        contract(read(joinpath(c.dir, "source.toml")) == read(descriptor_path),
+            "source.toml is the run's descriptor.toml")
+        summary = WaitingTimes.source_summary(c)
+        contract(summary.producer == "DeepSpaceTelemetry" && summary.compat_satisfied,
+            "source summary names an admitted DeepSpaceTelemetry")
+        contract(
+            summary.git_tree_sha1 == get(descriptor, "git_tree_sha1", "") &&
+                summary.identity == haskey(descriptor, "git_tree_sha1"),
+            "the producer's code identity is carried")
+        contract(
+            all(haskey(c.metadata["producer"], k)
+            for k in ("name", "version", "git_tree_sha1", "git_dirty", "git_commit")),
+            "[producer] identity")
+        contract(isfile(joinpath(c.dir, c.metadata["environment"]["manifest_file"])),
+            "manifest snapshot")
+        gaps = CSV.read(joinpath(c.dir, "gaps.csv"), DataFrame)
+        contract(
+            nrow(gaps) == length(merged) && all(==("gap"), gaps.kind) &&
+                all(==("masks/gaps.csv"), gaps.source),
+            "the holes are the gaps, of kind gap")
+        contract(
+            length(WaitingTimes.segment_lengths(c)) == nrow(gaps) + 1 &&
+                sum(WaitingTimes.segment_lengths(c)) == c.n_observations,
+            "segments")
+        contract(WaitingTimes.record_length(c) == length(rows), "record length in payload rows")
+        for δ in (0.5, 5.0)
+            d = distribution(c, δ)
+            cc = WaitingTimes.class_counts(c, δ)
+            ch = WaitingTimes.censoring_histogram(c, δ)
+            contract(cc.exact .+ cc.gap_crossing == WaitingTimes.counts(d), "per-class counts")
+            contract(sum(ch.count) == d.n_right_censored, "censoring histogram")
+        end
+    end
+    contract(ci.time_axis === :index && isfile(joinpath(ci.dir, "gaps_original.csv")),
+        "index axis with the gaps of the original clock")
+    contract(distribution(ce, 5.0).n_gap_crossing == distribution(ci, 5.0).n_gap_crossing,
+        "the holes classify the waits alike on both axes")
+
+    summary = WaitingTimes.source_summary(ce)
+    println("source: run ", descriptor["run_id"], ", ", summary.producer, " ",
+        summary.producer_version, ", configuration ", first(descriptor["config_sha256"], 16),
+        ", seed ", descriptor["rng_seed"])
+    println("producer code: tree ",
+        summary.identity ? summary.git_tree_sha1 : "not recorded (run before 2.6.1)",
+        ", commit ", isempty(summary.git_commit) ? "not recorded" : summary.git_commit,
+        summary.git_dirty ? ", modified after installation or uncommitted changes" : "")
+    println("collection contract holds on both axes")
 end
