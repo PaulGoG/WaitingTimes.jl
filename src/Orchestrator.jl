@@ -168,6 +168,7 @@ function step_tag(step::AbstractDict)
     op == "clip_sigma" ? "sigma" * string(get(step, "k", 3)) :
     op == "clip_extremes" ? "prune" * string(get(step, "fraction", 0.004)) :
     op == "log_returns" ? "logret" :
+    op == "log_levels" ? "loglevels" :
     op == "differences" ? "diff" :
     op == "select_range" ? "range" :
     op == "exclude_intervals" ? "cut" :

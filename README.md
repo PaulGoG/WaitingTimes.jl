@@ -187,7 +187,7 @@ push!(est, t_ns, price)                        # one sample; snapshot(est) gives
 | Configuration, storage, provenance, preprocessing, scripts | done; quickstart end to end in the tests |
 | Distributions.jl and CairoMakie extensions | done |
 | KernelAbstractions device kernel | done; CPU backend in the default tests, oneAPI verified on an Intel Arc GPU |
-| Preprocessing after the published treatment (round, fluctuations with denominator and offset, the pruning loop of the 2024 code with the slot kept or deleted, `clip_sigma`) | done; Table 1 of the paper reproduced for the raw datasets |
+| Preprocessing after the published treatment (round, fluctuations with denominator and offset, the pruning loop of the 2024 code with the slot kept or deleted, `clip_sigma`), log returns and log levels | done; Table 1 of the paper reproduced for the raw datasets |
 | Automatic choice of `digits` (`digits = "auto"`, `suggest_digits`, `digits_sensitivity`) | done |
 | Collection read side (`load_collection`, `distribution`, `summary_table`, `class_counts`, `censoring_histogram`, `source_descriptor`, `source_summary`, `segment_lengths`, `export_legacy`), per-collection README | done |
 | Source identity of a collection (`[input].source_descriptor`) and code identity of every session (tree hash, commit, manifest snapshot) | done; DeepSpaceTelemetry.jl run descriptors and MarketTickStreamer.jl session sidecars |
