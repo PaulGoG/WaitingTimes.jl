@@ -180,7 +180,7 @@ when the configuration is loaded.
 | `log_levels` | `reference = "first"` | `100 log(x_k / x_ref)`, the level in per cent of the first observed value or of a positive number; values must be positive, missing observations stay missing |
 | `differences` | | `x_k - x_{k-1}` |
 | `centered_moving_average` | `window` (odd) | subtract the centred moving average |
-| `clip_quantile` | `q`, `splice = false` | prune the observations with magnitude above the `q` quantile of the magnitudes (`q = 0.9996`: the extreme 0.04 % of both signs, as in the papers) |
+| `clip_quantile` | `q`, `splice = false` | prune the observations with magnitude above the `q` quantile of the magnitudes (`q = 0.9996`: the extreme 0.04 % of both signs) |
 | `clip_extremes` | `fraction = 0.004`, `digits`, `splice = false` | the pruning loop of the 2024 code: remove whole magnitude levels from the top until at most `1 - fraction` of the rows remain |
 | `clip_sigma` | `k = 3`, `center = "mean"`, `scale = "std"`, `splice = false` | prune the observations farther than `k` scale units from the centre; `"median"` with `"mad"` is the robust pair |
 | `collapse_ties` | `policy` | resolve equal time stamps (`"error"`, `"first"`, `"last"`, `"mean"`) |
@@ -201,19 +201,14 @@ non-finite value aborts the run naming the step and the row.
 
 The published treatment of the Trieste series is `round` to the grid,
 percentage fluctuations from a 708-hour (lunar month) trailing mean with the
-automatic shift, and `clip_extremes` with `fraction = 0.004`: the paper
-states the pruning as 0.04 % of both signs (`clip_quantile` with
-`q = 0.9996` applies that literally), but the 2024 code that produced the
-published tables pruned 0.4 % in whole magnitude levels, and only that rule
-reproduces Table 1 of the paper for the Trieste and fuel-consumption series.
-The shipped `trieste_sea_level.toml` and `trustee_fuel.toml` state it.
-
-The two rules differ by a factor of ten in the pruned share: Rom. J. Phys.
+automatic shift, and `clip_extremes` with `fraction = 0.004`. Rom. J. Phys.
 69, 111 (2024), §2.3
 ([doi:10.59277/RomJPhys.2024.69.111](https://doi.org/10.59277/RomJPhys.2024.69.111)),
-states 0.04 %, whereas `trieste_sea_level.toml` keeps the `fraction = 0.004`
-of the code. A configuration that wants the stated share replaces the step by
-`{ op = "clip_quantile", q = 0.9996 }`.
+states the pruned share as 0.04 % of both signs; that figure is an omission
+of the paper. The published tables were computed with the 0.4 % rule of the
+code, in whole magnitude levels, which reproduces Table 1 of the paper for
+the Trieste and fuel-consumption series. The shipped `trieste_sea_level.toml`
+and `trustee_fuel.toml` state it.
 
 Thresholds are generated on the grid: a linear grid from `min` to `max` by
 `step`; a logarithmic grid with `points_per_decade` between `min > 0` and
