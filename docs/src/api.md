@@ -106,6 +106,7 @@ WaitingTimes.Preprocessing.exclude_intervals
 WaitingTimes.Preprocessing.round_values
 WaitingTimes.Preprocessing.trailing_mean_fluctuations
 WaitingTimes.Preprocessing.log_returns
+WaitingTimes.Preprocessing.log_levels
 WaitingTimes.Preprocessing.differences
 WaitingTimes.Preprocessing.centered_moving_average
 WaitingTimes.Preprocessing.clip_quantile

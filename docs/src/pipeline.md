@@ -8,7 +8,7 @@ three stages.
 [`prepare`](@ref) reads the input (CSV, DAT, Arrow or MarketTickStreamer
 tick files) with the configured value and time columns, applies the
 preprocessing steps in order (range selection, surgical cuts, trailing-mean
-fluctuations in percent, log returns, differences, centred moving-average
+fluctuations in percent, log returns, log levels, differences, centred moving-average
 detrending, quantile clipping, tie collapsing), quantises to the grid,
 attaches detected and declared gaps with their kinds ([Gap kinds](@ref)), and
 places the series on the configured [Time axis](@ref). Every step returns a

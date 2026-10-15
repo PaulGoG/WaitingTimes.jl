@@ -155,6 +155,7 @@ const STEP_KEYS = Dict(
     "round" => ["digits"],
     "trailing_mean_fluctuations" => ["window", "denominator", "offset", "on_nonpositive"],
     "log_returns" => String[],
+    "log_levels" => ["reference"],
     "differences" => String[],
     "centered_moving_average" => ["window"],
     "clip_quantile" => ["q", "splice"],
@@ -194,6 +195,14 @@ function validate_step(step::AbstractDict, op::AbstractString, k::Integer)
             throw(ArgumentError("[$where_] offset applies to denominator = \"mean\" only"))
         as_symbol(fetch(step, where_, "on_nonpositive", "error"), where_, "on_nonpositive",
             (:error, :missing))
+    elseif op == "log_levels"
+        reference = fetch(step, where_, "reference", "first")
+        if reference isa AbstractString
+            as_symbol(reference, where_, "reference", (:first,))
+        else
+            r = as_float(reference, where_, "reference")
+            r > 0 || throw(ArgumentError("[$where_] reference must be positive, got $r"))
+        end
     elseif op == "centered_moving_average"
         w = as_int(require(step, where_, "window"), where_, "window"; min = 1)
         isodd(w) || throw(ArgumentError("[$where_] window must be odd, got $w"))

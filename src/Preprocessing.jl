@@ -21,7 +21,8 @@ using ..WaitingTimes: MAX_DIGITS, AbstractSearch, PreparationRecord, QuantizedSe
 using ..Provenance: file_sha256, read_toml
 
 export RawSeries, read_series, select_range, exclude_intervals, round_values,
-       trailing_mean_fluctuations, log_returns, differences, centered_moving_average,
+       trailing_mean_fluctuations, log_returns, log_levels, differences,
+       centered_moving_average,
        clip_quantile, clip_sigma, clip_extremes, collapse_ties, sampling_summary,
        value_summary,
        resolution_digits, increment_scale, digits_sensitivity, suggest_digits,
@@ -490,6 +491,39 @@ end
 """
 $(TYPEDSIGNATURES)
 
+Logarithmic levels in percent, `100 log(x_k / x_ref)`, of every observation
+against one fixed reference: the first observed value (`reference = :first`)
+or a positive number. Values must be positive; missing observations stay
+missing. The series keeps its path and its trends, so a threshold ``\\delta``
+is a move of ``\\delta`` per cent of the level (to first order), whereas the
+reference of [`trailing_mean_fluctuations`](@ref) moves with the series. The
+quantisation grid must resolve the typical one-step move, about 0.03 %
+between consecutive BTC minute closes, so three to four decimals or
+`digits = "auto"`. The step records the reference, its value and the unit,
+per cent.
+"""
+function log_levels(rs::RawSeries; reference::Union{Symbol, Real} = :first)
+    reference isa Symbol && reference !== :first &&
+        throw(ArgumentError("reference must be :first or a positive number, got :$reference"))
+    idx, x = observed(rs)
+    isempty(x) && throw(ArgumentError("the series has no observed value"))
+    all(>(0), x) || throw(ArgumentError("log levels need positive values"))
+    x_ref = reference === :first ? x[1] : Float64(reference)
+    (isfinite(x_ref) && x_ref > 0) ||
+        throw(ArgumentError("reference must be a positive finite number, got $reference"))
+    values = Vector{Union{Missing, Float64}}(missing, length(rs))
+    for (k, i) in enumerate(idx)
+        values[i] = 100 * log(x[k] / x_ref)
+    end
+    return with_values(rs, values, :log_levels,
+        Dict("reference" => reference === :first ? "first" : Float64(reference)),
+        Dict("reference_value" => x_ref, "unit" => "percent", "n_rows" => length(values),
+            "min" => 100 * log(minimum(x) / x_ref), "max" => 100 * log(maximum(x) / x_ref)))
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Differences between consecutive observations; the first becomes `missing`.
 """
 function differences(rs::RawSeries)
@@ -703,6 +737,10 @@ function apply_steps(rs::RawSeries, steps::AbstractVector)
                 on_nonpositive = symbol("on_nonpositive", "error"))
         elseif op == "log_returns"
             rs = log_returns(rs)
+        elseif op == "log_levels"
+            reference = get(step, "reference", "first")
+            rs = log_levels(rs;
+                reference = reference isa AbstractString ? Symbol(reference) : reference)
         elseif op == "differences"
             rs = differences(rs)
         elseif op == "centered_moving_average"

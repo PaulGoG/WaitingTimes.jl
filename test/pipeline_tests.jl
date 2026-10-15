@@ -8,7 +8,8 @@ using WaitingTimes.Naming: artefact_name, parse_artefact_name
 using WaitingTimes.Preprocessing: RawSeries, apply_steps, centered_moving_average,
                                   clip_extremes, clip_quantile, clip_sigma, collapse_ties,
                                   differences,
-                                  exclude_intervals, log_returns, quantized_series,
+                                  exclude_intervals, log_levels, log_returns,
+                                  quantized_series,
                                   read_series, resolution_digits, round_values,
                                   digits_sensitivity, increment_scale, suggest_digits,
                                   sampling_summary, select_range, terminal_overview,
@@ -125,6 +126,12 @@ end
             D("steps" => Any[D("op" => "trailing_mean_fluctuations", "window" => 5,
                 "denominator" => "scale", "offset" => "auto")]))))
         @test_throws ArgumentError load_settings(write_config(D("preprocessing" =>
+            D("steps" => Any[D("op" => "log_levels", "reference" => 0.0)]))))
+        @test_throws ArgumentError load_settings(write_config(D("preprocessing" =>
+            D("steps" => Any[D("op" => "log_levels", "reference" => "last")]))))
+        @test length(load_settings(write_config(D("preprocessing" =>
+            D("steps" => Any[D("op" => "log_levels", "reference" => 100.0)])))).steps) == 1
+        @test_throws ArgumentError load_settings(write_config(D("preprocessing" =>
             D("steps" => Any[D("op" => "centered_moving_average", "window" => 4)]))))
         @test_throws ArgumentError load_settings(write_config(D("preprocessing" =>
             D("steps" => Any[D("op" => "round", "digits" => 16)]))))
@@ -195,6 +202,20 @@ end
     @test lr.values[2] ≈ 100 * log(2) && lr.values[3] ≈ 100 * log(2) &&
           ismissing(lr.values[1])
     @test_throws ArgumentError log_returns(raw_from([1.0, -1.0]))
+    ll = log_levels(raw_from([2.0, 4.0, missing, 1.0]))
+    @test ll.values[1] == 0.0 && ll.values[2] ≈ 100 * log(2) && ismissing(ll.values[3]) &&
+          ll.values[4] ≈ -100 * log(2)
+    @test ll.record.steps[end].parameters["reference"] == "first" &&
+          ll.record.steps[end].summary["reference_value"] == 2.0 &&
+          ll.record.steps[end].summary["unit"] == "percent" &&
+          ll.record.steps[end].summary["min"] ≈ -100 * log(2) &&
+          ll.record.steps[end].summary["max"] ≈ 100 * log(2)
+    ll2 = log_levels(raw_from([missing, 2.0, 4.0]); reference = 4.0)
+    @test ismissing(ll2.values[1]) && ll2.values[2] ≈ -100 * log(2) && ll2.values[3] == 0.0
+    @test ll2.record.steps[end].parameters["reference"] == 4.0
+    @test_throws ArgumentError log_levels(raw_from([1.0, 0.0]))
+    @test_throws ArgumentError log_levels(raw_from([1.0, 2.0]); reference = -1.0)
+    @test_throws ArgumentError log_levels(raw_from([1.0, 2.0]); reference = :last)
     tm = trailing_mean_fluctuations(raw_from([10.0, 11.0, 12.0, 6.0]); window = 2)
     @test tm.values[1] == 0.0 && tm.values[2] ≈ 10.0 &&
           tm.values[3] ≈ (12 - 10.5) * 100 / 10.5
@@ -309,6 +330,13 @@ end
     stepped = apply_steps(raw_from([1.0, 2.0, 4.0, 8.0]),
         [Dict("op" => "log_returns"), Dict("op" => "clip_quantile", "q" => 1.0)])
     @test length(stepped.record.steps) == 2
+    levelled = apply_steps(raw_from([1.0, 2.0, 4.0]),
+        [Dict("op" => "log_levels", "reference" => 0.5)])
+    @test levelled.values ≈ 100 .* log.([2.0, 4.0, 8.0]) &&
+          levelled.record.steps[end].op == :log_levels
+    @test apply_steps(raw_from([1.0, 2.0]), [Dict("op" => "log_levels")]).values[2] ≈
+          100 * log(2)
+    @test WaitingTimes.Orchestrator.step_tag(Dict("op" => "log_levels")) == "loglevels"
     paper = apply_steps(raw_from([-4.26, 1.0, 6.04, 2.0]),
         [Dict("op" => "round", "digits" => 1),
             Dict("op" => "trailing_mean_fluctuations",

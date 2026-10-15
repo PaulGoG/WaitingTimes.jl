@@ -177,12 +177,19 @@ when the configuration is loaded.
 | `round` | `digits` | round the values to `digits` decimals (the original analysis rounded before detrending) |
 | `trailing_mean_fluctuations` | `window`, `denominator = "mean"`, `offset = "none"`, `on_nonpositive = "error"` | deviation from the mean of the previous `window` observations: `"mean"` is the percentage fluctuation of the papers, `"scale"` divides by the standard deviation of the deviations, `"none"` keeps data units; `offset = "auto"` shifts the series so that its minimum is 1 before a `"mean"` computation (the papers' rule), a number is added as given; `on_nonpositive = "missing"` records a non-positive trailing mean as a missing observation instead of aborting |
 | `log_returns` | | `100 log(x_k / x_{k-1})` |
+| `log_levels` | `reference = "first"` | `100 log(x_k / x_ref)`, the level in per cent of the first observed value or of a positive number; values must be positive, missing observations stay missing |
 | `differences` | | `x_k - x_{k-1}` |
 | `centered_moving_average` | `window` (odd) | subtract the centred moving average |
 | `clip_quantile` | `q`, `splice = false` | prune the observations with magnitude above the `q` quantile of the magnitudes (`q = 0.9996`: the extreme 0.04 % of both signs, as in the papers) |
 | `clip_extremes` | `fraction = 0.004`, `digits`, `splice = false` | the pruning loop of the 2024 code: remove whole magnitude levels from the top until at most `1 - fraction` of the rows remain |
 | `clip_sigma` | `k = 3`, `center = "mean"`, `scale = "std"`, `splice = false` | prune the observations farther than `k` scale units from the centre; `"median"` with `"mad"` is the robust pair |
 | `collapse_ties` | `policy` | resolve equal time stamps (`"error"`, `"first"`, `"last"`, `"mean"`) |
+
+`log_levels` keeps the price path and its trends, so a threshold is a move
+of a given share of the level, whereas the reference of
+`trailing_mean_fluctuations` moves with the series. The grid must then
+resolve the typical one-step move, about 0.03 % between consecutive BTC
+minute closes: three to four decimals, or `digits = "auto"`.
 
 Pruning discards a measurement as invalid. With `splice = false` (the
 default) the value becomes missing and its slot remains, so the time passed
