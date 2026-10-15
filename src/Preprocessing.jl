@@ -611,10 +611,10 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Prune observations whose magnitude exceeds the `q` quantile of ``|x|``, the
-extreme-value pruning as the papers state it (`q = 0.9996` removes the
-extreme 0.04 % of both signs). The pruned values become missing with their
-slots kept by default (`splice = false`); see [`remove_rows`](@ref).
+Prune observations whose magnitude exceeds the `q` quantile of ``|x|``
+(`q = 0.9996` removes the extreme 0.04 % of both signs). The pruned values
+become missing with their slots kept by default (`splice = false`); see
+[`remove_rows`](@ref).
 """
 function clip_quantile(rs::RawSeries; q::Real, splice::Bool = false)
     0 < q <= 1 || throw(ArgumentError("q must lie in (0, 1], got $q"))
@@ -638,10 +638,11 @@ every observation with magnitude at least the current cut is removed, where
 the cut is the integer floor of the largest magnitude on the first pass and
 its floor at `digits` decimals afterwards. The batches remove whole magnitude
 levels at once, so the removed share exceeds `fraction` by up to one level.
-`fraction = 0.004` is the value of the 2024 code (its paper states 0.04 %,
-which [`clip_quantile`](@ref) with `q = 0.9996` applies exactly). With
-`splice = false` (the default, as the 2024 code) this step reproduces the
-published Table 1 entries of the pruned series; see [`remove_rows`](@ref).
+`fraction = 0.004` is the rule of the 2024 code, with which the published
+tables were computed; the 0.04 % stated in Rom. J. Phys. 69, 111 (2024),
+§2.3, is an omission of the paper. With `splice = false` (the default, as
+the 2024 code) this step reproduces the published Table 1 entries of the
+pruned series; see [`remove_rows`](@ref).
 """
 function clip_extremes(rs::RawSeries; fraction::Real = 0.004, digits::Integer,
         splice::Bool = false)
