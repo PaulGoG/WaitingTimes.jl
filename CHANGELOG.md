@@ -3,6 +3,27 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
+## [0.3.1] - 2026-10-15
+
+### Added
+
+- `log_levels`, the level of every observation in per cent of one fixed
+  reference, `100 log(x_k / x_ref)`, with `reference = "first"` (the first
+  observed value) or a positive number. Values must be positive, missing
+  observations stay missing, and the step records the reference, its value
+  and the unit. A threshold on log levels is a move of a given share of the
+  level while the path keeps its trends, unlike `trailing_mean_fluctuations`,
+  whose reference moves with the series; the configuration page states the
+  grid the one-step move needs.
+
+### Changed
+
+- The configuration page and the docstrings of `clip_quantile` and
+  `clip_extremes` state one pruning rule: the published tables were computed
+  with the 0.4 % rule of the 2024 code, and the 0.04 % stated in Rom. J.
+  Phys. 69, 111 (2024), §2.3, is an omission of the paper. The shipped
+  configurations are unchanged.
+
 ## [0.3.0] - 2026-10-14
 
 ### Added
