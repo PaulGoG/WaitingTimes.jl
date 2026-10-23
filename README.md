@@ -291,8 +291,8 @@ WaitingTimes.jl/
 │       └── literate/             #   validation, interfacing, producers, API, references; executable example
 ├── examples/                     # own environment: the two public packages from GitHub
 │   ├── Project.toml, activate.jl, check_environment.jl
-│   ├── tick_stream.jl            # MarketTickStreamer.jl: online = batch; session sidecar, closures, both axes
-│   └── telemetry_run.jl          # DeepSpaceTelemetry.jl run directory → declared gaps → collections on both axes
+│   ├── tick_stream.jl            # MarketTickStreamer.jl: online = batch under the snapshot convention; the session persisted, compacted and followed; closures, both axes
+│   └── telemetry_run.jl          # DeepSpaceTelemetry.jl run through its adapter → declared gaps → collections on both axes
 ├── .github/, codecov.yml         # CI (tests on Julia min, 1 and pre, producer examples, coverage, docs), Dependabot
 ├── CITATION.cff, CHANGELOG.md, LICENSE, .JuliaFormatter.toml
 ```

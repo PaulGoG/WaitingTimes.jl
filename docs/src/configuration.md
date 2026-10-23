@@ -254,8 +254,9 @@ the identity of its code, the configuration hash, the clock mode, the seed,
 the payload geometry and the size and SHA-256 of every table of the run
 (`examples/telemetry_run.jl`). MarketTickStreamer.jl writes a session
 sidecar, `<session>.meta.toml`, with the session, the producer's version,
-commit and dirty flag, the hardware and the configuration
-(`examples/tick_stream.jl`); it records no tree hash. The authoritative key of the producer's code
+commit and dirty flag, the venue's timestamp unit, the hardware and the
+configuration snapshot (`examples/tick_stream.jl`); it records no tree hash.
+The authoritative key of the producer's code
 is `git_tree_sha1` with `git_dirty = false`; `git_commit` is filled when the
 producer ran from a checkout or was pinned by a full commit hash, and adds
 the history. Both are recorded since DeepSpaceTelemetry 2.6.1, also for a
