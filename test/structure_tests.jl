@@ -329,7 +329,7 @@ end
     @test !summarise(merge(old, Dict("package_version" => "2.4.0")))["compat_satisfied"]
     mts = Dict{String, Any}("session" => Dict("id" => "s1", "status" => "completed"),
         "provenance" => Dict("git_commit" => "unknown", "git_dirty" => false,
-            "package_version" => "0.3.0"))
+            "package_version" => "1.0.0", "timestamp_unit" => "nanosecond"))
     s3 = summarise(mts)
     @test s3["producer"] == "MarketTickStreamer" && s3["git_commit"] == "" &&
           !s3["identity"] &&

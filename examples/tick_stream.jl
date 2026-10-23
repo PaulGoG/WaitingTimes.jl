@@ -3,37 +3,45 @@
 # collection that names its source session.
 #
 #   julia --threads=auto examples/tick_stream.jl [RAW_SESSION.jsonl ...]
+#   julia --threads=auto examples/tick_stream.jl --follow RAW_DIR [SESSION]
 #
 # The consumer takes a `Channel{Trade}` of MarketTickStreamer.jl and never
-# learns whether the ticks came from the wire, from a recording or, as here
-# without a recording, from a synthetic tape. It feeds an
-# `OnlineWaitingTimes` estimator for a grid of price thresholds, then checks
-# the online distributions against the batch pipeline on the same ticks: the
-# compacted per-symbol file that MarketTickStreamer writes is read back with
-# `read_series(format = :tick)`, and the batch result of `StreamingSearch`
-# must equal the online snapshot exactly.
+# learns whether the ticks came from the wire (`live_source`), from a
+# recording (`replay_source`), from the raw files of a session another
+# process is writing (`follow_source`) or, as here without a recording,
+# from a synthetic tape. It feeds an `OnlineWaitingTimes` estimator for a
+# grid of price thresholds under the producer's snapshot convention
+# (`snapshots`: the estimator's state at every multiple of a period on the
+# exchange clock and once at close, a function of the sequence alone), then
+# checks the online distributions against the batch pipeline on the same
+# ticks: the prints in the schema of the producer's processed files
+# (`trades_table`) are read back with `read_series(format = :tick)`, and the
+# batch result of `StreamingSearch` must equal the online snapshot exactly.
 #
 # The synthetic tape is laid on the calendar MarketTickStreamer gives a US
 # equity venue (`provider_spec(Val(:alpaca))`: America/New_York, regular
 # session 9:30 to 16:00, Monday to Friday), so its sessions are separated by
-# exchange closures. The second part writes the session's provenance sidecar
-# with MarketTickStreamer's own `write_session_meta`, declares the closures
-# as gaps of kind "session", and generates one collection on the elapsed
-# axis (exchange time in nanoseconds) and one on the index axis (trade
-# count). It asserts the collection contract (provenance schema 3, source
-# summary, gap kinds, record structure, per-class partitions), so that a
-# change of the producer that breaks it fails here. With raw session files
-# as arguments the ticks come from `replay_source(files; pace = "max")`
-# instead and only the online check runs.
+# exchange closures. The second part takes the tape through the producer's
+# own persistence: the raw NDJSON sink, the session sidecar
+# (`write_session_meta`), compaction into the processed tree (`compact_raw`,
+# one file per symbol and trading day) and the corpus read
+# (`read_processed`), and follows the finished session through its files
+# (`follow_source`). It declares the closures as gaps of kind "session" and
+# generates one collection on the elapsed axis (exchange time in
+# nanoseconds) and one on the index axis (trade count), then asserts the
+# collection contract (provenance schema 3, source summary, gap kinds,
+# record structure, per-class partitions), so that a change of the producer
+# that breaks it fails here. With raw session files as arguments the ticks
+# come from `replay_source(files; pace = "max")`, with `--follow` from
+# `follow_source(dir; session)`, and only the online check runs.
 include(joinpath(@__DIR__, "activate.jl"))
 
 using CSV: CSV
 using DataFrames: DataFrame, nrow
-using Dates: Date, DateTime, Day, Hour, Minute, dayofweek, datetime2unix, unix2datetime
-using MarketTickStreamer: MarketTickStreamer, Trade, load_config, price_forming,
-                          provider_spec,
-                          replay_source,
-                          tee, trading_date, write_session_meta
+using Dates: Date, DateTime, Day, dayofweek, datetime2unix, unix2datetime
+using MarketTickStreamer: MarketTickStreamer, Trade, compact_raw, follow_source,
+                          load_config, price_forming, provider_spec, read_processed,
+                          replay_source, snapshots, tee, trades_table, trading_date
 using Printf: @printf
 using StableRNGs: StableRNG
 using TOML: TOML
@@ -46,6 +54,10 @@ const DELTAS = [0.01, 0.05, 0.25, 1.0]             # price thresholds
 const SYMBOL = "SYN"
 const FIRST_SESSION = Date(2026, 4, 6)             # a Monday; New York on EDT (UTC-4)
 const UTC_OFFSET_HOURS = 4
+const SNAPSHOT_PERIOD_NS = 3_600 * 10^9            # one hour of exchange time
+
+"one snapshot of the estimator: the boundary on the exchange clock, the prints folded, the waits resolved per threshold"
+const Snapshot = @NamedTuple{at::Int64, n::Int, final::Bool, resolved::Vector{Int}}
 
 "nanoseconds since the UNIX epoch of a New York local time on EDT"
 function local_ns(d::Date, hours::Real)
@@ -99,11 +111,13 @@ function synthetic_tape(n::Integer; seed::Integer = 2026)
 end
 
 """
-    consume(ch) -> (estimator, trades)
+    consume(ch) -> (estimator, trades, persisted, snapshots)
 
-Drain the channel through a lossless analysis tap into the online estimator,
-keeping every price-forming print, and return the ticks seen for the batch
-check. The persistence tap only counts.
+Drain the channel through a lossless analysis tap into the online estimator
+under the producer's snapshot convention, keeping every price-forming print,
+and return the ticks seen for the batch check and the snapshot rows: the
+boundary on the exchange clock, the prints folded so far and the waits
+resolved per threshold. The persistence tap only counts.
 """
 function consume(ch::Channel{Trade})
     persist, analyse = tee(ch, 2; capacity = 10_000, lossy = [false, false])
@@ -113,25 +127,16 @@ function consume(ch::Channel{Trade})
     end
     est = OnlineWaitingTimes(DELTAS, DIGITS; time_unit = :nanosecond, late_policy = :skip)
     trades = Trade[]
-    for trade in analyse
-        price_forming(trade) || continue
+    rows = Snapshot[]
+    on_snapshot(at, n, final) = push!(rows,
+        (at = at, n = n, final = final, resolved = [r.resolved for r in status(est)]))
+    snapshots(analyse, SNAPSHOT_PERIOD_NS; on_snapshot) do trade
+        price_forming(trade) || return
         push!(est, trade.time_ns, trade.price)
         push!(trades, trade)
     end
     wait(counter)
-    return est, trades, counted[]
-end
-
-"the compacted per-symbol file MarketTickStreamer writes, with its columns"
-function write_tick_file(path, trades)
-    CSV.write(path,
-        DataFrame(symbol = [t.symbol for t in trades],
-            time_ns = [t.time_ns for t in trades], recv_ns = [t.recv_ns for t in trades],
-            price = [t.price for t in trades], size = [t.size for t in trades],
-            exchange = [t.exchange for t in trades],
-            conditions = [join(t.conditions, "|") for t in trades],
-            tape = [t.tape for t in trades], id = [t.id for t in trades]))
-    return path
+    return est, trades, counted[], rows
 end
 
 "assert one clause of the collection contract, naming it when it fails"
@@ -139,10 +144,20 @@ function contract(ok::Bool, clause::AbstractString)
     ok || error("collection contract broken: $clause")
 end
 
+# --- the source: a synthetic tape, a replayed recording or a followed session ------
+follow_at = findfirst(==("--follow"), ARGS)
 synthetic = isempty(ARGS)
-source, sessions = synthetic ? synthetic_tape(200_000) :
-                   (replay_source(ARGS; pace = "max"), nothing)
-est, trades, persisted = consume(source)
+source, sessions = if follow_at !== nothing
+    length(ARGS) > follow_at || error("--follow needs the raw directory of the session")
+    session = length(ARGS) > follow_at + 1 ? ARGS[follow_at + 2] : nothing
+    follow_source(ARGS[follow_at + 1]; session), nothing
+elseif synthetic
+    synthetic_tape(200_000)
+else
+    replay_source(ARGS; pace = "max"), nothing
+end
+est, trades, persisted, snaps = consume(source)
+isempty(trades) && error("the source delivered no price-forming print")
 println(est)
 println("prints persisted ", persisted, ", price-forming ",
     length(trades), ", late ", est.n_late)
@@ -150,10 +165,16 @@ for row in status(est)
     @printf("  δ = %-6s resolved %8d  pending %6d  mean wait %10.3e ns\n",
         row.delta, row.resolved, row.pending, row.mean_waiting_time)
 end
+quiet = count(k -> k > 1 && snaps[k].n == snaps[k - 1].n, eachindex(snaps))
+@printf("  %d hourly snapshots on the exchange clock, %d without new prints; final at %s after %d prints, resolved %s\n",
+    length(snaps), quiet, unix2datetime(last(snaps).at / 1e9),
+    last(snaps).n,
+    join(last(snaps).resolved, " "))
 
 # --- batch check on the same ticks -------------------------------------------
 mktempdir() do dir
-    path = write_tick_file(joinpath(dir, SYMBOL * ".csv"), trades)
+    path = joinpath(dir, SYMBOL * ".csv")
+    CSV.write(path, trades_table(trades))                # the schema of the processed files
     rs = read_series(path; format = :tick, value_column = "price", tie_policy = :last)
     s = quantized_series(rs, DIGITS; detect = :none)
     online = snapshot(est)
@@ -175,21 +196,38 @@ end
 # --- collections that name their source session --------------------------------
 synthetic || exit()
 mktempdir() do dir
-    # the producer's own configuration, with its data tree in the temporary directory
-    mts_config = TOML.parsefile(joinpath(pkgdir(MarketTickStreamer), "config", "config.toml"))
+    # the producer's shipped configuration (a read-only template in an installed
+    # copy), with its data tree in the temporary directory
+    mts_config = TOML.parsefile(MarketTickStreamer.DEFAULT_CONFIG)
     mts_config["storage"]["data_dir"] = joinpath(dir, "mts")
     mts_config["stream"]["symbols"] = [SYMBOL]
     open(io -> TOML.print(io, mts_config), joinpath(dir, "mts.toml"), "w")
     cfg = load_config(joinpath(dir, "mts.toml"))
-    mkpath(cfg.raw_dir)
-    tick_file = write_tick_file(joinpath(cfg.raw_dir, SYMBOL * ".csv"), trades)
-    sidecar = write_session_meta(cfg, "synthetic"; status = "completed",
-        ticks = length(trades), raw_files = [tick_file],
+
+    # the session as the producer persists it: raw parts, the sidecar, the
+    # processed day files; then the two ways a consumer reads it back
+    sid = MarketTickStreamer.session_id(cfg)
+    sink = MarketTickStreamer.open_raw_sink(cfg.raw_dir, sid)
+    MarketTickStreamer.write_batch!(sink, trades)
+    MarketTickStreamer.close_sink!(sink)
+    sidecar = MarketTickStreamer.write_session_meta(cfg, sid; status = "completed",
+        ticks = length(trades), raw_files = [sink.path],
         started_utc = unix2datetime(first(trades).time_ns / 1e9),
         finished_utc = unix2datetime(last(trades).time_ns / 1e9))
-    # every print falls on a session day of the calendar
-    days = Set(trading_date(t.time_ns) for t in trades)
-    contract(length(days) == length(sessions), "one trading date per session")
+    days = compact_raw([sink.path], cfg.processed_dir;
+        format = cfg.processed_format, tz = cfg.exchange_tz)
+    corpus = read_processed(cfg, SYMBOL)
+    followed = collect(follow_source(cfg.raw_dir; session = sid))
+    contract(
+        length(days) == length(sessions) &&
+            Set(Date(first(splitext(basename(f)))) for f in days) ==
+            Set(trading_date(t.time_ns; tz = cfg.exchange_tz) for t in trades),
+        "one processed day file per session of the calendar")
+    contract(corpus == trades, "the corpus read returns the persisted prints in exchange-time order")
+    contract(followed == trades, "the finished session is followed whole through its files")
+    tick_file = joinpath(dir, SYMBOL * ".csv")
+    CSV.write(tick_file, trades_table(corpus))
+
     closures = [(start = sessions[k][2], stop = sessions[k + 1][1], kind = "session",
                     source = "provider_spec(alpaca).regular_session")
                 for k in 1:(length(sessions) - 1)]
@@ -230,7 +268,13 @@ mktempdir() do dir
         contract(summary !== nothing && summary.producer == "MarketTickStreamer",
             "source summary names MarketTickStreamer")
         contract(summary.compat_satisfied, "producer version admitted")
-        contract(source_descriptor(c)["session"]["id"] == "synthetic", "sidecar copied verbatim")
+        descriptor = source_descriptor(c)
+        contract(
+            descriptor["session"]["id"] == sid &&
+                descriptor["session"]["status"] == "completed",
+            "sidecar copied verbatim")
+        contract(descriptor["provenance"]["timestamp_unit"] == "nanosecond",
+            "the sidecar records the venue's timestamp unit")
         contract(
             all(haskey(c.metadata["producer"], k)
             for k in ("name", "version", "git_tree_sha1", "git_dirty", "git_commit")),

@@ -442,7 +442,7 @@ version whose file contract this version of WaitingTimes reads: the
 DeepSpaceTelemetry.jl run descriptor (`descriptor.toml`, schema
 `deepspacetelemetry-run/1`, written since 2.5.0) and the MarketTickStreamer.jl
 session sidecar (`<session>.meta.toml`, with the tick files read by
-`format = :tick` since 0.3.0).
+`format = :tick` since 0.3.0; the file contract is fixed by 1.0.0).
 """
 const MINIMUM_PRODUCER_VERSION = Dict("DeepSpaceTelemetry" => v"2.5.0",
     "MarketTickStreamer" => v"0.3.0")
