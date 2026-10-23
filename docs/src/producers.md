@@ -56,23 +56,53 @@ producer (`simulation.mode = "tick"`) runs a scenario deterministically: two
 runs of one configuration agree on every product but the wall-clock column of
 `mission_profile.csv`.
 
+A Julia consumer reads the run through the producer's adapter
+(`DeepSpaceTelemetry.RunAdapter`, public since 2.6.2): `open_run` checks the
+producer's version and the lifecycle sentinel, `run_geometry` gives the
+sample rate, the payload origin and the clock mode, `list_batches` and
+`read_batch` the delivered payload with its payload rows (`row_time` the
+instant of a row), and `declared_holes` the feed; the tables of the run are
+read with `TelemetryCore.read_table`, which states their column types. This
+is what `examples/telemetry_run.jl` does; the file contract serves a
+consumer in any other language.
+
 ## MarketTickStreamer.jl
 
-The compacted per-symbol tick files (`time_ns`, `price` and the other trade
-columns) are read with `format = "tick"`, every print a row; equal time
-stamps are resolved by `tie_policy`. A capture or backfill session writes
-its sidecar `<session>.meta.toml` with the session, the producer's version,
-commit and dirty flag, the hardware and the configuration; it records no
-tree hash, so a collection from it has no code identity of the producer
+A consumer meets a capture in three ways, all through one `Channel{Trade}`:
+the wire (`live_source`), a recording (`replay_source`: a session from its
+raw files, or a corpus from the processed tree one trading day at a time)
+and the raw files of a session another process is writing
+(`follow_source`, which ends when the session's sidecar leaves `running`; a
+finished session is read whole). `OnlineWaitingTimes` consumes the channel
+under the producer's snapshot convention (`snapshots`: the state at every
+multiple of a period on the exchange clock and once at close, a function of
+the sequence alone, so a replay reproduces the snapshots of the live
+session). The file contract, fixed by MarketTickStreamer 1.0.0, serves the
+batch pipeline: the processed day files
+`processed/<SYMBOL>/<YYYY-MM-DD>.csv|.arrow` (`time_ns`, `price` and the
+other trade columns, rows sorted by `time_ns`, exact duplicates removed) are
+read with `format = "tick"`, every print a row, equal time stamps resolved by
+`tie_policy`; a series over several days is the corpus read
+(`read_processed(cfg, symbol; from, to)`) written as one file in the same
+schema (`trades_table`). A capture, backfill or import session writes its
+sidecar `<session>.meta.toml` with the session, the producer's version,
+commit and dirty flag, the venue's timestamp unit, the hardware and the
+configuration snapshot (the seed of the backoff jitter included); it records
+no tree hash, so a collection from it has no code identity of the producer
 beside the version.
 
 | Collection | From the session |
 |---|---|
-| series | the price-forming prints, time in nanoseconds since the UNIX epoch |
+| series | the price-forming prints, time in nanoseconds since the UNIX epoch, at the venue's resolution (`timestamp_unit` of the sidecar: nanoseconds on the SIP, microseconds on Binance) |
 | gaps | the exchange closures between regular sessions, kind `session`, from the venue's calendar (`provider_spec`: time zone, regular session; `session_days`); a threshold on the spacing finds the same closures |
 | `time_axis = "elapsed"` | exchange time at the stream's resolution |
 | `time_axis = "index"` | the trade count; closures close |
 | source | the session sidecar |
+
+The prints of one matching event share the exchange timestamp (on a liquid
+crypto pair most consecutive prints), so on the elapsed axis `tie_policy`
+decides which print of an instant the series keeps; the producer's
+`event_bars` collapses them into one bar per instant upstream.
 
 ## Sampled files
 

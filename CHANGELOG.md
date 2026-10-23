@@ -3,6 +3,25 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
+## [Unreleased]
+
+### Changed
+
+- The examples environment pins MarketTickStreamer.jl 1.0.0, whose exported
+  API and file contract are fixed from that release; DeepSpaceTelemetry.jl
+  stays at 2.6.2, its latest. `examples/tick_stream.jl` follows the 1.0.0
+  interface: the session plumbing is reached qualified (`write_session_meta`
+  is no longer exported), the online estimator is fed under the producer's
+  snapshot convention (`snapshots`), the tape goes through the producer's
+  raw sink, sidecar and compaction and is read back through
+  `read_processed` and `follow_source`, the tick file is written in the
+  processed schema (`trades_table`), and `--follow RAW_DIR [SESSION]`
+  follows a session's raw files as the source. `examples/telemetry_run.jl`
+  reads the run through `DeepSpaceTelemetry.RunAdapter` (public since 2.6.2)
+  and its tables with `TelemetryCore.read_table`. The producers page states
+  the three sources of a tick stream, the snapshot convention, the corpus
+  read and the adapter.
+
 ## [0.3.1] - 2026-10-15
 
 ### Added
