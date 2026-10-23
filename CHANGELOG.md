@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
-## [Unreleased]
+## [0.3.2] - 2026-10-23
 
 ### Changed
 
@@ -21,6 +21,9 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   and its tables with `TelemetryCore.read_table`. The producers page states
   the three sources of a tick stream, the snapshot convention, the corpus
   read and the adapter.
+- The test suite skips the JET package analysis on a pre-release Julia where
+  JET loads as empty stubs (1.14.0-alpha1 at the time of writing) and still
+  fails on a release with an unsupported JET.
 
 ## [0.3.1] - 2026-10-15
 
