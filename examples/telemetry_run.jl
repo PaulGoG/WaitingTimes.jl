@@ -13,15 +13,19 @@
 # directory so that nothing is written into the installed package. A given
 # run directory must be a finished run of DeepSpaceTelemetry 2.5 or later.
 #
-# The run-directory contract is read as its documentation states it:
-# delivered batches under `ground/<BATCH>/`, each with `metadata.json`
-# (content epoch, payload row) and `seg_<id>.csv` (one `Amplitude` column),
-# sample `k` of a batch at `content_epoch + (k - 1) / sample_rate`, with the
-# sample rate and the payload origin from `config_snapshot.toml`; times are
-# counted from the payload origin, so time `(r - 1) / sample_rate` is payload
-# row `r`. `masks/gaps.csv` declares every hole of the delivered record with
-# its cause (lost, pruned, undelivered, generation gaps): the holes are the
-# declared gaps of the series, of kind "gap", and a cross-check of the gaps detected from the
+# The run directory is read through the producer's own adapter
+# (`DeepSpaceTelemetry.RunAdapter`, public since 2.6.2): `open_run` checks
+# the producer's version and the lifecycle sentinel, `run_geometry` gives
+# the sample rate, the payload origin and the clock mode, `list_batches` the
+# delivered batches with their payload rows, `read_batch` the samples of a
+# batch (sample `k` at payload row `payload_row + k - 1`, so time
+# `(r - 1) / sample_rate` from the origin is payload row `r`; `row_time`
+# states it), and `declared_holes` the producer's feed of holes with the
+# instant of each declaration. `masks/gaps.csv`, the settled table of every
+# hole of the delivered record with its cause (lost, pruned, undelivered,
+# generation gaps), is read with `TelemetryCore.read_table`, which states
+# the column types of the file contract: the holes are the declared gaps of
+# the series, of kind "gap", and a cross-check of the gaps detected from the
 # sample spacing, which cannot tell the causes apart and cannot see a hole
 # before the first or after the last delivered sample. `descriptor.toml` is
 # the run's identity (run, producer version and code identity, configuration
@@ -39,9 +43,7 @@ include(joinpath(@__DIR__, "activate.jl"))
 
 using CSV: CSV
 using DataFrames: DataFrame, nrow
-using Dates: DateTime, Millisecond
 using DeepSpaceTelemetry: DeepSpaceTelemetry
-using JSON: JSON
 using Printf: @printf
 using StableRNGs: StableRNG
 using TOML: TOML
@@ -58,8 +60,9 @@ run_dir = let positional = filter(
 end
 
 # --- a run directory ----------------------------------------------------------
+TC = DeepSpaceTelemetry.TelemetryCore
+RA = DeepSpaceTelemetry.RunAdapter
 if run_dir === nothing
-    TC = DeepSpaceTelemetry.TelemetryCore
     TC.DATA_ROOT[] = joinpath(out_dir, "dst")
     mkpath(TC.runs_root())
     scenario = joinpath(pkgdir(DeepSpaceTelemetry), "scenarios", "drop_policy.toml")
@@ -75,39 +78,37 @@ gaps_path = joinpath(run_dir, "masks", "gaps.csv")
 isfile(descriptor_path) && isfile(gaps_path) ||
     error("$run_dir has no descriptor.toml or masks/gaps.csv; a finished run of DeepSpaceTelemetry 2.5 or later is required")
 
-# --- the file contract, read directly -------------------------------------------
-snapshot_cfg = TOML.parsefile(joinpath(run_dir, "config_snapshot.toml"))
-sample_rate = Float64(snapshot_cfg["physics"]["sample_rate"])
+# --- the run, through the producer's adapter ----------------------------------------
+run = RA.open_run(run_dir)                 # the producer's version and the lifecycle sentinel checked
+RA.run_state(run) === :complete ||
+    error("$run_dir is not a finished run (state $(RA.run_state(run)))")
+geometry = RA.run_geometry(run)
+sample_rate = geometry.sample_rate
 period_ms = round(Int, 1000 / sample_rate)
 period_ms * sample_rate == 1000 ||
     error("sample rate $sample_rate Hz is not a whole number of milliseconds")
-origin = DateTime(snapshot_cfg["provenance"]["payload_origin"])
+println(
+    "producer ", geometry.package_version, ", clock ", geometry.mode, ", payload origin ",
+    geometry.payload_origin, ", columns ", join(geometry.columns, ", "))
 
 "delivered batches as (start time in ms from the payload origin, samples), in time order"
-function delivered_batches(run_dir, origin, period_ms)
+function delivered_batches(run, geometry, period_ms)
     batches = Tuple{Int64, Vector{Float64}}[]
-    ground = joinpath(run_dir, "ground")
-    for name in readdir(ground)
-        dir = joinpath(ground, name)
-        meta_path = joinpath(dir, "metadata.json")
-        isfile(meta_path) || continue
-        meta = JSON.parsefile(meta_path)
-        start_ms = Millisecond(DateTime(String(meta["content_epoch"])) - origin).value
-        start_ms == (meta["payload_row"] - 1) * period_ms ||
-            error("$name: content epoch and payload row disagree")
-        segments = sort(filter(f -> occursin(r"^seg_\d+\.csv$", f), readdir(dir));
-            by = f -> parse(Int, match(r"\d+", f).match))
-        isempty(segments) && continue                 # payload pruned by retention
-        samples = reduce(vcat,
-            [Vector{Float64}(CSV.read(joinpath(dir, f), DataFrame).Amplitude)
-             for f in segments])
-        push!(batches, (start_ms, samples))
+    for b in RA.list_batches(run)
+        b.state === :ground || continue           # lost: never delivered; pruned: payload removed by retention
+        ismissing(b.content_epoch) ||
+            RA.row_time(geometry, first(b.rows)) == b.content_epoch ||
+            error("$(b.name): content epoch and payload row disagree")
+        samples = Float64.(RA.read_batch(run, b.name))
+        length(samples) == length(b.rows) ||
+            error("$(b.name): $(length(samples)) samples for $(length(b.rows)) payload rows")
+        push!(batches, ((first(b.rows) - 1) * period_ms, samples))
     end
     sort!(batches; by = first)
     return batches
 end
 
-batches = delivered_batches(run_dir, origin, period_ms)
+batches = delivered_batches(run, geometry, period_ms)
 isempty(batches) && error("no delivered batch with a payload under $run_dir")
 times = Int64[]
 values = Union{Missing, Float64}[]
@@ -124,8 +125,7 @@ println(
 # --- the declared holes ----------------------------------------------------------
 # Rows are payload rows (inclusive), so a hole covers [(RowFirst - 1) P, RowLast P)
 # in milliseconds from the payload origin, with P the sample period.
-instants = Dict(:ContentStart => String, :ContentEnd => String)
-holes = CSV.read(gaps_path, DataFrame; types = instants)
+holes = TC.read_table(gaps_path)           # the settled gap table, column types as the contract states them
 causes = String.(holes.Cause)
 println("holes of the delivered record (masks/gaps.csv):")
 for cause in sort(unique(causes))
@@ -133,12 +133,10 @@ for cause in sort(unique(causes))
     @printf("  %-13s %4d holes %9d rows\n", cause, count(sel),
         sum(holes.RowLast[sel] .- holes.RowFirst[sel] .+ 1))
 end
-feed_path = joinpath(run_dir, "holes.csv")
-if isfile(feed_path)
-    feed = CSV.read(feed_path, DataFrame; types = merge(instants, Dict(:DeclaredAt =>
-        String)))
-    settled = Set(zip(String.(feed.Cause), feed.RowFirst, feed.RowLast)) ==
-              Set(zip(causes, holes.RowFirst, holes.RowLast))
+feed = RA.declared_holes(run)              # holes.csv, each hole with the instant it was declared
+if !isempty(feed)
+    settled = Set((String(h.cause), first(h.rows), last(h.rows)) for h in feed) ==
+              Set(zip(causes, Int.(holes.RowFirst), Int.(holes.RowLast)))
     println("holes.csv settled to the same ", nrow(holes), " holes: ", settled)
 end
 
