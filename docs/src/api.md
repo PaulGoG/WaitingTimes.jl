@@ -61,6 +61,7 @@ waiting_times!
 WaitingTimes.workspace
 WaitingTimes.suffix_maximum
 WaitingTimes.scan_work
+WaitingTimes.workspace_bytes
 WaitingTimes.SearchWorkspace
 WaitingTimes.MaxTree
 WaitingTimes.FenwickWorkspace
