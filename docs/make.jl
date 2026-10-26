@@ -24,7 +24,7 @@ makedocs(;
         canonical = "https://PaulGoG.github.io/WaitingTimes.jl",
         edit_link = "main",
         assets = String[],
-        size_threshold = 400 * 1024
+        size_threshold = 400 * 1024, size_threshold_warn = 200 * 1024
     ),
     pages = [
         "Home" => "index.md",
@@ -38,10 +38,11 @@ makedocs(;
         "Producers" => "producers.md",
         "Downstream example" => "generated/downstream_fit.md",
         "API" => "api.md",
+        "Internals" => "internals.md",
         "References" => "references.md"
     ],
-    checkdocs = :exports,
-    warnonly = [:missing_docs, :cross_references]
+    checkdocs = :public,
+    warnonly = [:cross_references]
 )
 
 deploydocs(; repo = "github.com/PaulGoG/WaitingTimes.jl", devbranch = "main")
