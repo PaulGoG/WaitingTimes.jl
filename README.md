@@ -10,23 +10,23 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Paper](https://img.shields.io/badge/paper-10.1088%2F2632--072X%2Fae8aa5-blue)](https://doi.org/10.1088/2632-072X/ae8aa5)
 
-Exact waiting-time distributions of scalar time series for threshold grids:
-the numerical backbone of the analyses in P.-A. Gogîță et al., *J. Phys.
-Complex.* **7**, 035007 (2026),
+Exact waiting-time distributions of scalar time series for threshold grids.
+The package is my rewrite of the numerical backbone of the analyses in
+P.-A. Gogîță et al., *J. Phys. Complex.* **7**, 035007 (2026),
 [doi:10.1088/2632-072X/ae8aa5](https://doi.org/10.1088/2632-072X/ae8aa5),
 and G. T. Pană, P.-A. Gogîță, A. Nicolin-Żaczek, *Rom. J. Phys.* **69**,
 111 (2024),
 [doi:10.59277/RomJPhys.2024.69.111](https://doi.org/10.59277/RomJPhys.2024.69.111),
-rewritten as a package with verified fast kernels, provenance-tracked data
-products and interfaces for batch and real-time analysis.
+with verified fast kernels, provenance-tracked data products and interfaces
+for batch and real-time analysis.
 
-![Survival functions of the waiting times of the Geisenheim wind speed at a
-small and a large threshold, with the scale-free and Pareto-Tsallis fits of
-the 2024 recipe](docs/src/assets/transition.png)
+![Survival functions of the Geisenheim wind-speed waiting times at a small
+and a large threshold, with scale-free and Pareto-Tsallis
+fits](docs/src/assets/transition.png)
 
-The two regimes the papers describe, on the Geisenheim hourly wind speed: at
-δ = 1 km/h the survival function of the waiting times is scale-free over
-three decades, at δ = 32.5 km/h it is Pareto-Tsallis. Both fits use the
+At δ = 1 km/h the survival function of the Geisenheim hourly wind-speed
+waiting times is scale-free over three decades; at δ = 32.5 km/h it is
+Pareto-Tsallis, the two regimes the papers describe. Both fits use the
 recipe of the 2024 analysis (`examples/legacy_fit.jl`) on distributions
 computed here; the numbers behind every figure of this page are in
 [`docs/src/assets/PROVENANCE.toml`](docs/src/assets/PROVENANCE.toml).
@@ -43,7 +43,7 @@ WaitingTimes.jl/
 ├── bench/                        # kernel benchmarks (own environment)
 ├── test/                         # test suite, fixtures, opt-in device tests
 ├── docs/                         # Documenter site with an executable example
-├── examples/                     # worked consumers against MarketTickStreamer.jl and DeepSpaceTelemetry.jl
+├── examples/                     # worked consumers of the two producers; Table 1 reproduction
 ├── data/                         # gitignored: raw inputs, collections, logs
 ├── CITATION.cff, CHANGELOG.md, LICENSE, .JuliaFormatter.toml
 ```
@@ -65,22 +65,19 @@ implementation. Time passes through missing samples and data gaps; gaps are
 recorded and reported (`gap_table`, `classify`) and never alter a waiting
 time.
 
-Kernels: `SegmentTreeSearch` (default, milliseconds per threshold at millions
-of points), `FenwickSweep` (many thresholds per sweep), `StreamingSearch`
-(online, for live pipelines), `NaiveSearch` and `GuardedSearch` (reference
-kernels), `DeviceSearch` (the naive scan as a KernelAbstractions kernel on
-CPU or GPU).
+`SegmentTreeSearch` is the default kernel, at milliseconds per threshold on
+millions of points. `FenwickSweep` serves many thresholds per sweep and
+`StreamingSearch` runs online, for live pipelines. `NaiveSearch` and
+`GuardedSearch` are the reference kernels; `DeviceSearch`, the guarded scan as
+a KernelAbstractions kernel on CPU or GPU, comes with the KernelAbstractions
+extension (`using KernelAbstractions`).
 
-![How the kernels resolve the waiting times of one index on a 48-sample
-series: the naive and guarded scans visit every later sample, the segment tree
-climbs and descends, the Fenwick sweep answers three thresholds for every
-index in one backward pass, the streaming kernel resolves them as packets of
-samples arrive](docs/src/assets/kernels.gif)
+![How each kernel resolves the waiting times of one index on a 48-sample
+series](docs/src/assets/kernels.gif)
 
-Every kernel produces the same integer result, which is why the naive scan
-can stand as the permanent reference: on the full threshold grids of the six
-datasets shipped as configurations (7 124 thresholds, up to 10⁶ points) not
-one index differs between any kernel and the reference.
+On the full threshold grids of the six datasets shipped as configurations
+(7 124 thresholds, up to 10⁶ points), no kernel differs from the reference at
+a single index.
 
 ![Wall time per threshold of every kernel on synthetic random walks of 10⁴
 to 10⁶ points at three thresholds](docs/src/assets/timings.png)
@@ -90,10 +87,10 @@ to 10⁶ points at three thresholds](docs/src/assets/timings.png)
 ![The survival function of the Geisenheim waiting times sweeping through the
 threshold grid from 0 to 50 km/h](docs/src/assets/sweep.gif)
 
-A collection holds one distribution per threshold; sweeping the grid is
-what the downstream indicators of the 2026 paper (the difference of the two
-fits' Kolmogorov–Smirnov distances and the generalised Kullback–Leibler
-divergence between their tails) are computed from.
+A collection holds one distribution per threshold. The downstream indicators
+of the 2026 paper, the difference of the two fits' Kolmogorov–Smirnov
+distances and the generalised Kullback–Leibler divergence between their
+tails, are computed along this sweep.
 
 ## Setup
 
@@ -128,25 +125,26 @@ julia -e 'using Pkg; Pkg.activate("JuliaFormatter"; shared = true); Pkg.add("Jul
 
 Raw inputs are expected under `data/raw/` (gitignored); the configurations in
 `configs/` reference them relative to the configuration file. A run writes a
-collection directory `data/<collection id>/` (provenance schema 3) holding
-`config.toml`, `metadata.toml`, `hardware.txt`, the resolved manifest, the
-prepared series with its gaps by kind (`gaps.csv`) and the segments between
-them (`segments.csv`), one partition per threshold under `distributions/`
-with its counts split into exact and gap-crossing waits, the censoring
-histograms under `censoring/`, per-session records, configuration snapshots
-and manifests under `sessions/`, and the regenerated `index.toml`,
-`summary.csv` and `catalog.csv`. When `[input].source_descriptor` names the
-identity file of the program that produced the input (a DeepSpaceTelemetry.jl
-run's `descriptor.toml`, a MarketTickStreamer.jl session sidecar), the
-collection keeps a verbatim copy as `source.toml` and records it in
-`metadata.toml` with the producer's code identity. `[input].time_axis =
-"index"` places the series on the row ordinal of the input (the trade count
-of a tick stream), closures closed. Rerunning with a wider threshold grid
-adds partitions and appends a session; existing partitions are never
-rewritten unless `[output].overwrite = true`, in which case they are backed
-up first.
+collection directory `data/<collection id>/` (provenance schema 3) with a
+`README.md` describing its own files. Provenance lives in `config.toml`,
+`metadata.toml`, `hardware.txt`, the resolved manifest and, under
+`sessions/`, the per-session records, configuration snapshots and manifests.
+The prepared series is stored with its gaps by kind (`gaps.csv`) and the
+segments between them (`segments.csv`), each threshold as one partition
+under `distributions/` with its counts split into exact and gap-crossing
+waits, and the censoring histograms under `censoring/`; `index.toml`,
+`summary.csv` and `catalog.csv` are rewritten at every checkpoint of a session
+and at its end.
 
-Every collection directory carries a `README.md` describing its own files.
+When `[input].source_descriptor` names the identity file of the program that
+produced the input (a DeepSpaceTelemetry.jl run's `descriptor.toml`, a
+MarketTickStreamer.jl session sidecar), the collection keeps a verbatim copy
+as `source.toml` and records it in `metadata.toml` with the producer's code
+identity. `[input].time_axis = "index"` places the series on the row ordinal
+of the input, the trade count of a tick stream, with closures closed.
+Rerunning with a wider threshold grid adds partitions and appends a session.
+Existing partitions are rewritten only when `[output].overwrite = true`, and
+are backed up first.
 
 Library use, in memory:
 
@@ -154,7 +152,7 @@ Library use, in memory:
 using WaitingTimes
 s = QuantizedSeries(values, 4)                 # values::Vector{Union{Missing,Float64}}, 4 decimals
 τ = waiting_times(s, 0.0005)                   # SegmentTreeSearch by default; 0 = no passage observed
-τ == waiting_times(s, 0.0005, NaiveSearch())   # every kernel is bit-identical to the reference kernel
+τ == waiting_times(s, 0.0005, NaiveSearch())   # true for every kernel
 d = empirical_distribution(τ, threshold(0.0005, s), s)
 WaitingTimes.support(d), WaitingTimes.probabilities(d), WaitingTimes.cumulative(d)
 ```
@@ -165,7 +163,7 @@ From a collection on disk, and in real time:
 c = load_collection("data/<collection id>")   # overview when shown; thresholds(c), summary_table(c)
 source_descriptor(c)                           # the producer's descriptor of the input, verbatim, or nothing
 WaitingTimes.source_summary(c)                 # its producer, version and code identity (git_tree_sha1)
-WaitingTimes.class_counts(c, "0.0005")         # exact and gap-crossing waits per support value
+class_counts(c, "0.0005")                      # exact and gap-crossing waits per support value
 d = distribution(c, "0.0005")                  # one WaitingTimeDistribution
 export_legacy(c, "outputData/<id>")           # WTS_<slug>_deltais<δ>.dat files of the 2024 analysis
 
@@ -182,19 +180,19 @@ push!(est, t_ns, price)                        # one sample; snapshot(est) gives
 | Gap classification and class accounting | done |
 | Empirical distribution | done |
 | Legacy fixture regression (EUR-USD) | done, exact |
-| Segment-tree, Fenwick and streaming kernels | done; equal to the reference kernel on every threshold of every dataset grid (7 124 thresholds, up to 10⁶ points) and to 4·10⁶ synthetic points |
+| Segment-tree, Fenwick and streaming kernels | done; equal to the reference kernel on all 7 124 dataset thresholds and on 4·10⁶ synthetic points |
 | Synthetic generators, benchmarks | done |
 | Configuration, storage, provenance, preprocessing, scripts | done; quickstart end to end in the tests |
 | Distributions.jl and CairoMakie extensions | done |
 | KernelAbstractions device kernel | done; a package extension (`using KernelAbstractions`); CPU backend in the default tests, oneAPI verified on an Intel Arc GPU |
-| Preprocessing after the published treatment (round, fluctuations with denominator and offset, the pruning loop of the 2024 code with the slot kept or deleted, `clip_sigma`), log returns and log levels | done; Table 1 of the paper reproduced for the raw datasets |
-| Automatic choice of `digits` (`digits = "auto"`, `suggest_digits`, `digits_sensitivity`) | done |
-| Collection read side (`load_collection`, `distribution`, `summary_table`, `class_counts`, `censoring_histogram`, `source_descriptor`, `source_summary`, `segment_lengths`, `export_legacy`), per-collection README | done |
-| Source identity of a collection (`[input].source_descriptor`) and code identity of every session (tree hash, commit, manifest snapshot) | done; DeepSpaceTelemetry.jl run descriptors and MarketTickStreamer.jl session sidecars |
+| Preprocessing (published treatment, `clip_sigma`, log returns, log levels) | done; Table 1 of the paper reproduced for the raw datasets |
+| Automatic choice of `digits` | done |
+| Collection read side, legacy export, per-collection README | done |
+| Source identity of a collection, code identity of every session | done; DeepSpaceTelemetry.jl run descriptors and MarketTickStreamer.jl session sidecars |
 | Gap kinds and sources, record structure (segments, record length), index time axis | done |
 | Online estimator for live streams (`OnlineWaitingTimes`) | done; equal to the batch result on every prefix; memory bounded by a declared upper bound or a horizon |
-| Worked consumers against MarketTickStreamer.jl and DeepSpaceTelemetry.jl, asserting the collection contract in CI; Table 1 reproduction | done, `examples/` |
-| Load latency | precompile workload; first result below 0.1 s after `using WaitingTimes` |
+| Worked consumers of MarketTickStreamer.jl and DeepSpaceTelemetry.jl, Table 1 reproduction | done, `examples/`; the consumers assert the collection contract in CI |
+| Precompile workload | done; first result below 0.1 s after `using WaitingTimes` |
 | Documentation site | done |
 
 ## How to cite
@@ -282,18 +280,23 @@ WaitingTimes.jl/
 │   ├── Project.toml, activate.jl
 │   ├── runtests.jl               # static QA, unit, equivalence, fixture tests
 │   ├── pipeline_tests.jl         # provenance, config, preprocessing, storage, end-to-end runs
+│   ├── preprocessing_tests.jl    # configuration and preprocessing tables, grid arithmetic, ignored-key warnings
 │   ├── identity_tests.jl         # tree hash, manifest resolution, code identity
 │   ├── structure_tests.jl        # gap kinds, record structure, time axes, partitions, round trip
-│   ├── device/                   # opt-in oneAPI tests on a local Intel GPU (own environment)
+│   ├── contract_tests.jl         # schema-2 read, dense files, limit guards, reference kernels, gap absorption
+│   ├── device/                   # opt-in oneAPI tests on an Intel GPU (own environment)
 │   └── fixtures/                 # EUR-USD input and legacy outputs for regression
+│       └── schema2/              # hand-written schema-2 collection
 ├── docs/
 │   ├── Project.toml, activate.jl, make.jl
 │   └── src/                      # formulation, kernels, pipeline, configuration, provenance,
-│       └── literate/             #   validation, interfacing, producers, API, references; executable example
+│       └── literate/             #   validation, interfacing, producers, API, internals, references; executable example
 ├── examples/                     # own environment: the two public packages from GitHub
 │   ├── Project.toml, activate.jl, check_environment.jl
-│   ├── tick_stream.jl            # MarketTickStreamer.jl: online = batch under the snapshot convention; the session persisted, compacted and followed; closures, both axes
-│   └── telemetry_run.jl          # DeepSpaceTelemetry.jl run through its adapter → declared gaps → collections on both axes
+│   ├── tick_stream.jl            # MarketTickStreamer.jl: online against batch, session persistence and following, closures, both axes
+│   ├── telemetry_run.jl          # DeepSpaceTelemetry.jl run through its adapter → declared gaps → collections on both axes
+│   ├── published_fits.jl         # Table 1 reproduction
+│   └── legacy_fit.jl             # the 2024 fitting recipe
 ├── .github/, codecov.yml         # CI (tests on Julia min, 1 and pre, producer examples, coverage, docs), Dependabot
 ├── CITATION.cff, CHANGELOG.md, LICENSE, .JuliaFormatter.toml
 ```

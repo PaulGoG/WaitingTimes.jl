@@ -1,9 +1,9 @@
 # # Downstream example
 #
-# The shortest path from a collection on disk to a model fit with
-# Distributions.jl. Nothing here is specific to any analysis; it shows the
-# three things a consumer touches: the distribution table, the
-# `WaitingTimeDistribution`, and its `DiscreteNonParametric` view.
+# From a collection on disk to a model fit with Distributions.jl, through the
+# three objects a consumer touches: the distribution table, the
+# `WaitingTimeDistribution`, and its `DiscreteNonParametric` view. Nothing
+# here is specific to any analysis.
 #
 # The example runs on the EUR-USD fixture shipped with the tests, so it
 # executes in seconds during the documentation build.
@@ -15,7 +15,7 @@ using CairoMakie
 
 # ## A collection on disk
 #
-# Normally produced by `scripts/run_pipeline.jl`; here in a temporary
+# `scripts/run_pipeline.jl` produces it; here it is written to a temporary
 # directory.
 
 handle = run_pipeline(joinpath(pkgdir(WaitingTimes), "configs", "quickstart.toml");
@@ -40,8 +40,8 @@ dn = WaitingTimes.discrete_distribution(d)
 # ## A Pareto tail by maximum likelihood
 #
 # Expand the counts into a sample, keep the tail above ``x_{\min}``, and let
-# Distributions.jl estimate the shape. The distance between the fitted and
-# the empirical cumulative distributions over the tail is one line.
+# Distributions.jl estimate the shape; then take the Kolmogorov–Smirnov
+# distance between the fitted and the empirical tail.
 
 sample = [k for (k, c) in zip(WaitingTimes.support(d), WaitingTimes.counts(d)) for _ in 1:c]
 x_min = 5
@@ -57,10 +57,8 @@ distance = maximum(abs(cdf(pareto, k) - cdf(tail_dn, k)) for k in support(tail_d
 
 # ## Figure
 #
-# Survival function of the data with the fitted tail, drawn with the
-# package theme (`WaitingTimes.figure_theme`) and decade ticks
-# (`WaitingTimes.decade_ticks`): data as markers, fit as a dashed line from
-# ``x_{\min}``, legend on top with the fitted exponent as an entry.
+# Survival function of the data with the fitted tail, in the package theme
+# (`WaitingTimes.figure_theme`) with decade ticks (`WaitingTimes.decade_ticks`).
 
 k = WaitingTimes.support(d)
 S = WaitingTimes.survival(d)

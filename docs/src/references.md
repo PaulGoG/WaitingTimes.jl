@@ -17,6 +17,10 @@
 - A. Clauset, C. R. Shalizi, M. E. J. Newman, Power-law distributions in
   empirical data, *SIAM Rev.* **51**, 661 (2009),
   [doi:10.1137/070710111](https://doi.org/10.1137/070710111).
+  The maximum-likelihood exponent of a power-law tail above ``x_{\min}``, as
+  fitted in the [Downstream example](@ref) and, at every point of an
+  ``x_{\min}`` scan, as the starting value of the scale-free fit in
+  `examples/legacy_fit.jl`.
 - R. Połoczański, A. Wyłomańska, M. Maciejewska, A. Szczurek, J. Gajda,
   Modified cumulative distribution function in application to waiting time
   analysis in the continuous time random walk scenario, *J. Phys. A* **50**,

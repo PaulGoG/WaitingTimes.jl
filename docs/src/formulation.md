@@ -57,9 +57,9 @@ and is not a default anywhere.
 A recorded gap is time that passed unobserved: the observation is absent,
 its slot remains, the clock runs through it, and the classification reports
 which waiting times crossed it. Pruning (`clip_quantile`, `clip_sigma`,
-`clip_extremes`) discards a measurement as invalid; by default the value
+`clip_extremes`) discards a measurement as invalid. By default the value
 becomes missing and its slot remains, so a pruned value is treated exactly
-like a gap, which is what the 2024 analysis did and what reproduces its
+like a gap; the 2024 analysis did the same, and this reproduces its
 published results. With `splice = true` the slot is deleted as well and the
 clock closes over it, for rows that never corresponded to an instant of the
 record; `exclude_intervals` offers the same choice for whole intervals.
@@ -75,11 +75,16 @@ fits can weight and resample.
 
 ## Invariants
 
-The test suite enforces: constant series (``\delta = 0`` yields the sample
-spacing, ``\delta > 0`` censors everything); strictly increasing series;
-pointwise monotonicity ``\tau_n(d) \ge \tau_n(d')`` for ``d \ge d'`` whenever
-both exist, with a censored set growing in ``d``; the accounting identities;
-equality of ``\delta = 0`` with the monotonic-stack next-greater-or-equal
-solution; rejection of thresholds off the grid; invariance of every waiting
-time under declaration or detection of gaps; and equality of the streaming
-kernel with the batch reference kernel on every prefix of a record.
+The test suite enforces
+
+- constant series (``\delta = 0`` yields the sample spacing, ``\delta > 0``
+  censors everything) and strictly increasing series;
+- pointwise monotonicity ``\tau_n(d) \ge \tau_n(d')`` for ``d \ge d'``
+  whenever both exist, with a censored set growing in ``d``;
+- the accounting identities;
+- equality of ``\delta = 0`` with the monotonic-stack next-greater-or-equal
+  solution;
+- rejection of thresholds off the grid;
+- invariance of every waiting time under declaration or detection of gaps;
+- equality of the streaming kernel with the batch reference kernel on every
+  prefix of a record.

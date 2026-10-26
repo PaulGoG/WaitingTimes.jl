@@ -12,10 +12,10 @@
 # from a synthetic tape. It feeds an `OnlineWaitingTimes` estimator for a
 # grid of price thresholds under the producer's snapshot convention
 # (`snapshots`: the estimator's state at every multiple of a period on the
-# exchange clock and once at close, a function of the sequence alone), then
+# exchange clock and once at close, a function of the sequence alone). It then
 # checks the online distributions against the batch pipeline on the same
-# ticks: the prints in the schema of the producer's processed files
-# (`trades_table`) are read back with `read_series(format = :tick)`, and the
+# ticks: the prints, written in the schema of the producer's processed files
+# (`trades_table`), are read back with `read_series(format = :tick)`, and the
 # batch result of `StreamingSearch` must equal the online snapshot exactly.
 #
 # The synthetic tape is laid on the calendar MarketTickStreamer gives a US
@@ -28,10 +28,10 @@
 # (`read_processed`), and follows the finished session through its files
 # (`follow_source`). It declares the closures as gaps of kind "session" and
 # generates one collection on the elapsed axis (exchange time in
-# nanoseconds) and one on the index axis (trade count), then asserts the
+# nanoseconds) and one on the index axis (trade count). It then asserts the
 # collection contract (provenance schema 3, source summary, gap kinds,
-# record structure, per-class partitions), so that a change of the producer
-# that breaks it fails here. With raw session files as arguments the ticks
+# record structure, per-class partitions); a producer change that breaks it
+# fails here. With raw session files as arguments the ticks
 # come from `replay_source(files; pace = "max")`, with `--follow` from
 # `follow_source(dir; session)`, and only the online check runs.
 include(joinpath(@__DIR__, "activate.jl"))

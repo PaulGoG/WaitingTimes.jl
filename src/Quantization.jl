@@ -176,7 +176,7 @@ end
 $(TYPEDSIGNATURES)
 
 Narrow a vector of grid integers to `Int32` when every magnitude is below
-`INT32_NARROWING_LIMIT`; otherwise return it unchanged.
+`INT32_NARROWING_LIMIT`; otherwise return an `Int64` copy.
 """
 function narrow_integer(q::AbstractVector{Int64})
     (isempty(q) || maximum(abs, q) < INT32_NARROWING_LIMIT) && return Int32.(q)

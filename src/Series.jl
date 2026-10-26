@@ -2,8 +2,9 @@
 
 """
 Recognised time units of a series. `:sample` means the time axis is the
-observation index; the others are integer counts of the named unit since the
-first observation (or since `epoch` when one is recorded).
+observation index; the others are integer counts of the named unit from
+`epoch` when one is recorded (the UNIX epoch for series read from files),
+otherwise from an unstated origin.
 """
 const TIME_UNITS = (:sample, :nanosecond, :microsecond, :millisecond, :second,
     :minute, :hour, :day)

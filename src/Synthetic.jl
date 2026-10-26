@@ -20,7 +20,8 @@ Random walk of length `N`: increments `drift + sigma·ξ` with ξ standard
 normal, or symmetric Pareto with tail index `tail_alpha` when given; plus a
 linear `trend` per step, sinusoidal `periods` as `(period, amplitude)` pairs,
 additive Gaussian `noise`, and jumps of scale `jump_scale` with probability
-`jump_probability` per step. The walk starts at `level`.
+`jump_probability` per step. The walk starts from `level`; the first sample
+already carries one step.
 """
 function random_walk(rng::AbstractRNG, N::Integer; drift::Real = 0.0, sigma::Real = 1.0,
         tail_alpha::Union{Nothing, Real} = nothing, trend::Real = 0.0,
@@ -94,7 +95,7 @@ end
 $(TYPEDSIGNATURES)
 
 Strictly increasing integer time stamps with exponentially distributed
-inter-arrival times of mean `mean_interval` (rounded up to at least one unit),
+inter-arrival times of mean `mean_interval` (rounded to the nearest unit, at least one),
 starting at `origin`.
 """
 function irregular_times(rng::AbstractRNG, N::Integer; mean_interval::Real = 5.0,

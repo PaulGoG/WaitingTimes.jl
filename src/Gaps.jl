@@ -337,7 +337,8 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Counts of the classes over the candidate indices `1:N-1`.
+Counts of the classes over the candidate indices `1:N-1`, as the named tuple
+`(n_candidates, n_exact, n_gap_crossing, n_right_censored)`.
 """
 function class_counts(class::AbstractVector{UInt8})
     N = length(class)

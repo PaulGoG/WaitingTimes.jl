@@ -6,8 +6,8 @@ Given a series ``\\{A_n\\}`` observed at strictly increasing integer times
 ``\\tau_n = t_m - t_n`` with ``m = \\min\\{m > n : A_m \\ge A_n + \\delta\\}``, the
 elapsed time to the first observed value at least ``\\delta`` above ``A_n``.
 Values and thresholds live on a decimal integer grid (`digits`), so every
-search kernel computes bit-identical results and the naive scan serves as the
-permanent reference implementation.
+search kernel computes bit-identical results and the naive scan is the
+permanent reference kernel.
 """
 module WaitingTimes
 
@@ -35,7 +35,7 @@ include("Backends.jl")
 include("DeviceKernels.jl")
 
 """
-$(TYPEDSIGNATURES)
+    discrete_distribution(d::WaitingTimeDistribution)
 
 `Distributions.DiscreteNonParametric` view of a distribution; provided by the
 Distributions extension (`using Distributions`).
@@ -43,7 +43,8 @@ Distributions extension (`using Distributions`).
 function discrete_distribution end
 
 """
-$(TYPEDSIGNATURES)
+    plot_series(s::QuantizedSeries; quantity_label = "", unit_label = "",
+                max_points = 5_000, size = (900, 600))
 
 Figure of a series against time with gaps shaded; provided by the CairoMakie
 extension (`using CairoMakie`).
@@ -51,7 +52,7 @@ extension (`using CairoMakie`).
 function plot_series end
 
 """
-$(TYPEDSIGNATURES)
+    plot_distribution(d::WaitingTimeDistribution; size = (1200, 600))
 
 Figure of a distribution (probability mass and survival function on
 logarithmic axes); provided by the CairoMakie extension.
@@ -59,7 +60,8 @@ logarithmic axes); provided by the CairoMakie extension.
 function plot_distribution end
 
 """
-$(TYPEDSIGNATURES)
+    plot_values(s::QuantizedSeries; quantity_label = "", unit_label = "",
+                bins = :auto, size = (900, 600))
 
 Histogram of the values of a series, in data units; provided by the
 CairoMakie extension.
@@ -67,7 +69,7 @@ CairoMakie extension.
 function plot_values end
 
 """
-$(TYPEDSIGNATURES)
+    save_figure(path, fig; sidecar, px_per_unit = 4) -> path
 
 Save a figure with a TOML sidecar of descriptor metadata; provided by the
 CairoMakie extension.
@@ -75,7 +77,7 @@ CairoMakie extension.
 function save_figure end
 
 """
-$(TYPEDSIGNATURES)
+    figure_theme()
 
 Publication theme shared by every figure of the package (Computer Modern
 fonts, boxed axes, no minor ticks, faint dashed grid); provided by the
@@ -84,7 +86,7 @@ CairoMakie extension for use with `with_theme` or `set_theme!`.
 function figure_theme end
 
 """
-$(TYPEDSIGNATURES)
+    decade_ticks(lo::Integer, hi::Integer)
 
 Tick positions and labels at the decades `10^lo` to `10^hi` for logarithmic
 axes, rendering `10^0` as `1` and `10^1` as `10`; provided by the CairoMakie

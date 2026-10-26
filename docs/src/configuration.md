@@ -18,7 +18,7 @@ time_column = ""                  # column name or index; "" = sample index
 time_unit = "sample"              # "sample" | "nanosecond" | "microsecond" | "millisecond" | "second" | "minute" | "hour" | "day"
 time_axis = "elapsed"             # "elapsed" | "index"
 time_format = ""                  # Dates format for textual stamps; "" = ISO 8601 or numeric
-epoch_unit = "second"             # unit of numeric stamps in the file
+epoch_unit = "second"             # unit of numeric stamps: "nanosecond" | "microsecond" | "millisecond" | "second" | "minute" | "hour" | "day"
 delimiter = ""                    # "" = format default
 header = false                    # first row is a header
 missing_policy = "drop"           # "drop" | "error"
@@ -68,10 +68,10 @@ max_reference_work = 1e12         # >= 0; element comparisons of one reference c
 root = "../data"                  # collections under root/<collection id>
 format = "arrow"                  # "csv" | "arrow"
 store_waiting_times = false       # write waiting_times/delta=<δ> (one row per index)
-overwrite = false
+overwrite = false                 # rewrite existing partitions, backing them up first
 
 [run]
-seed = 12345
+seed = 12345                      # seed of the random choice of reference-check thresholds
 log_level = "info"                # "debug" | "info" | "warn"
 checkpoint_seconds = 10.0         # seconds between resume checkpoints; 0 = after every chunk
 ```
@@ -174,7 +174,7 @@ when the configuration is loaded.
 | `select_range` | `from`, `to` | keep the rows with time (or index) in `[from, to]` |
 | `exclude_intervals` | `intervals = [[a, b], ...]`, `splice = true` | remove the rows in `[a, b)`; with `splice` the time axis closes over the cut, otherwise the rows become missing (a recorded gap) |
 | `round` | `digits` | round the values to `digits` decimals (the original analysis rounded before detrending) |
-| `trailing_mean_fluctuations` | `window`, `denominator = "mean"`, `offset = "none"`, `on_nonpositive = "error"` | deviation from the mean of the previous `window` observations: `"mean"` is the percentage fluctuation of the papers, `"scale"` divides by the standard deviation of the deviations, `"none"` keeps data units; `offset = "auto"` shifts the series so that its minimum is 1 before a `"mean"` computation (the papers' rule), a number is added as given; `on_nonpositive = "missing"` records a non-positive trailing mean as a missing observation instead of aborting |
+| `trailing_mean_fluctuations` | `window`, `denominator = "mean"`, `offset = "none"`, `on_nonpositive = "error"` | deviation from the mean of the previous `window` observations. `denominator = "mean"` gives the percentage fluctuation of the papers, `"scale"` divides by the standard deviation of the deviations, `"none"` keeps data units. `offset = "auto"` shifts a series whose minimum is below 1 so that its minimum becomes 1 before a `"mean"` computation (the papers' rule) and leaves any other series unchanged; a number is added as given. `on_nonpositive = "missing"` records a non-positive trailing mean as a missing observation instead of aborting |
 | `log_returns` | | `100 log(x_k / x_{k-1})` |
 | `log_levels` | `reference = "first"` | `100 log(x_k / x_ref)`, the level in per cent of the first observed value or of a positive number; values must be positive, missing observations stay missing |
 | `differences` | | `x_k - x_{k-1}` |
@@ -192,8 +192,8 @@ minute closes: three to four decimals, or `digits = "auto"`.
 
 Pruning discards a measurement as invalid. With `splice = false` (the
 default) the value becomes missing and its slot remains, so the time passed
-and the cut is a recorded gap; this is what the 2024 code did, whose time
-column kept the original row indices, and what reproduces the published
+and the cut is a recorded gap. The 2024 code did the same, its time column
+keeping the original row indices, and this reproduces the published
 results. With `splice = true` the row and its slot are deleted and the clock
 closes over it. After every step the observed values must be finite; a
 non-finite value aborts the run naming the step and the row.
@@ -203,7 +203,7 @@ percentage fluctuations from a 708-hour (lunar month) trailing mean with the
 automatic shift, and `clip_extremes` with `fraction = 0.004`. Rom. J. Phys.
 69, 111 (2024), §2.3
 ([doi:10.59277/RomJPhys.2024.69.111](https://doi.org/10.59277/RomJPhys.2024.69.111)),
-states the pruned share as 0.04 % of both signs; that figure is an omission
+states the pruned share as 0.04 % of both signs; that figure is a misprint
 of the paper. The published tables were computed with the 0.4 % rule of the
 code, in whole magnitude levels, which reproduces Table 1 of the paper for
 the Trieste and fuel-consumption series. The shipped `trieste_sea_level.toml`
@@ -230,34 +230,36 @@ producer's run, version, code and configuration.
 `[input].source_descriptor` names any TOML file, by a path relative to the
 configuration or absolute; it must exist and parse. The file is recorded,
 not interpreted: it is copied byte for byte to `source.toml` in the
-collection directory, its table and SHA-256 are written to the `[source]`
-section of `metadata.toml`, and the SHA-256 enters the dataset identity, so
-that the same input from another source run is another collection.
+collection directory, and its table and SHA-256 are written to the `[source]`
+section of `metadata.toml`. The SHA-256 enters the dataset identity, so the
+same input from another source run is another collection.
 [`source_descriptor`](@ref) returns the table from a loaded collection.
 
 Beside the verbatim table, `[source]` holds a summary in the same keys for
 every producer ([`source_summary`](@ref WaitingTimes.Provenance.source_summary)):
 `producer`, `producer_version`, `git_tree_sha1`, `git_dirty`, `git_commit`,
-`identity` (whether `git_tree_sha1` is present), and the check of the
-producer's version against the oldest one whose file contract this version
-reads (`producer_compat`, `compat_checked`, `compat_satisfied`;
-[`MINIMUM_PRODUCER_VERSION`](@ref WaitingTimes.Provenance.MINIMUM_PRODUCER_VERSION):
+and `identity`, which states whether `git_tree_sha1` is present.
+`producer_compat`, `compat_checked` and `compat_satisfied` record the check of
+the producer's version against the oldest one whose file contract this
+release reads
+([`MINIMUM_PRODUCER_VERSION`](@ref WaitingTimes.Provenance.MINIMUM_PRODUCER_VERSION):
 DeepSpaceTelemetry.jl 2.5.0, MarketTickStreamer.jl 0.3.0). A version below
 the minimum is recorded with a warning; a descriptor without `git_tree_sha1`
 is recorded as having no code identity, never rejected.
 
-The first producer to write one is DeepSpaceTelemetry.jl (2.5 and later):
-`descriptor.toml` at the root of a finished run directory, schema
-`deepspacetelemetry-run/1`, with the run identifier, the producer's version,
+DeepSpaceTelemetry.jl was the first producer to write one: from 2.5 on, a
+finished run directory holds `descriptor.toml` (schema
+`deepspacetelemetry-run/1`) with the run identifier, the producer's version,
 the identity of its code, the configuration hash, the clock mode, the seed,
 the payload geometry and the size and SHA-256 of every table of the run
 (`examples/telemetry_run.jl`). MarketTickStreamer.jl writes a session
 sidecar, `<session>.meta.toml`, with the session, the producer's version,
 commit and dirty flag, the venue's timestamp unit, the hardware and the
 configuration snapshot (`examples/tick_stream.jl`); it records no tree hash.
-The authoritative key of the producer's code
-is `git_tree_sha1` with `git_dirty = false`; `git_commit` is filled when the
-producer ran from a checkout or was pinned by a full commit hash, and adds
-the history. Both are recorded since DeepSpaceTelemetry 2.6.1, also for a
-copy installed by Pkg; in a descriptor written before, a missing key means
-unknown and `git_commit` of an installed copy is empty.
+
+The authoritative key of the producer's code is `git_tree_sha1` with
+`git_dirty = false`. `git_commit` adds the history and is filled when the
+producer ran from a checkout or was pinned by a full commit hash.
+DeepSpaceTelemetry records both since 2.6.1, also for a copy installed by
+Pkg. In a descriptor written before, a missing key means unknown and
+`git_commit` of an installed copy is empty.
