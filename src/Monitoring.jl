@@ -12,7 +12,11 @@ using TerminalLoggers: TerminalLogger
 
 export with_run_logging, run_progress, log_level
 
-"logging level from a configuration symbol"
+"""
+$(TYPEDSIGNATURES)
+
+Logging level of `:debug`, `:info` or `:warn`; any other symbol throws an `ArgumentError`.
+"""
 function log_level(level::Symbol)
     level === :debug && return Debug
     level === :info && return Info

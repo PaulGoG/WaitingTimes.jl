@@ -1,5 +1,4 @@
-# The fitting recipe of the 2024 analysis code
-# (the parameter optimisation of the 2024 fit code), in substance verbatim:
+# The fitting recipe of the 2024 analysis code, in substance verbatim:
 # Nelder-Mead on the renormalised Kolmogorov-Smirnov distance; the scale-free
 # fit started from the maximum-likelihood exponent at every point of the x_min
 # sampling grid; the Pareto-Tsallis fit started from (2, mean τ). Included by

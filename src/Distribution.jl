@@ -155,17 +155,47 @@ function censoring_counts(class::AbstractVector{UInt8}, lower::AbstractVector{Tt
     return run_lengths(sort!(bounds))
 end
 
-"sorted distinct waiting times"
+"""
+$(TYPEDSIGNATURES)
+
+Sorted distinct waiting times of `d`, in its `time_unit`.
+"""
 support(d::WaitingTimeDistribution) = d.support
-"multiplicity of each support value"
+
+"""
+$(TYPEDSIGNATURES)
+
+Multiplicity of each support value of `d`.
+"""
 counts(d::WaitingTimeDistribution) = d.counts
-"probability mass at each support value"
+
+"""
+$(TYPEDSIGNATURES)
+
+Probability mass at each support value, `counts(d) / nsamples(d)`.
+"""
 probabilities(d::WaitingTimeDistribution) = d.pmf
-"cumulative distribution ``P(\\tau \\le k)`` at each support value"
+
+"""
+$(TYPEDSIGNATURES)
+
+Cumulative distribution ``P(\\tau \\le k)`` at each support value ``k``.
+"""
 cumulative(d::WaitingTimeDistribution) = d.cdf
-"survival function ``P(\\tau > k)`` at each support value"
+
+"""
+$(TYPEDSIGNATURES)
+
+Survival function ``P(\\tau > k)`` at each support value ``k``; a new vector on
+every call.
+"""
 survival(d::WaitingTimeDistribution) = 1.0 .- d.cdf
-"number of waiting times in the distribution"
+
+"""
+$(TYPEDSIGNATURES)
+
+Number of waiting times in `d`, the sum of its counts.
+"""
 nsamples(d::WaitingTimeDistribution) = sum(d.counts)
 
 """

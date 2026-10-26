@@ -75,7 +75,8 @@ toml_ready(x) = string(x)
 """
 $(TYPEDSIGNATURES)
 
-Canonical TOML serialisation (keys sorted, values only) used for hashing.
+Canonical TOML serialisation of `x` for hashing: keys sorted, values
+converted by `toml_ready`.
 """
 canonical_toml(x::AbstractDict) = sprint(io -> TOML.print(io, toml_ready(x); sorted = true))
 
@@ -561,7 +562,11 @@ function session_id(git::AbstractString = "unknown")
     return string(stamp, '_', tag)
 end
 
-"parse a TOML file into a dictionary"
+"""
+$(TYPEDSIGNATURES)
+
+Parsed TOML file at `path` as a dictionary; throws on malformed input.
+"""
 read_toml(path::AbstractString) = TOML.parsefile(path)
 
 """

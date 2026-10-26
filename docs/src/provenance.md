@@ -41,15 +41,16 @@ descriptor, the `[source]` section when `[input].source_descriptor` is set,
   session, the file it is copied to (`manifest_snapshot.toml`) and the Julia
   version.
 
-Each session also has its own file under `sessions/` with the kernel and
-backend, thread count, package version, code identity, the SHA-256 of its
-manifest (copied to `sessions/<id>.manifest.toml`), git state, Julia
-version, hardware fingerprint (host, CPU, cores, memory, BLAS threads, and
-the device report of a GPU backend), configuration hash, thresholds computed
-and skipped, reference checks and stage timings. `status` is `"running"`
-while the session computes and `"completed"` once its record is final; a
-session file still at `"running"` belongs to an interrupted run, whose
-partitions `index.toml` already lists. `hardware.txt` carries
+Each session also has its own file under `sessions/`. It records the kernel
+and backend, thread count, package version, code identity, git state and
+Julia version; the SHA-256 of the session's manifest, copied to
+`sessions/<id>.manifest.toml`; the hardware fingerprint (host, CPU, cores,
+memory, BLAS threads, and the device report of a GPU backend); the
+configuration hash; the thresholds computed and skipped; the reference
+checks; the stage timings; and `status`, `"running"` while the session
+computes and `"completed"` once its record is final, so a session file still
+at `"running"` belongs to an interrupted run, whose partitions `index.toml`
+already lists. `hardware.txt` carries
 `versioninfo` and the device report. Arrow partitions also carry the
 collection identifier, threshold and session in their schema metadata; CSV
 partitions carry none. A collection of schema 2 (WaitingTimes 0.2) is read
@@ -60,19 +61,23 @@ or censoring histograms.
 
 The identity of the code that computed a collection is determined the same
 way however the package was obtained
-([`source_identity`](@ref WaitingTimes.Provenance.source_identity)): from git
-when the package directory is the top level of a work tree (`identity_source
-= "work_tree"`, `git_commit` the `HEAD`, `git_tree_sha1` its tree, `git_dirty`
-for uncommitted changes to tracked files); from the active manifest's entry
-for a copy installed by Pkg (`"manifest"`, `git_tree_sha1` the entry's
-`git-tree-sha1`, `git_commit` its `repo-rev` when that is a full commit hash,
-`git_dirty` when the installed tree differs from the entry); otherwise from
-the content of the directory (`"directory"`, the tree hash computed as git
-computes it). `git_tree_sha1` is never empty and, with `git_dirty = false`,
-fixes the code exactly; together with the manifest snapshot it makes a
-collection attributable to code and environment. Producers of source
-descriptors are keyed the same way: DeepSpaceTelemetry.jl records these
-fields since 2.6.1.
+([`source_identity`](@ref WaitingTimes.Provenance.source_identity)):
+
+- from git when the package directory is the top level of a work tree
+  (`identity_source = "work_tree"`): `git_commit` is the `HEAD`,
+  `git_tree_sha1` its tree, `git_dirty` flags uncommitted changes to tracked
+  files;
+- from the active manifest's entry for a copy installed by Pkg
+  (`"manifest"`): `git_tree_sha1` is the entry's `git-tree-sha1`,
+  `git_commit` its `repo-rev` when that is a full commit hash, `git_dirty`
+  flags an installed tree that differs from the entry;
+- otherwise from the content of the directory (`"directory"`), the tree hash
+  computed as git computes it.
+
+`git_tree_sha1` is never empty and, with `git_dirty = false`, fixes the code
+exactly; together with the manifest snapshot it makes a collection
+attributable to code and environment. Producers of source descriptors are
+keyed the same way; DeepSpaceTelemetry.jl records these fields since 2.6.1.
 
 `index.toml` lists every partition with its file, checksum, session and
 per-threshold statistics; `summary.csv` and `catalog.csv` are regenerated
@@ -94,4 +99,5 @@ batch of files can be inspected and selected from names alone.
 
 `scripts/lineage.jl <path>` prints the collection, its series with every
 preparation step, the dataset with its descriptor, the source descriptor,
-and the sessions.
+the code identity and environment of WaitingTimes in the latest session, the
+partitions, and the sessions.

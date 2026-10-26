@@ -653,7 +653,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Sorted distinct thresholds of the configured grid on the grid of `s`.
+Sorted distinct thresholds of the configured grid on the grid of `s`. Points
+of a logarithmic grid are rounded to the nearest grid integer (at least one
+step), and that grid always ends at `max`.
 """
 function threshold_list(settings::Settings, s::QuantizedSeries)
     digits = s.digits

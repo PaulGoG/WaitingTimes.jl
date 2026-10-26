@@ -33,7 +33,7 @@ search = "segment_tree"                     # one of: "naive" | "guarded" | "seg
 backend = "none"                            # one of: "none" | "auto" | "cuda" | "oneapi" | "amdgpu" | "metal"
 chunk_size = 4096                           # >= 1
 reference_checks = 2                        # >= 0; thresholds recomputed with the reference kernel
-reference_kernel = "naive"                            # one of: "naive" | "guarded" | "device"
+reference_kernel = "naive"                  # one of: "naive" | "guarded" | "device"
 
 [limits]
 max_ram_gb = 8.0                            # >= 0
@@ -42,10 +42,10 @@ max_reference_work = 1e11                   # >= 0; element comparisons of one r
 [output]
 root = "../data"                            # collections under root/<collection id>
 format = "csv"                              # one of: "csv" | "arrow"
-store_waiting_times = false
-overwrite = false
+store_waiting_times = false                 # write waiting_times/delta=<δ> (one row per index)
+overwrite = false                           # rewrite existing partitions, backing them up first
 
 [run]
-seed = 12345
+seed = 12345                                # seed of the random choice of reference-check thresholds
 log_level = "info"                          # one of: "debug" | "info" | "warn"
 checkpoint_seconds = 10.0                   # seconds between resume checkpoints (index, summary, catalogue); 0 = after every chunk

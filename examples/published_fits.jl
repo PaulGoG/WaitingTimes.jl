@@ -1,16 +1,14 @@
 # Reproduction of Table 1 of Gogîță et al., J. Phys. Complex. 7 (2026) 035007
 # from the distributions this package computes, with the fitting recipe of the
-# 2024 analysis (legacy_fit.jl): Nelder-Mead on the renormalised
-# Kolmogorov-Smirnov distance, the scale-free fit started from the
-# maximum-likelihood exponent at every point of the x_min sampling grid, the
-# Pareto-Tsallis fit started from (2, mean τ). The series are prepared by the
-# shipped configurations, whose preprocessing states the published treatment.
+# 2024 analysis (legacy_fit.jl). The series are prepared by the shipped
+# configurations, whose preprocessing states the published treatment.
 #
 #   julia --threads=auto examples/published_fits.jl [--out results.csv]
 #
-# The datasets whose inputs the shipped configurations reference; the BTC-USDT
-# and automotive inputs of the paper are not distributed. The raw inputs are
-# expected under data/raw/ as the configurations state.
+# The rows recomputed are wind speed, daily solar index, TEC in the
+# ionosphere, Trieste sea level and EUR-USD; the BTC-USDT and automotive
+# inputs of the paper are not distributed. The raw inputs are expected under
+# data/raw/, as the configurations state.
 include(joinpath(@__DIR__, "activate.jl"))
 
 using CSV: CSV
@@ -21,8 +19,6 @@ using WaitingTimes
 const CONFIGS = joinpath(dirname(@__DIR__), "configs")
 
 include(joinpath(@__DIR__, "legacy_fit.jl"))
-
-# --- Table 1 --------------------------------------------------------------------
 
 const TABLE = [
     # dataset label, config, δ_SF, α_SF, D_SF, δ_PT, α_PT, D_PT

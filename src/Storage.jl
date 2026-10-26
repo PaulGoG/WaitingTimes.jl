@@ -85,8 +85,8 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Write the distribution to `path` (format from `format`, metadata into the Arrow
-schema when applicable); returns the file's SHA-256.
+Write the table of `d` to `path` as `:csv` or `:arrow` (with `metadata` in the
+Arrow schema); returns the file's SHA-256.
 """
 function write_distribution(
         path::AbstractString, d::WaitingTimeDistribution, format::Symbol;
@@ -141,7 +141,12 @@ function write_waiting_times(
     return write_table(path, table, format; metadata = metadata)
 end
 
-"read a dense waiting-time file"
+"""
+$(TYPEDSIGNATURES)
+
+Dense waiting-time file written by `write_waiting_times`, as a table (`tau`,
+`class`, `lower`, `upper`).
+"""
 read_waiting_times(path::AbstractString) = read_table(path)
 
 "text column read back from a table, `missing` (an empty CSV field) as empty"
@@ -269,8 +274,9 @@ const SUMMARY_COLUMNS = ["delta", "mode", "n_candidates", "n_exact", "n_gap_cros
 """
 $(TYPEDSIGNATURES)
 
-Write `summary.csv` (one row per partition, sorted by threshold) from the
-index entries, through a temporary file moved into place.
+Write `summary.csv` from the index entries, one row per entry in the order
+given (`generate` passes them sorted by threshold), through a temporary file
+moved into place; returns the path.
 """
 function write_summary(dir::AbstractString, entries::AbstractVector)
     table = DataFrame([Symbol(c) => [get(e, c, missing) for e in entries]
@@ -285,9 +291,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Write `catalog.csv`: every artefact of the collection with its descriptor
-columns, identifier, checksum and session, through a temporary file moved
-into place.
+Write `catalog.csv`: every distribution partition of the collection with its
+descriptor columns, identifier, checksum and session, through a temporary
+file moved into place.
 """
 function write_catalog(dir::AbstractString, rows::AbstractVector)
     isempty(rows) && return nothing
@@ -541,13 +547,13 @@ DeepSpaceTelemetry.jl run its `descriptor.toml`: run identifier, producer
 version and code identity, configuration hash, seed, product checksums), or
 `nothing` when the collection was generated without one. The file itself is
 copied verbatim to `source.toml` in the collection directory, and its SHA-256
-is recorded beside the table in `metadata.toml`. Keys are the producer's;
-a key a descriptor lacks is unknown.
+is recorded in the `[source]` table of `metadata.toml`. Keys are the
+producer's; an absent key means unknown.
 
 ```julia
 c = load_collection(dir)
 source = source_descriptor(c)
-# a DeepSpaceTelemetry.jl run: the producer's code is git_tree_sha1 with git_dirty = false
+# DeepSpaceTelemetry.jl run: git_tree_sha1 with git_dirty = false identifies the producer's code
 source === nothing || println(source["run_id"], " ", get(source, "git_tree_sha1", "unknown"))
 ```
 """
@@ -642,8 +648,8 @@ Write the distributions of the collection in the format of the original
 analysis: one space-delimited file `WTS_<slug>_deltais<δ>.dat` per threshold
 under `out_dir`, with the header `time pdf cdf` and CRLF line ends, where
 `time` is the waiting time, `pdf` its probability mass and `cdf` the
-cumulative distribution. `slug` defaults to the series slug. Returns the
-paths written.
+cumulative distribution. Thresholds without an observed wait are skipped.
+`slug` defaults to the series slug. Returns the paths written.
 """
 function export_legacy(c::Collection, out_dir::AbstractString; slug::AbstractString = c.slug)
     mkpath(out_dir)
@@ -786,7 +792,7 @@ function write_collection_readme(dir::AbstractString, meta::AbstractDict,
         println(io, "export_legacy(c, \"out\")            # WTS_<slug>_deltais<δ>.dat files: time pdf cdf")
         println(io, "```\n")
         println(io,
-            "Any language: the partitions are plain tables with a header row; `delta` in a file name has exactly ",
+            "Outside Julia, the partitions are plain tables with a header row; `delta` in a file name has exactly ",
             series["digits"], " decimals.")
     end
     return joinpath(dir, "README.md")

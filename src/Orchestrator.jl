@@ -746,8 +746,8 @@ Recompute `settings.reference_checks` thresholds among those just computed with
 the reference kernel (always including the largest, see
 `reference_thresholds`) and compare exactly (`compare_with_reference`); the
 threshold `exclude`, already compared
-by the early check, is not repeated. A disagreement raises after being
-recorded; a check whose scan work ([`scan_work`](@ref), in element
+by the early check, is not repeated. A disagreement is logged, then
+raises; a check whose scan work ([`scan_work`](@ref), in element
 comparisons) exceeds `[limits].max_reference_work` is skipped with a warning.
 """
 function reference_check!(timer, s, thresholds, computed, alg, ws, reference, ws_ref,

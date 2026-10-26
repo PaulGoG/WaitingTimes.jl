@@ -5,12 +5,11 @@ through two producers whose output the package reads directly:
 DeepSpaceTelemetry.jl, which simulates the telemetry chain of a deep-space
 mission and writes run directories, and MarketTickStreamer.jl, which
 captures, replays and compacts trade ticks. A consumer of a collection sees
-only the collection; what follows states how each input becomes one, so that
-the collection carries the same fields whatever the input. The two worked
-examples, `examples/telemetry_run.jl` and `examples/tick_stream.jl`, run in
-the continuous integration against the producer versions pinned in
-`examples/Project.toml` and assert the contract below, so that a change of a
-producer that breaks it fails there.
+only the collection, which carries the same fields whatever the input. The
+two worked examples, `examples/telemetry_run.jl` and `examples/tick_stream.jl`,
+run in continuous integration against the producer versions pinned in
+`examples/Project.toml` and assert the contract below; a producer change that
+breaks it fails there.
 
 ## The collection contract
 
@@ -56,40 +55,41 @@ producer (`simulation.mode = "tick"`) runs a scenario deterministically: two
 runs of one configuration agree on every product but the wall-clock column of
 `mission_profile.csv`.
 
-A Julia consumer reads the run through the producer's adapter
-(`DeepSpaceTelemetry.RunAdapter`, public since 2.6.2): `open_run` checks the
-producer's version and the lifecycle sentinel, `run_geometry` gives the
-sample rate, the payload origin and the clock mode, `list_batches` and
-`read_batch` the delivered payload with its payload rows (`row_time` the
-instant of a row), and `declared_holes` the feed; the tables of the run are
-read with `TelemetryCore.read_table`, which states their column types. This
-is what `examples/telemetry_run.jl` does; the file contract serves a
-consumer in any other language.
+A Julia consumer reads the run through the producer's adapter,
+`DeepSpaceTelemetry.RunAdapter` (public since 2.6.2), as
+`examples/telemetry_run.jl` does. `open_run` checks the producer's version
+and the lifecycle sentinel; `run_geometry` gives the sample rate, the payload
+origin and the clock mode; `list_batches` and `read_batch` give the delivered
+payload with its payload rows (`row_time` the instant of a row); and
+`declared_holes` gives the feed. `TelemetryCore.read_table` reads the tables
+of the run and states their column types. A consumer in any other language
+works from the file contract.
 
 ## MarketTickStreamer.jl
 
 A consumer meets a capture in three ways, all through one `Channel{Trade}`:
 the wire (`live_source`), a recording (`replay_source`: a session from its
-raw files, or a corpus from the processed tree one trading day at a time)
+raw files, or a corpus from the processed tree one trading day at a time),
 and the raw files of a session another process is writing
-(`follow_source`, which ends when the session's sidecar leaves `running`; a
-finished session is read whole). `OnlineWaitingTimes` consumes the channel
-under the producer's snapshot convention (`snapshots`: the state at every
-multiple of a period on the exchange clock and once at close, a function of
-the sequence alone, so a replay reproduces the snapshots of the live
-session). The file contract, fixed by MarketTickStreamer 1.0.0, serves the
-batch pipeline: the processed day files
-`processed/<SYMBOL>/<YYYY-MM-DD>.csv|.arrow` (`time_ns`, `price` and the
-other trade columns, rows sorted by `time_ns`, exact duplicates removed) are
-read with `format = "tick"`, every print a row, equal time stamps resolved by
-`tie_policy`; a series over several days is the corpus read
-(`read_processed(cfg, symbol; from, to)`) written as one file in the same
-schema (`trades_table`). A capture, backfill or import session writes its
-sidecar `<session>.meta.toml` with the session, the producer's version,
-commit and dirty flag, the venue's timestamp unit, the hardware and the
-configuration snapshot (the seed of the backoff jitter included); it records
-no tree hash, so a collection from it has no code identity of the producer
-beside the version.
+(`follow_source`). A followed source ends when the session's sidecar leaves
+`running`; a finished session is read whole. `OnlineWaitingTimes` consumes
+the channel under the producer's snapshot convention (`snapshots`): the state
+at every multiple of a period on the exchange clock and once at close. The
+snapshots are a function of the sequence alone, so a replay reproduces those
+of the live session.
+
+The file contract, fixed by MarketTickStreamer 1.0.0, serves the batch
+pipeline. The processed day files `processed/<SYMBOL>/<YYYY-MM-DD>.csv|.arrow`
+hold `time_ns`, `price` and the other trade columns, rows sorted by
+`time_ns` and exact duplicates removed. They are read with `format = "tick"`,
+every print a row, equal time stamps resolved by `tie_policy`. A series over
+several days is the corpus read (`read_processed(cfg, symbol; from, to)`)
+written as one file in the same schema (`trades_table`). A capture, backfill
+or import session writes its sidecar `<session>.meta.toml` with the session,
+the producer's version, commit and dirty flag, the venue's timestamp unit,
+the hardware and the configuration snapshot, the seed of the backoff jitter
+included. It records no tree hash, so a collection from it has no code
+identity of the producer beside the version.
 
 | Collection | From the session |
 |---|---|

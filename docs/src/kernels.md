@@ -19,9 +19,9 @@ A maximum segment tree over the positions answers, for each index, the
 leftmost later position whose value reaches the target: climb to the first
 right sibling whose maximum qualifies, then descend to its leftmost
 qualifying leaf, ``O(\log N)``. The tree is built once per series and is
-read-only during queries. Benchmarks on synthetic random walks with 22
-threads: ``4 \cdot 10^6`` points at large ``\delta`` in 33 ms per threshold,
-while the naive scan needs about 7 s at ``10^6`` points.
+read-only during queries. On synthetic random walks with 22 threads it
+answers ``4 \cdot 10^6`` points at large ``\delta`` in 33 ms per threshold;
+the naive scan needs about 7 s at ``10^6`` points.
 
 ## Fenwick sweep
 
@@ -30,8 +30,10 @@ distinct values holds the smallest index seen for each value; the passage of
 an index is the minimum index among values at least its target, a
 prefix-minimum query. Several thresholds share one sweep through
 `waiting_times(s, deltas, FenwickSweep())`, which saves the tree updates but
-not the per-threshold queries (at most a factor 1.5 over separate sweeps);
-[`run_pipeline`](@ref) evaluates one threshold at a time with any kernel.
+not the per-threshold queries (at most a factor 1.5 over separate sweeps).
+[`run_pipeline`](@ref) serves the thresholds of a session in batches with the
+Fenwick sweep, bounded by `[limits].max_ram_gb`, and one at a time with the
+other kernels.
 
 ## Streaming
 
