@@ -1,0 +1,36 @@
+schema = "waitingtimes-provenance/2"
+
+[artefact]
+id = "collection-schema2_fixture-00000000"
+kind = "collection"
+
+[identity]
+mode = "elapsed"
+series = "series-schema2_fixture-00000000"
+
+[series]
+digits = 0
+id = "series-schema2_fixture-00000000"
+n_gaps = 1
+n_observations = 18
+slug = "schema2_fixture"
+time_unit = "sample"
+
+[series.record]
+source = "schema2_fixture.csv"
+source_sha256 = ""
+
+[[series.record.steps]]
+op = "quantize"
+
+[series.record.steps.parameters]
+cadence = 1
+digits = 0
+narrow = false
+
+[series.record.steps.summary]
+n_gaps = 1
+n_missing = 2
+n_observed = 18
+n_rows = 20
+value_type = "Int64"
