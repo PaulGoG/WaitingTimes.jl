@@ -1,0 +1,29 @@
+[[partitions]]
+delta = "1"
+file = "distributions/delta=1.csv"
+kernel = "segmenttreesearch"
+mode = "elapsed"
+n_candidates = 17
+n_exact = 14
+n_gap_crossing = 2
+n_right_censored = 1
+n_waiting = 16
+tau_max = 4
+tau_mean = 1.9375
+tau_median = 2
+tau_min = 1
+
+[[partitions]]
+delta = "3"
+file = "distributions/delta=3.csv"
+kernel = "segmenttreesearch"
+mode = "elapsed"
+n_candidates = 17
+n_exact = 8
+n_gap_crossing = 5
+n_right_censored = 4
+n_waiting = 13
+tau_max = 9
+tau_mean = 4.6153846153846154
+tau_median = 3
+tau_min = 1
