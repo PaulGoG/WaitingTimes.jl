@@ -69,8 +69,6 @@ end
 
 rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits)
 
-# --- suite -------------------------------------------------------------------
-
 @testset "WaitingTimes.jl" begin
     @testset "Static QA" begin
         Aqua.test_all(WaitingTimes)

@@ -1,5 +1,5 @@
-# Phase 3 tests: provenance, configuration, naming, preprocessing, storage,
-# orchestration and the package extensions.
+# Provenance, configuration, naming, preprocessing, storage, orchestration and
+# the package extensions.
 
 using WaitingTimes.Provenance: artefact_id, backup_existing!, canonical_toml, content_hash,
                                dict_to_record, effective_config, record_to_dict, slugify,
@@ -139,8 +139,9 @@ end
             D("steps" =>
                 Any[D("op" => "clip_sigma", "k" => 2.5, "center" => "median",
                     "scale" => "mad", "splice" => false)])))).steps) == 1
-        # digits = "auto": the fixture's 26 values finer than 10^-4 lie below the
-        # tolerance, so the choice is the configured 4
+        # digits = "auto": the threshold grid needs 4 decimals and the fixture's 26
+        # values finer than 10^-4 move the δ = 0 distribution by less than the
+        # tolerance, so 4 is kept
         auto = load_settings(write_config(D("quantization" => D("digits" => "auto"))))
         @test auto.digits === nothing && auto.auto_max_digits == 8 &&
               WaitingTimes.Config.threshold_decimals(auto) == 4
@@ -221,7 +222,7 @@ end
           tm.values[3] ≈ (12 - 10.5) * 100 / 10.5
     @test tm.values[4] ≈ (6 - 11.5) * 100 / 11.5
     @test_throws ArgumentError trailing_mean_fluctuations(raw_from([0.0, 1.0]); window = 1)
-    # the papers' shift: the minimum becomes 1 before the percentage
+    # the shift of the original analysis: the minimum becomes 1 before the percentage
     sh = trailing_mean_fluctuations(raw_from([-4.0, 1.0, 6.0]); window = 1, offset = :auto)
     @test sh.record.steps[end].summary["shift"] == 5.0
     @test sh.values[2] ≈ (6 - 1) * 100 / 1 && sh.values[3] ≈ (11 - 6) * 100 / 6
@@ -311,7 +312,7 @@ end
     sr = select_range(raw_from([1.0, 2.0, 3.0, 4.0]); from = 2, to = 3)
     @test sr.values == [2.0, 3.0]
     @test_throws ArgumentError select_range(rs; from = 10, to = 20)
-    # surgical cut with splice closes the time axis
+    # a spliced cut closes the time axis
     ex = exclude_intervals(
         raw_from([1.0, 2.0, 3.0, 4.0, 5.0]; times = [1, 2, 3, 4, 10], unit = :second),
         [(2, 4)])

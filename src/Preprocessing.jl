@@ -71,15 +71,17 @@ const UNIT_NANOSECONDS = Dict(:nanosecond => 1, :microsecond => 10^3, :milliseco
 $(TYPEDSIGNATURES)
 
 Read a series from `path`. `format` is `:csv`, `:dat` (space-delimited with a
-header), `:arrow`, `:tick` (MarketTickStreamer compacted files: `time_ns` and
-`price`) or `:auto` (from the extension). Columns are selected by 1-based index
-or name. Time stamps are parsed with `time_format` when it is given; otherwise
-they are integers in `epoch_unit` or ISO 8601 date-times with up to nine
-fractional digits. They are converted to `time_unit` since the UNIX epoch and
-must be exact multiples of the unit. Values that are absent or unparsable
-become `missing` under `missing_policy = :drop` or raise under `:error`. Equal
-time stamps are resolved by `tie_policy` (`:error`, `:first`, `:last`,
-`:mean`).
+header), `:arrow`, `:tick` (MarketTickStreamer compacted files: time column
+`time_ns` unless given, value column `price` when `value_column = ""`, integer
+nanosecond stamps, and `time_unit = :sample` taken as `:nanosecond`) or `:auto`
+(from the file extension: `.csv`, `.dat`, `.arrow`, `.feather`). Columns are
+selected by 1-based index or name. Time stamps are parsed with `time_format`
+when it is given; otherwise they are integers in `epoch_unit` or ISO 8601
+date-times with up to nine fractional digits. They are converted to
+`time_unit` since the UNIX epoch, must be exact multiples of the unit, and
+must not decrease. Values that are absent or unparsable become `missing` under
+`missing_policy = :drop` or raise under `:error`. Equal time stamps are
+resolved by `tie_policy` (`:error`, `:first`, `:last`, `:mean`).
 """
 function read_series(path::AbstractString; format::Symbol = :auto,
         value_column::Union{Integer, AbstractString},
@@ -246,7 +248,8 @@ $(TYPEDSIGNATURES)
 
 Resolve equal time stamps: `:error` rejects them, `:first`/`:last` keep one
 observation, `:mean` averages the observed values. Rows are merged, so the
-series length may shrink.
+series length may shrink. Time stamps must be non-decreasing; a series
+without times is returned unchanged.
 """
 function collapse_ties(rs::RawSeries, policy::Symbol)
     rs.times === nothing && return rs
@@ -304,8 +307,8 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Surgical removal of blocks: rows whose time (or index) lies in any `[a, b)`
-interval are removed. With `splice = true` (the default) the time axis closes over each cut
+Remove the rows whose time (or index) lies in any `[a, b)` interval. With
+`splice = true` (the default) the time axis closes over each cut
 (later times shift back by the cut length, so no elapsed time is counted
 across it); with `splice = false` the rows are set to `missing` and the cut
 remains a gap.
@@ -391,7 +394,8 @@ set to zero. `denominator` selects the normalisation:
 
 - `:mean`, the percentage fluctuation ``(x_k - \\mathrm{RA}_k) \\cdot 100 / \\mathrm{RA}_k``
   of the original analysis (Pană, Gogîță, Nicolin-Żaczek, Rom. J. Phys. 69,
-  111 (2024), eq. 6), undefined where the trailing mean is not positive;
+  111 (2024), eq. 6, doi:10.59277/RomJPhys.2024.69.111), undefined where the
+  trailing mean is not positive;
 - `:scale`, the deviation divided by the standard deviation of all
   deviations, dimensionless and defined for any series;
 - `:none`, the deviation in data units.
@@ -496,12 +500,12 @@ Logarithmic levels in percent, `100 log(x_k / x_ref)`, of every observation
 against one fixed reference: the first observed value (`reference = :first`)
 or a positive number. Values must be positive; missing observations stay
 missing. The series keeps its path and its trends, so a threshold ``\\delta``
-is a move of ``\\delta`` per cent of the level (to first order), whereas the
+is a move of ``\\delta`` percent of the level (to first order), whereas the
 reference of [`trailing_mean_fluctuations`](@ref) moves with the series. The
 quantisation grid must resolve the typical one-step move, about 0.03 %
 between consecutive BTC minute closes, so three to four decimals or
-`digits = "auto"`. The step records the reference, its value and the unit,
-per cent.
+`digits = "auto"`. The step records the reference, its value and the unit
+(`"percent"`).
 """
 function log_levels(rs::RawSeries; reference::Union{Symbol, Real} = :first)
     reference isa Symbol && reference !== :first &&
@@ -563,7 +567,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Remove the rows selected by `remove` (a mask over the rows of `rs`). With
+Remove the rows selected by `remove` (a mask over the rows of `rs`) and record
+the step `op` with `parameters` and `summary`, the latter extended by
+`n_removed`, `fraction_removed` and `positions`. With
 `splice = false` the value is set to `missing` and its time position remains:
 the measurement is discarded as invalid but the time passed, so the cut is a
 recorded gap; this is what the 2024 analysis did (its time column kept the
@@ -641,8 +647,9 @@ its floor at `digits` decimals afterwards. The batches remove whole magnitude
 levels at once, so the removed share exceeds `fraction` by up to one level.
 `fraction = 0.004` is the rule of the 2024 code, with which the published
 tables were computed; the 0.04 % stated in Rom. J. Phys. 69, 111 (2024),
-§2.3, is an omission of the paper. With `splice = false` (the default, as
-the 2024 code) this step reproduces the published Table 1 entries of the
+§2.3 (doi:10.59277/RomJPhys.2024.69.111), is a misprint of the paper. With
+`splice = false` (the default, as in the 2024 code) this step reproduces the
+published Table 1 entries of the
 pruned series; see [`remove_rows`](@ref).
 """
 function clip_extremes(rs::RawSeries; fraction::Real = 0.004, digits::Integer,
@@ -813,7 +820,8 @@ Quantise a prepared series: values to the `digits` grid, missing rows kept as
 elapsed time, gaps detected by `detect` (`:none`, `:cadence` with `cadence`,
 `:threshold` with `threshold`) and merged with `declared` intervals (pairs, or
 named tuples with `kind` and `source` as returned by
-[`read_gap_intervals`](@ref)).
+[`read_gap_intervals`](@ref)). With `narrow = true` the values are stored as
+`Int32` when they fit ([`narrow_integer`](@ref WaitingTimes.narrow_integer)).
 """
 function quantized_series(rs::RawSeries, digits::Integer; detect::Symbol = :cadence,
         cadence::Integer = 1, threshold::Integer = 0,
@@ -927,8 +935,9 @@ Recorded resolution of the observed values: the smallest number of decimals
 `d ≤ max_digits` such that every value lies on the ``10^{-d}`` grid to within
 `tolerance` grid units, or `nothing` when no such `d` exists (values off any
 decimal grid, as after most transformations). Quantising with `digits = d`
-merges no distinct observed values, a coarser grid does, and a finer grid only
-enlarges the integers; `d` is therefore the natural choice of `digits` for a
+reproduces every observed value, a coarser grid moves at least one, and a
+finer grid only enlarges the integers; `d` is therefore the natural choice of
+`digits` for a
 series used as recorded.
 """
 function resolution_digits(rs::RawSeries; max_digits::Integer = MAX_DIGITS,

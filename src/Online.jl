@@ -33,15 +33,25 @@ observation, or on a sample-indexed stream `push!(est, x)` with
 `push!(est, missing)` for a missing sample, which advances the index so that
 time passes through it; read with [`snapshot`](@ref) (the distributions so
 far), [`pending`](@ref) and [`status`](@ref).
+
+$(TYPEDFIELDS)
 """
 mutable struct OnlineWaitingTimes{Tv <: Integer, Tt <: Integer}
+    "decimal digits of the grid"
     const digits::Int
+    "time unit, one of `TIME_UNITS`"
     const time_unit::Symbol
+    "thresholds in the order given"
     const thresholds::Vector{Threshold{Tv}}
+    "one streaming state per threshold"
     const states::Vector{StreamingState{Tv, Tt}}
+    "one distribution accumulator per threshold"
     const accumulators::Vector{DistributionAccumulator{Tt}}
+    "`:error` or `:skip`, for a sample with a non-increasing time"
     const late_policy::Symbol
+    "declared upper bound on the grid, `nothing` when none"
     const upper_bound::Union{Nothing, Tv}
+    "`:error` or `:skip`, for a value above the upper bound"
     const bound_policy::Symbol
     "samples accepted"
     n_seen::Int
@@ -160,7 +170,8 @@ end
 $(TYPEDSIGNATURES)
 
 Indices without an observed passage so far, per threshold in threshold
-order; the latest sample is always among them.
+order; the latest sample is among them unless its target exceeds
+`upper_bound`.
 """
 pending(est::OnlineWaitingTimes) = [pending(state) for state in est.states]
 

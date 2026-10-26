@@ -9,10 +9,11 @@
 Second independent fast kernel. Sweeping the series from the end, a Fenwick
 tree over the ranks of the distinct values holds the smallest index seen for
 each value; the passage of index `n` is the minimum index among values at
-least `q_n + d`, a prefix-minimum query in ``O(\\log V)``. The sweep is
-sequential in `n` but serves any number of thresholds in one pass, so it is
-the kernel of choice for dense threshold grids on machines with few cores and
-for memory-constrained devices (the tree has `V` entries). Results equal
+least `q_n + d`, a prefix-minimum query in ``O(\\log V)`` over the ``V``
+distinct values. The sweep is sequential in `n` but serves any number of
+thresholds in one pass, so it is the kernel of choice for dense threshold
+grids on machines with few cores and under tight memory (the workspace holds
+the rank of every observation and a tree of ``V`` entries). Results equal
 [`NaiveSearch`](@ref) bit for bit.
 """
 struct FenwickSweep <: AbstractSearch end

@@ -3,16 +3,22 @@
 # comparable with == across kernels and backends.
 
 """
-Supertype of the search algorithms computing waiting times.
+    AbstractSearch
+
+Supertype of the search kernels. A kernel `K <: AbstractSearch` implements
+`waiting_times!(τ, s, δ, alg::K; workspace)`, `workspace(alg::K, s)` and
+`workspace_bytes(alg::K, s)`, and its results equal those of
+[`NaiveSearch`](@ref), the reference kernel, bit for bit.
 """
 abstract type AbstractSearch end
 
 """
     NaiveSearch(; chunk_size = 4096)
 
-The definition, verbatim: for each index scan forward until the first value at
-least `δ` above it. Cost ``O(\\sum_n \\tau_n)``, worst case ``O(N^2)``. This is
-the permanent reference implementation for every other kernel. Indices are processed
+Direct evaluation of the definition: for each index scan forward until the
+first value at least `δ` above it. Cost ``O(\\sum_n \\tau_n)``, worst case
+``O(N^2)``. It is the reference kernel every other kernel is checked against.
+Indices are processed
 in chunks of `chunk_size` under dynamic scheduling, because the cost per index
 is heavy-tailed.
 """
@@ -28,8 +34,8 @@ end
 """
     GuardedSearch(; chunk_size = 4096)
 
-The naive scan preceded by an O(1) censoring proof: with the suffix maximum
-``M_n = \\max_{m > n} q_m`` computed once per series, an index whose target
+The naive scan preceded by an O(1) censoring test: with the suffix maximum
+``M_n = \\max_{m \\ge n} q_m`` computed once per series, an index whose target
 exceeds ``M_{n+1}`` has no passage and is skipped. Nothing else differs from
 [`NaiveSearch`](@ref).
 """
@@ -71,9 +77,13 @@ function suffix_maximum(q::AbstractVector{Tv}) where {Tv}
 end
 
 """
-$(TYPEDSIGNATURES)
+    workspace(alg::AbstractSearch, s::QuantizedSeries)
 
-Workspace for `alg` on the series `s`; `NaiveSearch` needs none.
+Series-level precomputation of `alg` on `s`, reused across thresholds:
+`nothing` for [`NaiveSearch`](@ref) and [`StreamingSearch`](@ref), the suffix
+maxima (`SearchWorkspace`) for [`GuardedSearch`](@ref), a `MaxTree` for
+[`SegmentTreeSearch`](@ref), a `FenwickWorkspace` for [`FenwickSweep`](@ref),
+and the device-resident arrays for [`DeviceSearch`](@ref).
 """
 workspace(::NaiveSearch, ::QuantizedSeries) = nothing
 workspace(::GuardedSearch, s::QuantizedSeries) = SearchWorkspace(suffix_maximum(s.values))
@@ -125,11 +135,12 @@ end
 end
 
 """
-$(TYPEDSIGNATURES)
+    waiting_times!(τ, s::QuantizedSeries, δ::Threshold, alg::AbstractSearch;
+                   workspace = nothing) -> τ
 
 Waiting times of every index of `s` at threshold `δ` into `τ` (length `N`),
 with `0` where no passage is observed. `workspace` is built on demand for
-kernels that need one. Returns `τ`.
+kernels that need one.
 """
 function waiting_times!(τ::AbstractVector{Tt}, s::QuantizedSeries{Tv, Tt}, δ::Threshold,
         alg::NaiveSearch; workspace = nothing) where {Tv, Tt}
@@ -165,7 +176,15 @@ end
 $(TYPEDSIGNATURES)
 
 Allocating form of [`waiting_times!`](@ref). `δ` may be a [`Threshold`](@ref),
-a real value or a decimal string on the grid of `s`.
+a real value or a decimal string on the grid of `s`; `alg` defaults to
+[`SegmentTreeSearch`](@ref).
+
+```jldoctest
+julia> s = QuantizedSeries([1, 3, 2, 5, 4, 4, 6], 0);
+
+julia> waiting_times(s, 3) == [3, 5, 1, 0, 0, 0, 0]
+true
+```
 """
 function waiting_times(s::QuantizedSeries{Tv, Tt}, δ::Threshold,
         alg::AbstractSearch = SegmentTreeSearch(); workspace = nothing) where {Tv, Tt}

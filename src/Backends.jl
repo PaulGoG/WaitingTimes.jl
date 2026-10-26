@@ -20,7 +20,8 @@ const BACKEND_PROBES = Vector{Pair{Symbol, Function}}()
 """
 $(TYPEDSIGNATURES)
 
-Register a backend probe; called from the extensions' `__init__`.
+Register `probe` under `name` unless the name is taken; called from the
+extensions' `__init__`.
 """
 function register_backend!(name::Symbol, probe::Function)
     any(p -> first(p) === name, BACKEND_PROBES) || push!(BACKEND_PROBES, name => probe)
@@ -123,7 +124,11 @@ KernelAbstractions extension defines the `true` method, every GPU backend is
 """
 host_backend(_) = false
 
-"host CPU model string, empty when unavailable"
+"""
+$(TYPEDSIGNATURES)
+
+Model string of the first host CPU; empty when `Sys.cpu_info` reports none.
+"""
 function cpu_model()
     info = Sys.cpu_info()
     return isempty(info) ? "" : strip(info[1].model)
