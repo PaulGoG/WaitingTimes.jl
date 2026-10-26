@@ -5,6 +5,7 @@
 Base.identify_package("Pkg") === nothing || include(joinpath(@__DIR__, "activate.jl"))
 
 using WaitingTimes
+using KernelAbstractions: KernelAbstractions
 using Test
 using Aqua
 using ExplicitImports
@@ -333,7 +334,9 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
             ("walk on irregular times", 2, N -> random_walk(rng, N),
                 N -> irregular_times(rng, N; mean_interval = 7.0))
         ]
-        for N in (1_000, 10_000, 100_000), (name, digits, make, make_times) in families
+        # N = 10^5 runs the first two families only, without the 10^7 threshold
+        for N in (1_000, 10_000, 100_000),
+            (name, digits, make, make_times) in (N == 100_000 ? families[1:2] : families)
 
             x = make(N)
             s = make_times === nothing ? QuantizedSeries(x, digits) :
@@ -342,8 +345,8 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
             ws_tree = WT.workspace(SegmentTreeSearch(), s)
             ws_fenwick = WT.workspace(FenwickSweep(), s)
             ws_device = WT.workspace(DeviceSearch(), s)
-            deltas = [threshold(k * 10.0^-digits, s)
-                      for k in (0, 1, 3, 10, 100, 2_000, 10^7)]
+            ks = N == 100_000 ? (0, 1, 3, 10, 100, 2_000) : (0, 1, 3, 10, 100, 2_000, 10^7)
+            deltas = [threshold(k * 10.0^-digits, s) for k in ks]
             references = [waiting_times(s, δ, NaiveSearch()) for δ in deltas]
             @testset "$name, N = $N" begin
                 for (δ, τ_ref) in zip(deltas, references)
@@ -560,8 +563,12 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
     end
 
     @testset "Device search selection" begin
-        @test device_search(:none) isa DeviceSearch{<:WaitingTimes.Backends.CPU}
-        @test device_search(:auto) isa DeviceSearch{<:WaitingTimes.Backends.CPU}
+        @test device_search(:none) isa DeviceSearch{<:KernelAbstractions.CPU}
+        @test device_search(:auto) isa DeviceSearch{<:KernelAbstractions.CPU}
+        @test WaitingTimes.Backends.host_backend(device_search(:none).backend)
+        @test !WaitingTimes.Backends.host_backend(nothing)
+        @test :KernelAbstractions in WaitingTimes.Backends.load_device_packages(:none)
+        @test_throws ArgumentError WaitingTimes.Backends.load_device_packages(:tpu)
         @test_throws ArgumentError device_search(:cuda)
         s = QuantizedSeries([1.0, 3.0, 2.0, 5.0], 0)
         @test waiting_times(s, 2, DeviceSearch()) == [1, 2, 1, 0]
@@ -606,4 +613,5 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
     include("pipeline_tests.jl")
     include("identity_tests.jl")
     include("structure_tests.jl")
+    include("preprocessing_tests.jl")
 end

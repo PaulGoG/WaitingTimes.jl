@@ -7,8 +7,6 @@ format = "csv"
 dataset = "geisenheim-wind_speed"
 value_column = 9
 header = false
-quantity_label = "wind speed"
-unit_label = "km/h"
 
 [quantization]
 digits = 1

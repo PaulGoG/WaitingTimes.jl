@@ -37,7 +37,7 @@ computed here; the numbers behind every figure of this page are in
 WaitingTimes.jl/
 ├── Project.toml, activate.jl     # package environment; activate.jl instantiates it silently
 ├── src/                          # library: grid, series, kernels, distribution, pipeline
-├── ext/                          # Distributions, CairoMakie and GPU-backend extensions
+├── ext/                          # Distributions, CairoMakie, KernelAbstractions and GPU-backend extensions
 ├── scripts/                      # run, launch, prepare, validate, crosscheck, lineage
 ├── configs/                      # run configurations and dataset descriptors
 ├── bench/                        # kernel benchmarks (own environment)
@@ -186,7 +186,7 @@ push!(est, t_ns, price)                        # one sample; snapshot(est) gives
 | Synthetic generators, benchmarks | done |
 | Configuration, storage, provenance, preprocessing, scripts | done; quickstart end to end in the tests |
 | Distributions.jl and CairoMakie extensions | done |
-| KernelAbstractions device kernel | done; CPU backend in the default tests, oneAPI verified on an Intel Arc GPU |
+| KernelAbstractions device kernel | done; a package extension (`using KernelAbstractions`); CPU backend in the default tests, oneAPI verified on an Intel Arc GPU |
 | Preprocessing after the published treatment (round, fluctuations with denominator and offset, the pruning loop of the 2024 code with the slot kept or deleted, `clip_sigma`), log returns and log levels | done; Table 1 of the paper reproduced for the raw datasets |
 | Automatic choice of `digits` (`digits = "auto"`, `suggest_digits`, `digits_sensitivity`) | done |
 | Collection read side (`load_collection`, `distribution`, `summary_table`, `class_counts`, `censoring_histogram`, `source_descriptor`, `source_summary`, `segment_lengths`, `export_legacy`), per-collection README | done |
@@ -255,11 +255,12 @@ WaitingTimes.jl/
 │   ├── Monitoring.jl             # terminal and file logging, TTY-gated progress
 │   ├── Storage.jl                # per-threshold partitions, index, summary, catalog
 │   ├── Orchestrator.jl           # prepare, generate (resume, reference checks), validate
-│   ├── Backends.jl               # KernelAbstractions backend registry (CPU + GPU probes)
-│   └── DeviceKernels.jl          # DeviceSearch: the naive scan as a device kernel
+│   ├── Backends.jl               # backend registry and selection (probes from the extensions)
+│   └── DeviceKernels.jl          # DeviceSearch, its workspace type, backend selection
 ├── ext/
 │   ├── WaitingTimesDistributionsExt.jl   # DiscreteNonParametric view of a distribution
 │   ├── WaitingTimesCairoMakieExt.jl      # figure theme, decade ticks, series and distribution figures
+│   ├── WaitingTimesKernelAbstractionsExt.jl   # the device kernel on the CPU and GPU backends
 │   └── WaitingTimes{CUDA,oneAPI,AMDGPU,Metal}Ext.jl   # GPU backend probes
 ├── scripts/
 │   ├── run_pipeline.jl           # generate or extend a collection from a TOML config

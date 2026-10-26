@@ -19,7 +19,7 @@ using ..WaitingTimes: WaitingTimes, AbstractSearch, DeviceSearch, FenwickSweep,
                       empirical_distribution, format_threshold, gap_entries, nsamples,
                       record_length, sampling_step, scan_work, segment_lengths, support,
                       waiting_times, waiting_times!, with_step, workspace
-using ..Config: Settings, load_settings, threshold_decimals, threshold_list
+using ..Config: Settings, load_settings, step_tag, threshold_decimals, threshold_list
 using ..Provenance: active_manifest, artefact_id, backup_existing!, content_hash,
                     file_sha256, git_state, hardware_fingerprint, package_identity,
                     read_toml, record_to_dict, session_id, slugify, source_summary,
@@ -31,8 +31,7 @@ using ..Storage: MANIFEST_FILE, SOURCE_FILE, censoring_path, partition_path, rea
                  write_censoring, write_collection_readme, write_distribution,
                  write_index, write_series_files, write_summary, write_waiting_times
 using ..Monitoring: run_progress, with_run_logging
-using ..Backends: backend_name, device_fingerprint
-using KernelAbstractions: CPU
+using ..Backends: backend_name, device_fingerprint, host_backend
 
 export CollectionHandle, run_pipeline, prepare, generate, validate, make_kernel,
        estimate_memory_bytes, dataset_descriptor
@@ -113,8 +112,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Search kernel named by `[algorithm].search`; `:device` is served by the
-device extension when a backend is loaded.
+Search kernel named by `[algorithm].search`; `:device` is a `DeviceSearch` on
+`[algorithm].backend`, which needs KernelAbstractions loaded in the session
+(`:none` for its CPU backend; a GPU backend also needs its package loaded).
 """
 function make_kernel(settings::Settings)
     s = settings.search
@@ -154,26 +154,6 @@ function estimate_memory_bytes(s::QuantizedSeries{Tv, Tt}, alg::AbstractSearch) 
 end
 
 # --- prepare -----------------------------------------------------------------
-
-function step_tag(step::AbstractDict)
-    op = String(step["op"])
-    if op == "trailing_mean_fluctuations"
-        denominator = String(get(step, "denominator", "mean"))
-        suffix = denominator == "mean" ? "" : denominator == "scale" ? "scaled" : "abs"
-        return "trailing" * string(step["window"]) * suffix
-    end
-    op == "round" ? "round" * string(step["digits"]) :
-    op == "centered_moving_average" ? "cma" * string(step["window"]) :
-    op == "clip_quantile" ? "clip" * string(step["q"]) :
-    op == "clip_sigma" ? "sigma" * string(get(step, "k", 3)) :
-    op == "clip_extremes" ? "prune" * string(get(step, "fraction", 0.004)) :
-    op == "log_returns" ? "logret" :
-    op == "log_levels" ? "loglevels" :
-    op == "differences" ? "diff" :
-    op == "select_range" ? "range" :
-    op == "exclude_intervals" ? "cut" :
-    op == "collapse_ties" ? "ties" : op
-end
 
 """
 $(TYPEDSIGNATURES)
@@ -418,7 +398,7 @@ function generate(settings::Settings)
         bytes <= limit || throw(ArgumentError(
             "estimated memory $(round(bytes / 2^30; digits = 2)) GiB exceeds [limits] max_ram_gb = $(settings.max_ram_gb)",
         ))
-        if alg isa DeviceSearch && !(alg.backend isa CPU)
+        if alg isa DeviceSearch && !host_backend(alg.backend)
             vram = length(s) * (2 * sizeof(eltype(s.values)) + 2 * sizeof(eltype(s.times)))
             vram <= settings.max_vram_gb * 2^30 || throw(ArgumentError(
                 "estimated device memory $(round(vram / 2^30; digits = 2)) GiB exceeds [limits] max_vram_gb = $(settings.max_vram_gb)",
