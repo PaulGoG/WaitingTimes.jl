@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
+## [Unreleased]
+
+### Changed
+
+- KernelAbstractions 0.10 is supported alongside 0.9, and DocStringExtensions
+  0.10 alongside 0.9. The device workspace is allocated through the public
+  `allocate`, as `zeros` is no longer public in KernelAbstractions 0.10.
+- The auxiliary environments (`test/`, `docs/`, `bench/`, `examples/`) state
+  `julia = "1.12"` in their compat, so dependency updates no longer propose
+  the `<0.0.1` bounds of pre-1.10 standard libraries.
+
 ## [0.3.2] - 2026-10-23
 
 ### Changed

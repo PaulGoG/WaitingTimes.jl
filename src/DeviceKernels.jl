@@ -46,7 +46,7 @@ function workspace(alg::DeviceSearch, s::QuantizedSeries{Tv, Tt}) where {Tv, Tt}
     return DeviceWorkspace(
         to_backend(s.values, alg.backend), to_backend(s.times, alg.backend),
         to_backend(suffix_maximum(s.values), alg.backend),
-        KernelAbstractions.zeros(alg.backend, Tt, N), N)
+        fill!(KernelAbstractions.allocate(alg.backend, Tt, N), zero(Tt)), N)
 end
 
 @kernel function waiting_times_kernel!(τ, @Const(q), @Const(t), @Const(M), d, N::Int)
