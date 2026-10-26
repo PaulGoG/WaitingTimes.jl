@@ -7,8 +7,6 @@ format = "csv"
 dataset = "trieste-sea_level"
 value_column = 3
 header = true
-quantity_label = "sea level"
-unit_label = "cm"
 
 [preprocessing]
 steps = [

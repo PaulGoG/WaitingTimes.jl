@@ -53,13 +53,13 @@ bounds the heap by twice the samples within one horizon, at a cost within
 
 ## Device kernel
 
-The naive scan as a KernelAbstractions kernel with one work-item per index
-and the host-computed suffix maxima for the censoring test. The CPU backend is
-always available and runs in the default test suite; loading CUDA, oneAPI,
-AMDGPU or Metal registers a GPU backend probe through a package extension,
-and [`device_search`](@ref) selects it. Device access is serialised and the
-series arrays are uploaded once per series. Opt-in device tests live in
-`test/device/`.
+`DeviceSearch` is the guarded scan as a KernelAbstractions kernel, with one
+work-item per index and the host-computed suffix maxima for the censoring
+test. A package extension provides it: `using KernelAbstractions` enables it on
+the CPU backend, and loading CUDA, oneAPI, AMDGPU or Metal registers that GPU
+backend, which [`device_search`](@ref) selects. Device access is serialised
+and the series arrays are uploaded once per series. The CPU backend runs in
+the default test suite; opt-in device tests live in `test/device/`.
 
 ## Choosing a kernel
 

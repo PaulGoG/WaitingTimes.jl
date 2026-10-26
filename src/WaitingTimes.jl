@@ -14,7 +14,6 @@ module WaitingTimes
 using DataStructures: BinaryMinHeap, extract_all!
 using Dates: DateTime
 using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
-using KernelAbstractions: KernelAbstractions, Backend, CPU, @Const, @index, @kernel
 using OhMyThreads: tforeach
 using Statistics: Statistics
 
@@ -122,7 +121,8 @@ export Collection, load_collection, list_collections, distribution, thresholds,
        summary_table, load_series, export_legacy, source_descriptor
 
 public CLASS_EXACT, CLASS_GAP_CROSSING, CLASS_RIGHT_CENSORED, TIME_UNITS
-public narrow_integer, suffix_maximum, SearchWorkspace, MaxTree, FenwickWorkspace,
+public narrow_integer, GRID_TOLERANCE, on_grid, suffix_maximum, SearchWorkspace, MaxTree,
+       FenwickWorkspace,
        workspace, scan_work,
        check_threshold, first_at_least, duration, record!
 public support, counts, probabilities, cumulative, survival, nsamples, mean_waiting_time,

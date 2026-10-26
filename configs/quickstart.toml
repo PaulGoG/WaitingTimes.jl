@@ -9,8 +9,6 @@ time_column = ""                            # column name or index; "" = sample 
 time_unit = "sample"                        # one of: "sample" | "nanosecond" | "microsecond" | "millisecond" | "second" | "minute" | "hour" | "day"
 missing_policy = "drop"                     # one of: "drop" | "error"
 tie_policy = "error"                        # one of: "error" | "first" | "last" | "mean"
-quantity_label = "closing rate"
-unit_label = "USD"
 
 [preprocessing]
 steps = []                                  # ordered tables with an op key; see docs

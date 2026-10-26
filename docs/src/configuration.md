@@ -23,8 +23,6 @@ delimiter = ""                    # "" = format default
 header = false                    # first row is a header
 missing_policy = "drop"           # "drop" | "error"
 tie_policy = "error"              # "error" | "first" | "last" | "mean"
-quantity_label = "wind speed"     # plots only
-unit_label = "km/h"               # plots only
 
 [preprocessing]
 steps = [                         # applied in order; see Preprocessing steps below

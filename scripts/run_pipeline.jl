@@ -40,25 +40,14 @@ args = parse_commandline(ARGS)
 config_path = abspath(args["config"])
 isfile(config_path) || error("Configuration file not found: $config_path")
 
-# Load a GPU package only when the configuration asks for one and it is
-# installed: the package extension then registers the backend probe.
-const GPU_PACKAGES = Dict("cuda" => "CUDA", "amdgpu" => "AMDGPU", "metal" => "Metal",
-    "oneapi" => "oneAPI")
+# Load KernelAbstractions and the GPU package named by [algorithm].backend when
+# the configuration uses the device kernel; the package extensions then
+# register the backends.
 let alg = get(effective_config(config_path), "algorithm", Dict{String, Any}())
-    requested = lowercase(String(get(alg, "backend", "none")))
-    wanted = requested == "auto" ? collect(keys(GPU_PACKAGES)) :
-             haskey(GPU_PACKAGES, requested) ? [requested] : String[]
-    for key in wanted
-        pkgname = GPU_PACKAGES[key]
-        if Base.find_package(pkgname) === nothing
-            requested == key &&
-                @warn "Requested backend '$key' but package $pkgname is not " *
-                      "installed in this environment"
-            continue
-        end
-        @info "Loading GPU package $pkgname (activates the $pkgname extension)"
-        Base.require(Main, Symbol(pkgname))
-    end
+    uses_device = get(alg, "search", "") == "device" ||
+                  get(alg, "reference_kernel", "") == "device"
+    uses_device && WaitingTimes.Backends.load_device_packages(
+        Symbol(lowercase(String(get(alg, "backend", "none")))))
 end
 
 handle = run_pipeline(config_path; output_dir = args["output-dir"])

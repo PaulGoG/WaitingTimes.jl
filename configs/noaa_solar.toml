@@ -7,8 +7,6 @@ format = "csv"
 dataset = "noaa-solar_index"
 value_column = 2
 header = true
-quantity_label = "solar flare index"
-unit_label = ""
 
 [quantization]
 digits = 2
