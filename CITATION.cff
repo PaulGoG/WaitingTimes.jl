@@ -36,7 +36,7 @@ references:
         given-names: "Alexandru"
     journal: "Journal of Physics: Complexity"
     volume: 7
-    start: 035007
+    start: "035007"
     year: 2026
     doi: "10.1088/2632-072X/ae8aa5"
   - type: article
