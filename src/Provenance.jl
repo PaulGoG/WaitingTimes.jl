@@ -7,7 +7,6 @@ module Provenance
 
 using DocStringExtensions: TYPEDSIGNATURES
 using Dates: DateTime, Dates, UTC, now
-using DrWatson: gitdescribe
 using InteractiveUtils: versioninfo
 using LinearAlgebra: BLAS
 using SHA: SHA1_CTX, digest!, sha1, sha256, update!
@@ -120,16 +119,12 @@ file_sha256(path::AbstractString) = open(io -> bytes2hex(sha256(io)), path)
 """
 $(TYPEDSIGNATURES)
 
-`git describe`-style state of the repository at `root` (commit, tags, dirty
-flag) via DrWatson, or `"unknown"` outside a repository.
+`git describe --tags --always --dirty` of the repository at `root`, or
+`"unknown"` outside a repository or without git.
 """
 function git_state(root::AbstractString)
-    desc = try
-        gitdescribe(root)
-    catch
-        nothing
-    end
-    return desc === nothing ? "unknown" : String(desc)
+    desc = git_output(root, "describe", "--tags", "--always", "--dirty")
+    return desc === nothing || isempty(desc) ? "unknown" : String(desc)
 end
 
 # --- source identity -----------------------------------------------------------

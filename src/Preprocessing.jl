@@ -13,12 +13,14 @@ using Dates: DateTime, DateFormat, Dates, unix2datetime
 using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
 using Statistics: mean, median, quantile, std
 using UnicodePlots: UnicodePlots
-using ..WaitingTimes: MAX_DIGITS, AbstractSearch, PreparationRecord, QuantizedSeries,
-                      SegmentTreeSearch, TIME_UNITS, Threshold, declare_gaps, detect_gaps,
-                      merge_gaps,
-                      empirical_distribution, ks_distance, record!, threshold,
+using ..WaitingTimes: MAX_DIGITS, GRID_TOLERANCE, AbstractSearch, PreparationRecord,
+                      QuantizedSeries, SegmentTreeSearch, TIME_UNITS, Threshold,
+                      check_digits,
+                      declare_gaps, detect_gaps, merge_gaps,
+                      empirical_distribution, ks_distance, on_grid, threshold,
                       waiting_times, with_step
 using ..Provenance: file_sha256, read_toml
+using ..Config: PREPROCESSING_OPS
 
 export RawSeries, read_series, select_range, exclude_intervals, round_values,
        trailing_mean_fluctuations, log_returns, log_levels, differences,
@@ -104,7 +106,7 @@ function read_series(path::AbstractString; format::Symbol = :auto,
         times, epoch = parse_times(column(table, time_column, "time_column"), time_unit,
             epoch_unit, time_format)
     end
-    record!(record, :read_series,
+    record = with_step(record, :read_series,
         Dict{String, Any}("format" => String(format), "value_column" => value_column,
             "time_column" => time_column, "time_unit" => String(time_unit),
             "epoch_unit" => String(epoch_unit), "missing_policy" => String(missing_policy),
@@ -303,7 +305,7 @@ end
 $(TYPEDSIGNATURES)
 
 Surgical removal of blocks: rows whose time (or index) lies in any `[a, b)`
-interval are removed. With `splice = true` the time axis closes over each cut
+interval are removed. With `splice = true` (the default) the time axis closes over each cut
 (later times shift back by the cut length, so no elapsed time is counted
 across it); with `splice = false` the rows are set to `missing` and the cut
 remains a gap.
@@ -373,8 +375,7 @@ this step before a transformation reproduces that order, while the final
 quantisation always rounds once more at the end of the pipeline.
 """
 function round_values(rs::RawSeries; digits::Integer)
-    0 <= digits <= MAX_DIGITS ||
-        throw(ArgumentError("digits must lie in 0:$(MAX_DIGITS), got $digits"))
+    check_digits(digits)
     values = Union{Missing, Float64}[ismissing(v) ? missing : round(v; digits = digits)
                                      for v in rs.values]
     return with_values(rs, values, :round, Dict("digits" => Int(digits)),
@@ -647,8 +648,7 @@ pruned series; see [`remove_rows`](@ref).
 function clip_extremes(rs::RawSeries; fraction::Real = 0.004, digits::Integer,
         splice::Bool = false)
     0 < fraction < 1 || throw(ArgumentError("fraction must lie in (0, 1), got $fraction"))
-    0 <= digits <= MAX_DIGITS ||
-        throw(ArgumentError("digits must lie in 0:$(MAX_DIGITS), got $digits"))
+    check_digits(digits)
     idx, x = observed(rs)
     isempty(x) && throw(ArgumentError("the series has no observed value"))
     n_initial = length(rs)
@@ -712,53 +712,51 @@ function clip_sigma(
             "upper" => c + k * s); splice = splice)
 end
 
+"symbol for a textual parameter, the number itself otherwise"
+symbol_or_number(value) = value isa AbstractString ? Symbol(value) : value
+
+"transform of every preprocessing operation: `(rs, p) -> RawSeries`, `p` the step merged over the operation's defaults"
+const STEP_TRANSFORMS = Dict{String, Function}(
+    "select_range" => (rs, p) -> select_range(rs; from = p["from"], to = p["to"]),
+    "exclude_intervals" =>
+        (rs, p) -> exclude_intervals(
+            rs, [Tuple(iv) for iv in p["intervals"]]; splice = p["splice"]),
+    "round" => (rs, p) -> round_values(rs; digits = p["digits"]),
+    "trailing_mean_fluctuations" =>
+        (rs, p) -> trailing_mean_fluctuations(rs;
+            window = p["window"], denominator = Symbol(p["denominator"]),
+            offset = symbol_or_number(p["offset"]),
+            on_nonpositive = Symbol(p["on_nonpositive"])),
+    "log_returns" => (rs, p) -> log_returns(rs),
+    "log_levels" => (rs, p) -> log_levels(rs; reference = symbol_or_number(p["reference"])),
+    "differences" => (rs, p) -> differences(rs),
+    "centered_moving_average" =>
+        (rs, p) -> centered_moving_average(rs; window = p["window"]),
+    "clip_quantile" => (rs, p) -> clip_quantile(rs; q = p["q"], splice = p["splice"]),
+    "clip_extremes" =>
+        (rs, p) -> clip_extremes(rs; fraction = p["fraction"],
+            digits = p["digits"], splice = p["splice"]),
+    "clip_sigma" =>
+        (rs, p) -> clip_sigma(rs; k = p["k"], center = Symbol(p["center"]),
+            scale = Symbol(p["scale"]), splice = p["splice"]),
+    "collapse_ties" => (rs, p) -> collapse_ties(rs, Symbol(p["policy"]))
+)
+
 """
 $(TYPEDSIGNATURES)
 
-Apply preprocessing `steps` (tables with an `op` key) in order. After every
-step the observed values must be finite; a non-finite value aborts naming the
-step and the row.
+Apply preprocessing `steps` (tables with an `op` key) in order, each merged
+over the defaults of its operation in `PREPROCESSING_OPS`. After every step
+the observed values must be finite; a non-finite value aborts naming the step
+and the row.
 """
 function apply_steps(rs::RawSeries, steps::AbstractVector)
     for step in steps
         op = String(step["op"])
-        symbol(key, default) = Symbol(get(step, key, default))
-        if op == "select_range"
-            rs = select_range(rs; from = get(step, "from", -Inf), to = get(step, "to", Inf))
-        elseif op == "exclude_intervals"
-            rs = exclude_intervals(rs, [Tuple(iv) for iv in step["intervals"]];
-                splice = get(step, "splice", true))
-        elseif op == "round"
-            rs = round_values(rs; digits = step["digits"])
-        elseif op == "trailing_mean_fluctuations"
-            offset = get(step, "offset", "none")
-            rs = trailing_mean_fluctuations(rs; window = step["window"],
-                denominator = symbol("denominator", "mean"),
-                offset = offset isa AbstractString ? Symbol(offset) : offset,
-                on_nonpositive = symbol("on_nonpositive", "error"))
-        elseif op == "log_returns"
-            rs = log_returns(rs)
-        elseif op == "log_levels"
-            reference = get(step, "reference", "first")
-            rs = log_levels(rs;
-                reference = reference isa AbstractString ? Symbol(reference) : reference)
-        elseif op == "differences"
-            rs = differences(rs)
-        elseif op == "centered_moving_average"
-            rs = centered_moving_average(rs; window = step["window"])
-        elseif op == "clip_quantile"
-            rs = clip_quantile(rs; q = step["q"], splice = get(step, "splice", false))
-        elseif op == "clip_extremes"
-            rs = clip_extremes(rs; fraction = get(step, "fraction", 0.004),
-                digits = step["digits"], splice = get(step, "splice", false))
-        elseif op == "clip_sigma"
-            rs = clip_sigma(rs; k = get(step, "k", 3), center = symbol("center", "mean"),
-                scale = symbol("scale", "std"), splice = get(step, "splice", false))
-        elseif op == "collapse_ties"
-            rs = collapse_ties(rs, Symbol(step["policy"]))
-        else
+        (haskey(PREPROCESSING_OPS, op) && haskey(STEP_TRANSFORMS, op)) ||
             throw(ArgumentError("unknown preprocessing op $(repr(op))"))
-        end
+        p = merge(PREPROCESSING_OPS[op].defaults, Dict{String, Any}(step))
+        rs = STEP_TRANSFORMS[op](rs, p)::RawSeries
         check_finite(rs, op)
     end
     return rs
@@ -934,14 +932,13 @@ enlarges the integers; `d` is therefore the natural choice of `digits` for a
 series used as recorded.
 """
 function resolution_digits(rs::RawSeries; max_digits::Integer = MAX_DIGITS,
-        tolerance::Real = 1e-6)
+        tolerance::Real = GRID_TOLERANCE)
     0 <= max_digits <= MAX_DIGITS ||
         throw(ArgumentError("max_digits must lie in 0:$(MAX_DIGITS), got $max_digits"))
     _, x = observed(rs)
     isempty(x) && throw(ArgumentError("the series has no observed value"))
     for d in 0:max_digits
-        scale = 10.0^d
-        all(v -> abs(v * scale - round(v * scale)) <= tolerance, x) && return Int(d)
+        all(v -> on_grid(v, d; tolerance), x) && return Int(d)
     end
     return nothing
 end
@@ -1001,8 +998,8 @@ function digits_sensitivity(rs::RawSeries; digits = 0:8, deltas = [0.0],
     for d in ds, δ in deltas
 
         s_d = series_at(d)
-        on_grid = abs(δ * 10.0^d - round(δ * 10.0^d)) <= 1e-6
-        ks = on_grid ?
+        δ_on_grid = on_grid(δ, d)
+        ks = δ_on_grid ?
              ks_distance(trial_distribution(s_d, threshold(δ, d), kernel),
             trial_distribution(series_at(d + 1), threshold(δ, d + 1), kernel)) :
              missing

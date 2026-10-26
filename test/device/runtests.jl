@@ -3,9 +3,10 @@
 #
 #   julia --threads=auto test/device/runtests.jl [N ...]
 #
-# Every threshold is checked bit for bit against the naive reference kernel, and the
-# streaming and segment-tree kernels, on synthetic random walks of the given
-# sizes (default 10^5 and 10^6) and on a walk with missing runs.
+# The device kernel is checked bit for bit against the segment-tree kernel and,
+# up to N = 10^6, against the naive reference kernel, at δ = 0, 0.5, 5 and 50,
+# on random walks of the given sizes (default 10^5 and 10^6) and on a walk with
+# missing runs.
 include(joinpath(@__DIR__, "activate.jl"))
 
 using Test

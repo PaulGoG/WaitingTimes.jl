@@ -28,7 +28,7 @@ censored; the distributions then carry the horizon and equal
 `:error` throws, `:skip` counts it in `n_above_bound` and treats it as a
 missing observation (on a sample-indexed stream it keeps its index).
 
-Feed with [`push!`](@ref): `push!(est, t, x)` with the time of every
+Feed with `push!(est, t, x)` with the time of every
 observation, or on a sample-indexed stream `push!(est, x)` with
 `push!(est, missing)` for a missing sample, which advances the index so that
 time passes through it; read with [`snapshot`](@ref) (the distributions so
@@ -81,10 +81,7 @@ end
 "quantise one real value to the grid of the estimator, as `quantize` does"
 grid_value(est::OnlineWaitingTimes{Tv}, x::Real) where {Tv} = grid_value(Tv, est.digits, x)
 function grid_value(::Type{Tv}, digits::Integer, x::Real) where {Tv <: Integer}
-    isfinite(x) || throw(ArgumentError("non-finite value $x"))
-    scaled = round(Float64(x); digits = digits) * 10.0^digits
-    abs(scaled) < 9.0e18 || throw(ArgumentError("value $x overflows the integer grid"))
-    q = round(Int64, scaled)
+    q = quantize(x, digits)
     (typemin(Tv) <= q <= typemax(Tv)) ||
         throw(OverflowError("value $x does not fit the value type $Tv"))
     return Tv(q)

@@ -45,8 +45,10 @@ using WaitingTimes
 using WaitingTimes.Backends: backend_name
 using Printf: @printf
 
-const GPU_PACKAGES = Dict("cuda" => "CUDA", "amdgpu" => "AMDGPU", "metal" => "Metal",
-    "oneapi" => "oneAPI")
+# KernelAbstractions, when installed, enables the device kernel on the CPU;
+# --backend adds its GPU package
+backend = lowercase(String(OPTIONS["backend"]))
+loaded = WaitingTimes.Backends.load_device_packages(Symbol(backend))
 
 settings = load_settings(abspath(OPTIONS["config"]))
 series, ids = prepare(settings)
@@ -56,14 +58,12 @@ println(
     " thresholds checked, reference kernel on every ", OPTIONS["reference-every"], "th")
 
 kernels = Any[("guarded", GuardedSearch()), ("segment_tree", SegmentTreeSearch()),
-    ("fenwick", FenwickSweep()), ("streaming", StreamingSearch()),
-    ("device_cpu", DeviceSearch())]
-backend = lowercase(String(OPTIONS["backend"]))
+    ("fenwick", FenwickSweep()), ("streaming", StreamingSearch())]
+:KernelAbstractions in loaded && push!(kernels, ("device_cpu", DeviceSearch()))
 if backend != "none"
-    pkgname = GPU_PACKAGES[backend]
-    Base.find_package(pkgname) === nothing &&
+    pkgname = WaitingTimes.Backends.GPU_PACKAGES[Symbol(backend)]
+    Symbol(pkgname) in loaded ||
         error("backend $backend requires the package $pkgname in the environment $(OPTIONS["env"])")
-    Base.require(Main, Symbol(pkgname))
     alg = device_search(Symbol(backend))
     println("device backend: ", backend_name(alg.backend))
     push!(kernels, ("device_" * backend, alg))

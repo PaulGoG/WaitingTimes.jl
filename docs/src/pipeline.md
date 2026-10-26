@@ -84,7 +84,8 @@ julia scripts/lineage.jl data/<collection id>
 
 Every script activates the package environment itself. `launch_run.jl`
 starts the pipeline as a detached process with a console log under
-`data/logs/`. `run_pipeline.jl` loads the GPU package named by
-`[algorithm].backend` when it is installed, which activates the corresponding
-extension. `crosscheck.jl` compares every kernel with the naive reference
+`data/logs/`. `run_pipeline.jl` loads KernelAbstractions and the GPU package
+named by `[algorithm].backend` when the configuration uses the device kernel
+and they are installed, which activates the corresponding extensions.
+`crosscheck.jl` compares every kernel with the naive reference
 kernel index by index on the whole threshold grid of a configuration.
