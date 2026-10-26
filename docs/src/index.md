@@ -33,7 +33,7 @@ The package computes these distributions exactly and reproducibly:
 
 ```@contents
 Pages = ["formulation.md", "kernels.md", "pipeline.md", "configuration.md",
-    "provenance.md", "validation.md", "interfacing.md", "generated/downstream_fit.md",
-    "api.md", "references.md"]
+    "provenance.md", "validation.md", "interfacing.md", "producers.md",
+    "generated/downstream_fit.md", "api.md", "internals.md", "references.md"]
 Depth = 1
 ```
