@@ -18,6 +18,9 @@ prefix.
 struct StreamingSearch <: AbstractSearch end
 
 workspace(::StreamingSearch, ::QuantizedSeries) = nothing
+function workspace_bytes(::StreamingSearch, s::QuantizedSeries{Tv, Tt}) where {Tv, Tt}
+    length(s) * (sizeof(Tv) + 8 + sizeof(Tt))
+end
 
 "heap length below which a state with a horizon is never compacted"
 const MIN_COMPACTION = 1024

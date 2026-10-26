@@ -238,11 +238,16 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Write `index.toml` with the partition entries.
+Write `index.toml` with the partition entries. The file is written beside its
+destination and moved into place, so a reader never sees a partial index.
 """
 function write_index(dir::AbstractString, entries::AbstractVector)
-    return write_toml(joinpath(dir, "index.toml"),
+    path = joinpath(dir, "index.toml")
+    tmp = path * ".tmp"
+    write_toml(tmp,
         Dict{String, Any}("partitions" => Any[toml_ready(e) for e in entries]))
+    mv(tmp, path; force = true)
+    return path
 end
 
 """
@@ -265,13 +270,15 @@ const SUMMARY_COLUMNS = ["delta", "mode", "n_candidates", "n_exact", "n_gap_cros
 $(TYPEDSIGNATURES)
 
 Write `summary.csv` (one row per partition, sorted by threshold) from the
-index entries.
+index entries, through a temporary file moved into place.
 """
 function write_summary(dir::AbstractString, entries::AbstractVector)
     table = DataFrame([Symbol(c) => [get(e, c, missing) for e in entries]
                        for c in SUMMARY_COLUMNS])
     path = joinpath(dir, "summary.csv")
-    CSV.write(path, table)
+    tmp = path * ".tmp"
+    CSV.write(tmp, table)
+    mv(tmp, path; force = true)
     return path
 end
 
@@ -279,14 +286,17 @@ end
 $(TYPEDSIGNATURES)
 
 Write `catalog.csv`: every artefact of the collection with its descriptor
-columns, identifier, checksum and session.
+columns, identifier, checksum and session, through a temporary file moved
+into place.
 """
 function write_catalog(dir::AbstractString, rows::AbstractVector)
     isempty(rows) && return nothing
     keys_ = unique(reduce(vcat, [collect(keys(r)) for r in rows]))
     table = DataFrame([Symbol(k) => [get(r, k, missing) for r in rows] for k in keys_])
     path = joinpath(dir, "catalog.csv")
-    CSV.write(path, table)
+    tmp = path * ".tmp"
+    CSV.write(tmp, table)
+    mv(tmp, path; force = true)
     return path
 end
 
@@ -402,17 +412,15 @@ function load_collection(dir::AbstractString)
     time_axis in (:elapsed, :index) || throw(ArgumentError(
         "$meta_path: [series] time_axis = $(repr(String(time_axis))) is not \"elapsed\" or \"index\"",
     ))
+    digits = Int(series["digits"])
     entries = read_index(dir)
-    sort!(entries; by = e -> parse(Float64, e["delta"]))
+    sort!(entries; by = e -> parse_threshold(e["delta"], digits).d)
     steps = preprocessing_steps(series)
     return Collection(String(abspath(dir)), String(meta["artefact"]["id"]),
-        String(series["slug"]), Symbol(meta["identity"]["mode"]), Int(series["digits"]),
+        String(series["slug"]), Symbol(meta["identity"]["mode"]), digits,
         Symbol(series["time_unit"]), time_axis, Int(series["n_observations"]),
         Int(series["n_gaps"]), steps, entries, meta)
 end
-
-"provenance schema of a loaded collection"
-schema(c::Collection) = String(c.metadata["schema"])
 
 """
 $(TYPEDSIGNATURES)

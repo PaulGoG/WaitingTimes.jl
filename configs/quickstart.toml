@@ -48,3 +48,4 @@ overwrite = false
 [run]
 seed = 12345
 log_level = "info"                          # one of: "debug" | "info" | "warn"
+checkpoint_seconds = 10.0                   # seconds between resume checkpoints (index, summary, catalogue); 0 = after every chunk

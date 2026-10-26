@@ -46,7 +46,10 @@ backend, thread count, package version, code identity, the SHA-256 of its
 manifest (copied to `sessions/<id>.manifest.toml`), git state, Julia
 version, hardware fingerprint (host, CPU, cores, memory, BLAS threads, and
 the device report of a GPU backend), configuration hash, thresholds computed
-and skipped, reference checks and stage timings. `hardware.txt` carries
+and skipped, reference checks and stage timings. `status` is `"running"`
+while the session computes and `"completed"` once its record is final; a
+session file still at `"running"` belongs to an interrupted run, whose
+partitions `index.toml` already lists. `hardware.txt` carries
 `versioninfo` and the device report. Arrow partitions also carry the
 collection identifier, threshold and session in their schema metadata; CSV
 partitions carry none. A collection of schema 2 (WaitingTimes 0.2) is read
@@ -73,7 +76,7 @@ fields since 2.6.1.
 
 `index.toml` lists every partition with its file, checksum, session and
 per-threshold statistics; `summary.csv` and `catalog.csv` are regenerated
-from it after every session.
+from it after every checkpoint of a session and at its end.
 
 ## File names
 

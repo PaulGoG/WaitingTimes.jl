@@ -63,7 +63,11 @@ needed only for statistics of individual indices.
 
 Rerunning with a wider threshold grid adds partitions and appends a session;
 existing partitions are skipped unless `[output].overwrite = true`, in which
-case they are backed up as `<name>#k.<ext>` first.
+case they are backed up as `<name>#k.<ext>` first. `index.toml`, `summary.csv`
+and `catalog.csv` are rewritten after every chunk of thresholds, so an
+interrupted run resumes from the partitions already written. With reference
+checks enabled the kernel is compared with the reference kernel on the
+largest pending threshold before any partition is written.
 
 ## Validate
 
@@ -87,5 +91,5 @@ starts the pipeline as a detached process with a console log under
 `data/logs/`. `run_pipeline.jl` loads KernelAbstractions and the GPU package
 named by `[algorithm].backend` when the configuration uses the device kernel
 and they are installed, which activates the corresponding extensions.
-`crosscheck.jl` compares every kernel with the naive reference
+`crosscheck.jl` compares every kernel with the configured reference
 kernel index by index on the whole threshold grid of a configuration.

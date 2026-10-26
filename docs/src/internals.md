@@ -92,6 +92,13 @@ WaitingTimes.Orchestrator.estimate_memory_bytes
 WaitingTimes.Orchestrator.reference_check!
 WaitingTimes.Orchestrator.resolve_digits
 WaitingTimes.Orchestrator.SCHEMA
+WaitingTimes.Orchestrator.transient_bytes
+WaitingTimes.Orchestrator.session_record
+WaitingTimes.Orchestrator.write_index_files
+WaitingTimes.Orchestrator.compare_with_reference
+WaitingTimes.Orchestrator.reference_thresholds
+WaitingTimes.Orchestrator.early_reference_check
+WaitingTimes.Orchestrator.check_record
 ```
 
 ## Backends

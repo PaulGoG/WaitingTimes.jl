@@ -123,7 +123,7 @@ export Collection, load_collection, list_collections, distribution, thresholds,
 public CLASS_EXACT, CLASS_GAP_CROSSING, CLASS_RIGHT_CENSORED, TIME_UNITS
 public narrow_integer, GRID_TOLERANCE, on_grid, suffix_maximum, SearchWorkspace, MaxTree,
        FenwickWorkspace,
-       workspace, scan_work,
+       workspace, workspace_bytes, scan_work,
        check_threshold, first_at_least, duration, record!
 public support, counts, probabilities, cumulative, survival, nsamples, mean_waiting_time,
        ks_distance

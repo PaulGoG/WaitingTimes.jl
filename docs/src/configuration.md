@@ -73,6 +73,7 @@ overwrite = false
 [run]
 seed = 12345
 log_level = "info"                # "debug" | "info" | "warn"
+checkpoint_seconds = 10.0         # seconds between resume checkpoints; 0 = after every chunk
 ```
 
 ## Time axis
