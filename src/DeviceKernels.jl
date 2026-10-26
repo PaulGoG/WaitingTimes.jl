@@ -21,6 +21,11 @@ struct DeviceSearch{B} <: AbstractSearch
 end
 DeviceSearch() = DeviceSearch(get_best_backend(; prefer = :none))
 
+# host-side copies of the values, times, suffix maxima and result
+function workspace_bytes(::DeviceSearch, s::QuantizedSeries{Tv, Tt}) where {Tv, Tt}
+    length(s) * (2 * sizeof(Tv) + 2 * sizeof(Tt))
+end
+
 """
     DeviceWorkspace
 

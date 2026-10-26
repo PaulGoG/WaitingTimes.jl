@@ -40,6 +40,9 @@ function FenwickWorkspace(q::AbstractVector{Tv}) where {Tv <: Integer}
 end
 
 workspace(::FenwickSweep, s::QuantizedSeries) = FenwickWorkspace(s.values)
+function workspace_bytes(::FenwickSweep, s::QuantizedSeries{Tv}) where {Tv}
+    length(s) * 8 + length(unique(s.values)) * (8 + sizeof(Tv))
+end
 
 """
 $(TYPEDSIGNATURES)

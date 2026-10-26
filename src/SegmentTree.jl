@@ -81,6 +81,9 @@ Leftmost position `>= lo` whose value is at least `target`, or `0`.
 end
 
 workspace(::SegmentTreeSearch, s::QuantizedSeries) = MaxTree(s.values)
+function workspace_bytes(::SegmentTreeSearch, s::QuantizedSeries{Tv}) where {Tv}
+    2 * max(1, nextpow(2, length(s))) * sizeof(Tv)
+end
 
 function waiting_times!(τ::AbstractVector{Tt}, s::QuantizedSeries{Tv, Tt}, δ::Threshold,
         alg::SegmentTreeSearch; workspace::Union{Nothing, MaxTree{Tv}} = nothing) where {

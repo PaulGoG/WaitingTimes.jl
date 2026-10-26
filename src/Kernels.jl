@@ -79,6 +79,15 @@ workspace(::NaiveSearch, ::QuantizedSeries) = nothing
 workspace(::GuardedSearch, s::QuantizedSeries) = SearchWorkspace(suffix_maximum(s.values))
 
 """
+    workspace_bytes(alg::AbstractSearch, s::QuantizedSeries)::Int
+
+Bytes of the workspace of `alg` on `s`, as `estimate_memory_bytes` counts them.
+"""
+function workspace_bytes end
+workspace_bytes(::NaiveSearch, ::QuantizedSeries) = 0
+workspace_bytes(::GuardedSearch, s::QuantizedSeries{Tv}) where {Tv} = length(s) * sizeof(Tv)
+
+"""
 $(TYPEDSIGNATURES)
 
 Threshold of `s` from a real value or decimal string on the grid of `s`, with

@@ -119,10 +119,12 @@ Base.@kwdef struct Settings
     "recompute existing partitions after backing them up"
     overwrite::Bool
     # run
-    "seed for synthetic generators"
+    "seed of the random choice of reference-check thresholds"
     seed::Int
     "`:debug`, `:info` or `:warn`"
     log_level::Symbol
+    "seconds between resume checkpoints of a session (index, summary and catalogue rewritten); 0 after every chunk"
+    checkpoint_seconds::Float64 = 10.0
     "effective configuration as parsed"
     raw::Dict{String, Any}
 end
@@ -142,7 +144,7 @@ const KNOWN_KEYS = Dict(
         ["search", "backend", "chunk_size", "reference_checks", "reference_kernel"],
     "limits" => ["max_ram_gb", "max_vram_gb", "max_reference_work"],
     "output" => ["root", "format", "store_waiting_times", "overwrite"],
-    "run" => ["seed", "log_level"]
+    "run" => ["seed", "log_level", "checkpoint_seconds"]
 )
 
 """
@@ -558,6 +560,8 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
     seed = as_int(fetch(run, "run", "seed", 12345), "run", "seed")
     log_level = as_symbol(fetch(run, "run", "log_level", "info"), "run", "log_level", (
         :debug, :info, :warn))
+    checkpoint_seconds = as_float(fetch(run, "run", "checkpoint_seconds", 10.0), "run",
+        "checkpoint_seconds"; min = 0.0)
 
     warn_ignored_keys(alg, gaps, thr; search, reference_kernel, gap_detect, threshold_mode)
 
@@ -584,7 +588,7 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
         threshold_values, search, backend, chunk_size, reference_checks, reference_kernel,
         max_ram_gb, max_vram_gb, max_reference_work,
         output_root = root, output_format, store_waiting_times, overwrite,
-        seed, log_level, raw)
+        seed, log_level, checkpoint_seconds, raw)
 end
 
 "a source descriptor must exist and parse as a TOML table"

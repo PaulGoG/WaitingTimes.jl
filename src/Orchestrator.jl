@@ -9,7 +9,7 @@ using Dates: UTC, now
 using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
 using Logging: @info, @warn
 using ProgressMeter: finish!, next!
-using Random: MersenneTwister, shuffle
+using Random: AbstractRNG, MersenneTwister, shuffle
 using TimerOutputs: TimerOutputs, TimerOutput, @timeit, ncalls
 using ..WaitingTimes: WaitingTimes, AbstractSearch, DeviceSearch, FenwickSweep,
                       GuardedSearch,
@@ -17,8 +17,9 @@ using ..WaitingTimes: WaitingTimes, AbstractSearch, DeviceSearch, FenwickSweep,
                       QuantizedSeries, SegmentTreeSearch, StreamingSearch, Threshold,
                       WaitingTimeDistribution, censoring_counts, class_columns, classify,
                       empirical_distribution, format_threshold, gap_entries, nsamples,
-                      record_length, sampling_step, scan_work, segment_lengths, support,
-                      waiting_times, waiting_times!, with_step, workspace
+                      parse_threshold, record_length, sampling_step, scan_work,
+                      segment_lengths, support, waiting_times!, with_step, workspace,
+                      workspace_bytes
 using ..Config: Settings, load_settings, step_tag, threshold_decimals, threshold_list
 using ..Provenance: active_manifest, artefact_id, backup_existing!, content_hash,
                     file_sha256, git_state, hardware_fingerprint, package_identity,
@@ -31,7 +32,7 @@ using ..Storage: MANIFEST_FILE, SOURCE_FILE, censoring_path, partition_path, rea
                  write_censoring, write_collection_readme, write_distribution,
                  write_index, write_series_files, write_summary, write_waiting_times
 using ..Monitoring: run_progress, with_run_logging
-using ..Backends: backend_name, device_fingerprint, host_backend
+using ..Backends: backend_name, device_fingerprint, host_backend, reclaim_device_memory!
 
 export CollectionHandle, run_pipeline, prepare, generate, validate, make_kernel,
        estimate_memory_bytes, dataset_descriptor
@@ -139,18 +140,44 @@ kernel_name(alg::AbstractSearch) = lowercase(string(nameof(typeof(alg))))
 """
 $(TYPEDSIGNATURES)
 
-Host memory estimate in bytes for one threshold of `s` with `alg`: series,
-result vector and workspace.
+Host memory estimate in bytes for one threshold of `s` with `alg`: the series
+arrays (values and times) and the result vector, ``N (\\mathrm{sizeof}(T_v) +
+2\\,\\mathrm{sizeof}(T_t))``, and 8 bytes per gap; the workspace of `alg`
+(`workspace_bytes`); and the transients of one threshold
+(`transient_bytes`), which include the dense waiting-time table when
+`store_waiting_times` is set.
 """
-function estimate_memory_bytes(s::QuantizedSeries{Tv, Tt}, alg::AbstractSearch) where {
-        Tv, Tt}
+function estimate_memory_bytes(s::QuantizedSeries{Tv, Tt}, alg::AbstractSearch;
+        store_waiting_times::Bool = false) where {Tv, Tt}
     N = length(s)
     base = N * (sizeof(Tv) + 2 * sizeof(Tt)) + 8 * length(s.gaps)
-    ws = alg isa SegmentTreeSearch ? 2 * max(1, nextpow(2, N)) * sizeof(Tv) :
-         alg isa GuardedSearch ? N * sizeof(Tv) :
-         alg isa FenwickSweep ? N * 8 + length(unique(s.values)) * (8 + sizeof(Tv)) :
-         alg isa StreamingSearch ? N * (sizeof(Tv) + 8 + sizeof(Tt)) : 0
-    return base + ws + 2 * N   # classification bytes
+    return base + workspace_bytes(alg, s) +
+           transient_bytes(s; store_waiting_times = store_waiting_times)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Bytes allocated per threshold after the search, as an upper bound with a
+support of at most ``N`` values: `classify` (classes, ``N`` bytes; lower and
+upper bounds, ``2N\\,\\mathrm{sizeof}(T_t)``; gap starts, 8 bytes per gap),
+`empirical_distribution` (the sorted sample and the support,
+``2N\\,\\mathrm{sizeof}(T_t)``; counts, probability mass and cumulative
+distribution, ``24N``), `class_columns` (``16N``), `censoring_counts` (the
+censored lower bounds and their distinct values, ``2N\\,\\mathrm{sizeof}(T_t)``;
+their counts, ``8N``) and, when `store_waiting_times` is set, the dense table
+of `tau`, `class`, `lower` and `upper`, ``N (1 + 3\\,\\mathrm{sizeof}(T_t))``,
+about ``25N``.
+"""
+function transient_bytes(s::QuantizedSeries{Tv, Tt};
+        store_waiting_times::Bool = false) where {Tv, Tt}
+    N = length(s)
+    classification = N + 2N * sizeof(Tt) + 8 * length(s.gaps)
+    distribution = 2N * sizeof(Tt) + 3 * 8N
+    columns = 2 * 8N
+    censoring = 2N * sizeof(Tt) + 8N
+    dense = store_waiting_times ? N * (1 + 3 * sizeof(Tt)) : 0
+    return classification + distribution + columns + censoring + dense
 end
 
 # --- prepare -----------------------------------------------------------------
@@ -351,11 +378,68 @@ end
 """
 $(TYPEDSIGNATURES)
 
+Rewrite `index.toml`, `summary.csv` and `catalog.csv` of the collection `id`
+in `dir` from the partition entries `existing` (keyed by threshold string),
+sorted on the grid integer of the threshold for a grid of `digits` decimals.
+Returns the sorted entries.
+"""
+function write_index_files(dir::AbstractString, existing::AbstractDict,
+        id::AbstractString, series_slug::AbstractString, digits::Integer)
+    entries = sort!(collect(values(existing));
+        by = e -> parse_threshold(e["delta"], digits).d)
+    write_index(dir, entries)
+    write_summary(dir, entries)
+    write_catalog(dir, [catalog_row(e, id, series_slug) for e in entries])
+    return entries
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Record of the session `session` written to `sessions/<id>.toml`: identifier,
+creation time, kernel and backend of `alg`, threads, chunk size, package
+version, git state, code identity, Julia version, configuration hash, memory
+estimate and `status` (`"running"` while the session computes, `"completed"`
+once the record is final). Further entries are passed as keywords (`hardware`,
+`deltas_computed`, `reference_checks`, `timings`, ...).
+"""
+function session_record(session::AbstractString, created, alg::AbstractSearch,
+        settings::Settings, git::AbstractString, identity::AbstractDict,
+        memory_bytes::Integer; status::AbstractString, entries...)
+    record = Dict{String, Any}("id" => session, "created" => created,
+        "kernel" => kernel_name(alg),
+        "backend" =>
+            alg isa DeviceSearch ? backend_name(alg.backend) : String(settings.backend),
+        "threads" => Threads.nthreads(), "chunk_size" => settings.chunk_size,
+        "package_version" => string(pkgversion(WaitingTimes)), "git" => git,
+        "producer" => identity, "julia" => string(VERSION),
+        "config_hash" => content_hash(settings.raw),
+        "memory_estimate_bytes" => memory_bytes, "status" => String(status))
+    for (key, value) in entries
+        record[String(key)] = value
+    end
+    return record
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Generate (or extend) the collection of waiting-time distributions described
 by `settings`: prepare the series, compute every configured threshold not yet
 present, write partitions, run reference checks, and record the session.
+`kernel` replaces the configured search kernel (`[algorithm].search`).
+
+The session is resumable: `index.toml`, `summary.csv` and `catalog.csv` are
+rewritten after every chunk of thresholds, so an interrupted run leaves a
+collection whose index lists every partition written, and the next run
+computes only the rest. The session record is written with `status =
+"running"` before the first threshold and rewritten with `status =
+"completed"` at the end. With `[algorithm].reference_checks > 0` the kernel is
+compared with the reference kernel on the largest pending threshold within
+`[limits].max_reference_work` before any partition is written; a disagreement
+raises there.
 """
-function generate(settings::Settings)
+function generate(settings::Settings; kernel::AbstractSearch = make_kernel(settings))
     s, ids = prepare(settings)
     id = artefact_id("collection", ids.series_slug, collection_identity(ids, settings))
     dir = joinpath(settings.output_root, id)
@@ -366,6 +450,7 @@ function generate(settings::Settings)
     code = isempty(identity["git_commit"]) ? identity["git_tree_sha1"] :
            identity["git_commit"]
     session = session_id(code)
+    created = now(UTC)
     manifest = active_manifest()
     timer = TimerOutput()
     computed = String[]
@@ -385,6 +470,7 @@ function generate(settings::Settings)
             throw(ArgumentError(
                 "directory $dir holds a collection with a different identity",
             ))
+        isfile(meta_path) || write_toml(meta_path, meta)   # loadable from the first session on
         isfile(joinpath(dir, "gaps.csv")) || @timeit timer "series files" begin
             write_series_files(dir, s, settings.output_format; rows = ids.rows,
                 time_original = ids.time_original,
@@ -392,25 +478,16 @@ function generate(settings::Settings)
             write_toml(joinpath(dir, "series.toml"), series_summary(ids, s))
         end
 
-        alg = make_kernel(settings)
-        bytes = estimate_memory_bytes(s, alg)
+        alg = kernel
+        bytes = estimate_memory_bytes(s, alg;
+            store_waiting_times = settings.store_waiting_times)
         limit = settings.max_ram_gb * 2^30
         bytes <= limit || throw(ArgumentError(
             "estimated memory $(round(bytes / 2^30; digits = 2)) GiB exceeds [limits] max_ram_gb = $(settings.max_ram_gb)",
         ))
-        if alg isa DeviceSearch && !host_backend(alg.backend)
-            vram = length(s) * (2 * sizeof(eltype(s.values)) + 2 * sizeof(eltype(s.times)))
-            vram <= settings.max_vram_gb * 2^30 || throw(ArgumentError(
-                "estimated device memory $(round(vram / 2^30; digits = 2)) GiB exceeds [limits] max_vram_gb = $(settings.max_vram_gb)",
-            ))
-            @info "device backend" name=backend_name(alg.backend) device_gib=round(vram/2^30; digits = 3)
-        end
         thresholds = threshold_list(settings, s)
         entries = read_index(dir)
         existing = Dict(e["delta"] => e for e in entries)
-        @info "thresholds" total=length(thresholds) existing=length(existing) kernel=kernel_name(alg) memory_gib=round(
-            bytes/2^30; digits = 3)
-        ws = @timeit timer "workspace" workspace(alg, s)
         todo = eltype(thresholds)[]
         for δ in thresholds
             key = format_threshold(δ)
@@ -420,15 +497,44 @@ function generate(settings::Settings)
                 push!(todo, δ)
             end
         end
+        reference = settings.reference_checks > 0 && !isempty(todo) ?
+                    make_reference_kernel(settings) : nothing
+        devices = DeviceSearch[k for k in (alg, reference) if k isa DeviceSearch]
+        for k in devices
+            host_backend(k.backend) && continue
+            vram = length(s) * (2 * sizeof(eltype(s.values)) + 2 * sizeof(eltype(s.times)))
+            vram <= settings.max_vram_gb * 2^30 || throw(ArgumentError(
+                "estimated device memory $(round(vram / 2^30; digits = 2)) GiB exceeds [limits] max_vram_gb = $(settings.max_vram_gb)",
+            ))
+            @info "device backend" name=backend_name(k.backend) device_gib=round(vram/2^30; digits = 3)
+        end
+        @info "thresholds" total=length(thresholds) existing=length(existing) kernel=kernel_name(alg) memory_gib=round(
+            bytes/2^30; digits = 3)
+        ws = @timeit timer "workspace" workspace(alg, s)
+        ws_ref = reference === nothing ? nothing :
+                 @timeit timer "workspace" workspace(reference, s)
         # The Fenwick sweep serves every threshold of a batch in one pass; the
-        # batch is as large as the memory bound leaves room for.
+        # batch is as large as the memory bound leaves room for, counting the
+        # result vector and the per-threshold transients of each threshold.
         Tt = eltype(s.times)
+        transient = transient_bytes(s; store_waiting_times = settings.store_waiting_times)
         batch = alg isa FenwickSweep ?
-                clamp(floor(Int, (limit - bytes) / (length(s) * sizeof(Tt))), 1,
+                clamp(
+            floor(Int, (limit - bytes) / (length(s) * sizeof(Tt) + transient)), 1,
             max(1, length(todo))) : 1
         τs = [Vector{Tt}(undef, length(s)) for _ in 1:min(batch, max(1, length(todo)))]
+        session_path = joinpath(dir, "sessions", session * ".toml")
+        write_toml(session_path,
+            session_record(session, created, alg, settings, git, identity, bytes;
+                status = "running", deltas_skipped = skipped))
+        if reference !== nothing
+            early = early_reference_check(timer, s, todo, alg, ws, reference, ws_ref,
+                settings)
+            early === nothing || push!(checks, early)
+        end
         progress = run_progress(length(thresholds))
         foreach(_ -> next!(progress), skipped)
+        last_checkpoint = time()
         for chunk in Iterators.partition(todo, batch)
             outs = τs[1:length(chunk)]
             search_seconds = @elapsed @timeit timer "search" begin
@@ -477,17 +583,24 @@ function generate(settings::Settings)
                 push!(computed, key)
                 next!(progress)
             end
+            # resume state: the index lists every partition written so far,
+            # rewritten at most every [run].checkpoint_seconds
+            if time() - last_checkpoint >= settings.checkpoint_seconds
+                @timeit timer "write" write_index_files(dir, existing, id, ids.series_slug,
+                    s.digits)
+                last_checkpoint = time()
+            end
         end
         finish!(progress)
 
-        if settings.reference_checks > 0 && !isempty(computed)
-            checks = reference_check!(timer, s, thresholds, computed, alg, ws, settings)
+        if reference !== nothing && !isempty(computed)
+            early_key = isempty(checks) ? nothing : checks[1]["delta"]
+            append!(checks,
+                reference_check!(timer, s, thresholds, computed, alg, ws, reference,
+                    ws_ref, settings; exclude = early_key))
         end
 
-        entries = sort!(collect(values(existing)); by = e -> parse(Float64, e["delta"]))
-        write_index(dir, entries)
-        write_summary(dir, entries)
-        write_catalog(dir, [catalog_row(e, id, ids.series_slug) for e in entries])
+        entries = write_index_files(dir, existing, id, ids.series_slug, s.digits)
 
         manifest_sha = ""
         if manifest === nothing
@@ -502,19 +615,11 @@ function generate(settings::Settings)
         write_hardware_fingerprint(joinpath(dir, "sessions", session * ".hardware.txt");
             device_report = device_report)
         cp(joinpath(dir, "sessions", session * ".hardware.txt"), joinpath(dir, "hardware.txt"); force = true)
-        record = Dict{String, Any}("id" => session, "created" => now(UTC),
-            "kernel" => kernel_name(alg),
-            "backend" =>
-                alg isa DeviceSearch ? backend_name(alg.backend) : String(settings.backend),
-            "threads" => Threads.nthreads(), "chunk_size" => settings.chunk_size,
-            "package_version" => string(pkgversion(WaitingTimes)), "git" => git,
-            "producer" => identity, "manifest_sha256" => manifest_sha,
-            "julia" => string(VERSION), "hardware" => hardware,
-            "config_hash" => content_hash(settings.raw),
-            "deltas_computed" => computed, "deltas_skipped" => skipped,
-            "reference_checks" => checks, "timings" => timings(timer),
-            "memory_estimate_bytes" => bytes)
-        write_toml(joinpath(dir, "sessions", session * ".toml"), record)
+        record = session_record(session, created, alg, settings, git, identity, bytes;
+            status = "completed", manifest_sha256 = manifest_sha, hardware = hardware,
+            deltas_computed = computed, deltas_skipped = skipped,
+            reference_checks = checks, timings = timings(timer))
+        write_toml(session_path, record)
         meta["producer"] = merge(
             Dict{String, Any}("name" => "WaitingTimes",
                 "version" => string(pkgversion(WaitingTimes)), "session" => session),
@@ -531,6 +636,9 @@ function generate(settings::Settings)
         write_collection_readme(dir, meta, entries, settings.output_format)
         @info "session complete" computed=length(computed) skipped=length(skipped) reference_checks=length(checks) seconds=round(
             TimerOutputs.tottime(timer)/1e9; digits = 2)
+        for k in devices
+            reclaim_device_memory!(k.backend)
+        end
     end
     return CollectionHandle(
         id, dir, ids.series_id, ids.dataset_id, session, computed, skipped, checks)
@@ -550,41 +658,118 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Recompute `settings.reference_checks` thresholds among those just computed with
-the reference kernel (always including the largest) and compare exactly. A
-disagreement raises after being recorded; a check whose scan work
-([`scan_work`](@ref), in element comparisons) exceeds
-`[limits].max_reference_work` is skipped with a warning.
+Compare the kernel `alg` (workspace `ws`) with the kernel `reference`
+(workspace `ws_ref`) on the threshold `δ` of `s`, index by index. The scan
+work of the comparison ([`scan_work`](@ref), in element comparisons, guarded
+unless `reference` is a `NaiveSearch`) is computed from the result of `alg`;
+above `max_work` the reference kernel is not run and the comparison is
+skipped. Returns `(equal, n_differences, work, skipped, seconds)`: whether the
+results agree, the number of differing indices, the work, whether the
+comparison was skipped (then `equal = false` and `n_differences = 0`), and the
+seconds the reference kernel took.
 """
-function reference_check!(timer, s, thresholds, computed, alg, ws, settings::Settings)
+function compare_with_reference(s::QuantizedSeries, δ::Threshold, alg::AbstractSearch,
+        ws, reference::AbstractSearch, ws_ref; max_work::Real)
+    τ = Vector{eltype(s.times)}(undef, length(s))
+    waiting_times!(τ, s, δ, alg; workspace = ws)
+    work = Float64(scan_work(τ, s; guarded = !(reference isa NaiveSearch)))
+    work > max_work &&
+        return (equal = false, n_differences = 0, work = work, skipped = true,
+            seconds = 0.0)
+    τ_reference = similar(τ)
+    seconds = @elapsed waiting_times!(τ_reference, s, δ, reference; workspace = ws_ref)
+    n_differences = count(i -> τ_reference[i] != τ[i], eachindex(τ))
+    return (equal = n_differences == 0, n_differences = n_differences, work = work,
+        skipped = false, seconds = seconds)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Thresholds for reference comparisons among `thresholds`: the largest, always
+included, followed by `n - 1` others drawn without replacement with `rng`
+(none for `n <= 1`). Empty when `thresholds` is.
+"""
+function reference_thresholds(thresholds::AbstractVector, n::Integer, rng::AbstractRNG)
+    isempty(thresholds) && return eltype(thresholds)[]
+    sorted = sort(thresholds)
+    chosen = [last(sorted)]
+    append!(chosen, first(shuffle(rng, sorted[1:(end - 1)]), max(0, n - 1)))
+    return chosen
+end
+
+"session record of one reference comparison `r` at threshold `key`"
+function check_record(key::AbstractString, reference::AbstractSearch, r; early::Bool = false)
+    record = Dict{String, Any}("delta" => key, "kernel" => kernel_name(reference),
+        "skipped" => r.skipped, "work" => r.work)
+    if !r.skipped
+        record["equal"] = r.equal
+        record["seconds"] = r.seconds
+    end
+    early && (record["early"] = true)
+    return record
+end
+
+function reference_disagreement(key, alg::AbstractSearch, reference::AbstractSearch)
+    error("reference disagreement at delta = $key between $(kernel_name(alg)) and $(kernel_name(reference))")
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Compare `alg` with the reference kernel on the largest threshold of `todo`
+whose scan work lies within `[limits].max_reference_work`, before any
+partition is written. Returns the check record (with `early = true`), or
+`nothing` with a warning when no threshold is within the bound; a
+disagreement raises.
+"""
+function early_reference_check(timer, s, todo, alg, ws, reference, ws_ref,
+        settings::Settings)
+    for δ in sort(todo; rev = true)
+        r = @timeit timer "reference" compare_with_reference(s, δ, alg, ws, reference,
+            ws_ref; max_work = settings.max_reference_work)
+        r.skipped && continue
+        key = format_threshold(δ)
+        @info "reference check" delta=key kernel=kernel_name(reference) equal=r.equal seconds=round(
+            r.seconds; digits = 3) early=true
+        r.equal || reference_disagreement(key, alg, reference)
+        return check_record(key, reference, r; early = true)
+    end
+    @warn "early reference check skipped: no pending threshold within [limits] max_reference_work"
+    return nothing
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Recompute `settings.reference_checks` thresholds among those just computed with
+the reference kernel (always including the largest, see
+`reference_thresholds`) and compare exactly (`compare_with_reference`); the
+threshold `exclude`, already compared
+by the early check, is not repeated. A disagreement raises after being
+recorded; a check whose scan work ([`scan_work`](@ref), in element
+comparisons) exceeds `[limits].max_reference_work` is skipped with a warning.
+"""
+function reference_check!(timer, s, thresholds, computed, alg, ws, reference, ws_ref,
+        settings::Settings; exclude = nothing)
     by_key = Dict(format_threshold(δ) => δ for δ in thresholds)
-    keys_ = sort(computed; by = k -> parse(Float64, k))
-    chosen = [last(keys_)]
-    rest = keys_[1:(end - 1)]
-    rng = MersenneTwister(settings.seed)
-    append!(chosen, first(shuffle(rng, rest), max(0, settings.reference_checks - 1)))
-    reference = make_reference_kernel(settings)
+    keys_ = sort(computed; by = k -> parse_threshold(k, s.digits).d)
+    chosen = reference_thresholds([by_key[k] for k in keys_], settings.reference_checks,
+        MersenneTwister(settings.seed))
     checks = Dict{String, Any}[]
-    τ_fast = Vector{eltype(s.times)}(undef, length(s))
-    for key in chosen
-        δ = by_key[key]
-        waiting_times!(τ_fast, s, δ, alg; workspace = ws)
-        work = Float64(scan_work(τ_fast, s; guarded = !(reference isa NaiveSearch)))
-        if work > settings.max_reference_work
-            @warn "reference check skipped: work bound exceeds [limits] max_reference_work" delta = key work
-            push!(checks,
-                Dict{String, Any}("delta" => key, "kernel" => kernel_name(reference),
-                    "skipped" => true, "work" => work))
+    for δ in chosen
+        key = format_threshold(δ)
+        key == exclude && continue
+        r = @timeit timer "reference" compare_with_reference(s, δ, alg, ws, reference,
+            ws_ref; max_work = settings.max_reference_work)
+        push!(checks, check_record(key, reference, r))
+        if r.skipped
+            @warn "reference check skipped: work bound exceeds [limits] max_reference_work" delta=key work=r.work
             continue
         end
-        seconds = @elapsed τ_reference = @timeit timer "reference" waiting_times(s, δ, reference)
-        equal = τ_reference == τ_fast
-        push!(checks,
-            Dict{String, Any}("delta" => key, "kernel" => kernel_name(reference),
-                "equal" => equal, "seconds" => seconds, "work" => work, "skipped" => false))
-        @info "reference check" delta=key kernel=kernel_name(reference) equal seconds=round(seconds; digits = 3)
-        equal ||
-            error("reference disagreement at delta = $key between $(kernel_name(alg)) and $(kernel_name(reference))")
+        @info "reference check" delta=key kernel=kernel_name(reference) equal=r.equal seconds=round(
+            r.seconds; digits = 3)
+        r.equal || reference_disagreement(key, alg, reference)
     end
     return checks
 end
@@ -592,41 +777,91 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Compare the configured kernel with the reference kernel on `deltas` (defaults to the
-largest configured threshold and `reference_checks - 1` random ones). Returns a
-report dictionary; disagreements are reported, not thrown.
+Compare kernels with the reference kernel (`[algorithm].reference_kernel`) on
+the series of `settings`, through `compare_with_reference` with the work
+bound `[limits].max_reference_work`. `deltas` are the thresholds compared
+(`Threshold`s, real values or decimal strings on the grid of the series); by
+default the largest configured threshold and `reference_checks - 1` random
+ones (`reference_thresholds`). `kernels` is a vector of `name => alg`
+pairs compared in turn; by default the configured kernel alone. The reference
+kernel runs once per threshold, every kernel being compared with that result.
+
+Returns a report dictionary: `series`, `kernel` (the kernel names),
+`reference_kernel`, `all_equal` (no disagreement on any compared threshold),
+`results` (one dictionary per kernel and threshold: `kernel`, `delta`,
+`equal`, `n_differences`, `work`, `skipped`, `seconds` of the reference
+kernel) and `kernels` (one dictionary per kernel: `name`, `equal`, `n_checked`
+thresholds compared, `n_differences` summed over them, `n_skipped` above the
+work bound, `seconds` of the reference kernel summed). Disagreements are
+reported, not thrown.
 """
-function validate(settings::Settings; deltas = nothing)
+function validate(settings::Settings; deltas = nothing, kernels = nothing)
     s, ids = prepare(settings)
-    alg = make_kernel(settings)
     reference = make_reference_kernel(settings)
-    ws = workspace(alg, s)
-    thresholds = deltas === nothing ? threshold_list(settings, s) :
-                 Threshold{eltype(s.values)}[WaitingTimes.threshold(δ, s) for δ in deltas]
-    if deltas === nothing
-        rng = MersenneTwister(settings.seed)
-        chosen = [last(thresholds)]
-        append!(chosen, first(shuffle(rng, thresholds[1:(end - 1)]), max(0, settings.reference_checks -
-                                                                            1)))
-        thresholds = chosen
+    named = if kernels === nothing
+        configured = make_kernel(settings)
+        Pair{String, AbstractSearch}[kernel_name(configured) => configured]
+    else
+        Pair{String, AbstractSearch}[String(first(p)) => last(p) for p in kernels]
     end
+    results, summaries = compare_kernels(s, deltas, named, reference, settings)
+    return Dict{String, Any}("series" => ids.series_id,
+        "kernel" => join(first.(named), ", "),
+        "reference_kernel" => kernel_name(reference),
+        "all_equal" => all(k -> k["equal"], summaries),
+        "results" => results, "kernels" => summaries)
+end
+
+"""
+Comparison loop of [`validate`](@ref) on the series `s`: the thresholds are
+placed on the grid of `s` (`deltas`, or the sampled set of `reference_thresholds`
+when `nothing`), the reference kernel runs once per threshold within
+`[limits].max_reference_work`, and every kernel of `named` is compared with
+that result. Returns the per-threshold results and the per-kernel summaries.
+"""
+function compare_kernels(s::QuantizedSeries{Tv, Tt}, deltas, named, reference,
+        settings::Settings) where {Tv, Tt}
+    thresholds = deltas === nothing ?
+                 reference_thresholds(threshold_list(settings, s),
+        settings.reference_checks, MersenneTwister(settings.seed)) :
+                 Threshold{Tv}[δ isa Threshold ? Threshold{Tv}(δ.d, δ.digits) :
+                               WaitingTimes.threshold(δ, s) for δ in deltas]
+    ws_ref = workspace(reference, s)
+    wss = [workspace(alg, s) for (_, alg) in named]
     results = Dict{String, Any}[]
-    τ_fast = Vector{eltype(s.times)}(undef, length(s))
+    summaries = [Dict{String, Any}("name" => name, "equal" => true, "n_checked" => 0,
+                     "n_differences" => 0, "n_skipped" => 0, "seconds" => 0.0)
+                 for (name, _) in named]
+    τ = Vector{Tt}(undef, length(s))
+    τ_reference = similar(τ)
+    guarded = !(reference isa NaiveSearch)
     for δ in thresholds
-        waiting_times!(τ_fast, s, δ, alg; workspace = ws)
-        seconds = @elapsed τ_reference = waiting_times(s, δ, reference)
-        push!(results,
-            Dict{String, Any}(
-                "delta" => format_threshold(δ), "equal" => τ_reference == τ_fast,
-                "seconds" => seconds,
-                "work" =>
-                    Float64(scan_work(τ_fast, s; guarded = !(reference isa NaiveSearch))),
-                "n_differences" => count(τ_reference .!= τ_fast)))
+        key = format_threshold(δ)
+        waiting_times!(τ, s, δ, last(named[1]); workspace = wss[1])
+        work = Float64(scan_work(τ, s; guarded = guarded))
+        skipped = work > settings.max_reference_work
+        seconds = skipped ? 0.0 :
+                  @elapsed waiting_times!(τ_reference, s, δ, reference; workspace = ws_ref)
+        for (k, (name, alg)) in enumerate(named)
+            k == 1 || waiting_times!(τ, s, δ, alg; workspace = wss[k])
+            n_differences = skipped ? 0 : count(i -> τ_reference[i] != τ[i], eachindex(τ))
+            equal = !skipped && n_differences == 0
+            push!(results,
+                Dict{String, Any}("kernel" => name, "delta" => key, "equal" => equal,
+                    "n_differences" => n_differences, "work" => work,
+                    "skipped" => skipped, "seconds" => seconds))
+            summary = summaries[k]
+            if skipped
+                summary["n_skipped"] += 1
+            else
+                summary["n_checked"] += 1
+                summary["n_differences"] += n_differences
+                summary["seconds"] += seconds
+                summary["equal"] &= equal
+            end
+        end
     end
-    return Dict{String, Any}("series" => ids.series_id, "kernel" => kernel_name(alg),
-        "reference_kernel" => kernel_name(reference), "all_equal" =>
-            all(r -> r["equal"], results),
-        "results" => results)
+    return results, summaries
 end
 
 """
