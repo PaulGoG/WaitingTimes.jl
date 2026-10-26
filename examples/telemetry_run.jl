@@ -3,19 +3,20 @@
 # waiting-time distributions, on the elapsed and on the index axis, that name
 # the run they came from.
 #
-#   julia --threads=3 examples/telemetry_run.jl [RUN_DIRECTORY] [--out DIR]
+#   julia examples/telemetry_run.jl [RUN_DIRECTORY] [--out DIR]
 #
 # Without a run directory the shipped `drop_policy` scenario runs first, on
 # the tick clock: three mission days, deterministic, about a minute with its
-# post-processing. Its lossy channel drops rejected transfers for good, so
+# post-processing, the figure stages skipped. Its lossy channel drops rejected transfers for good, so
 # about one sixth of the batches are lost and as many are still undelivered
 # at mission end. The scenario's data root is redirected to the output
 # directory, so nothing is written into the installed package. A given run
 # directory must be a finished run of DeepSpaceTelemetry 2.5 or later.
 #
 # The run directory is read through the producer's adapter
-# (`DeepSpaceTelemetry.RunAdapter`, public since 2.6.2; see the producers
-# page of the documentation). Sample `k` of a batch lies at payload row
+# (`DeepSpaceTelemetry.RunAdapter`, public since 2.6.2; since 2.9.0 it lives
+# in the reader subpackage `DeepSpaceTelemetryReader`, re-exported under the
+# same qualified names; see the producers page of the documentation). Sample `k` of a batch lies at payload row
 # `payload_row + k - 1`, and time `(r - 1) / sample_rate` from the origin is
 # payload row `r` (`row_time`). `masks/gaps.csv`, the settled table of every
 # hole of the delivered record with its cause (lost, pruned, undelivered,
@@ -65,7 +66,8 @@ if run_dir === nothing
     scenario = joinpath(pkgdir(DeepSpaceTelemetry), "scenarios", "drop_policy.toml")
     run_id = "wt_drop_" * string(round(Int, time()))
     seconds = @elapsed DeepSpaceTelemetry.Supervisor.run_mission(
-        TC.tick_configuration(TC.load_config(scenario)); run_id = run_id)
+        TC.tick_configuration(TC.load_config(scenario)); run_id = run_id,
+        figures = false)
     global run_dir = TC.run_directory(run_id)
     @printf("tick-clock mission and post-processing: %.0f s\n", seconds)
 end

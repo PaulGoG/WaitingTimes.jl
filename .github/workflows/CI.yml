@@ -63,7 +63,7 @@ jobs:
       - name: MarketTickStreamer collection contract
         run: julia --threads=2 examples/tick_stream.jl
       - name: DeepSpaceTelemetry collection contract
-        run: julia --threads=3 examples/telemetry_run.jl --out "${{ runner.temp }}/telemetry"
+        run: julia examples/telemetry_run.jl --out "${{ runner.temp }}/telemetry"
   docs:
     name: Documentation
     runs-on: ubuntu-latest

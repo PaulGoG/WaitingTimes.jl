@@ -119,7 +119,7 @@ julia --threads=auto test/device/runtests.jl                                   #
 julia docs/make.jl                                                             # documentation site into docs/build/
 JULIA_PKG_USE_CLI_GIT=true julia examples/check_environment.jl                 # instantiate the examples environment (clones two packages)
 julia --threads=auto examples/tick_stream.jl                                   # tick stream: online = batch; collections on both axes, contract asserted
-julia --threads=3 examples/telemetry_run.jl                                    # telemetry run → declared gaps → collections naming their run, contract asserted
+julia examples/telemetry_run.jl                                                # telemetry run → declared gaps → collections naming their run, contract asserted
 julia -e 'using Pkg; Pkg.activate("JuliaFormatter"; shared = true); Pkg.add("JuliaFormatter"); using JuliaFormatter; format(".")'   # formatting
 ```
 

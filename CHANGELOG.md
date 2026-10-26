@@ -47,6 +47,14 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   itself.
 - The auxiliary environments state `julia = "1.12"`, so dependency updates no
   longer propose the `<0.0.1` bounds of pre-1.10 standard libraries.
+- The examples environment pins DeepSpaceTelemetry.jl 2.9.0 (MarketTickStreamer.jl
+  stays at 1.0.0). Since 2.8 the producer runs its components on one thread,
+  so the `--threads=3` advice of `examples/telemetry_run.jl` is gone from the
+  README, the example and CI; the example skips the figure stages of the
+  shipped scenario (`run_mission(cfg; figures = false)`, new in 2.7). Since
+  2.9 the reader (`TelemetryCore`, `RunAdapter`) is a subpackage,
+  `DeepSpaceTelemetryReader`, re-exported under the same qualified names; a
+  consumer that only reads run directories can add it alone.
 - `generate` is resumable. `index.toml`, `summary.csv` and `catalog.csv` are
   rewritten atomically at every checkpoint and at the end of a session;
   `metadata.toml` is written at the first session; an interrupted run leaves

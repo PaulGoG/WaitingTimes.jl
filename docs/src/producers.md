@@ -62,8 +62,13 @@ and the lifecycle sentinel; `run_geometry` gives the sample rate, the payload
 origin and the clock mode; `list_batches` and `read_batch` give the delivered
 payload with its payload rows (`row_time` the instant of a row); and
 `declared_holes` gives the feed. `TelemetryCore.read_table` reads the tables
-of the run and states their column types. A consumer in any other language
-works from the file contract.
+of the run and states their column types. Since DeepSpaceTelemetry 2.9 the
+adapter and `TelemetryCore` form the subpackage `DeepSpaceTelemetryReader`
+(`reader/` of the repository), re-exported under the same qualified names; a
+consumer that only reads run directories adds it alone,
+`Pkg.add(url = ..., subdir = "reader")`, without the simulator's figure and
+HDF5 dependencies. A consumer in any other language works from the file
+contract.
 
 ## MarketTickStreamer.jl
 
