@@ -12,7 +12,7 @@ produce warnings; unusable values raise errors naming the key.
 [input]
 path = "../data/raw/meteostatGeisenheim.csv"   # relative to this file unless absolute
 format = "csv"                    # one of: "csv" | "dat" | "arrow" | "tick"
-dataset = "geisenheim-wind_speed" # descriptor in configs/datasets/, or ""
+dataset = "geisenheim-wind_speed" # descriptor datasets/<name>.toml beside this file, or ""
 source_descriptor = ""            # TOML identity of the data's origin (e.g. a producer run), or ""
 value_column = 9                  # column name or 1-based index
 time_column = ""                  # column name or index; "" = sample index

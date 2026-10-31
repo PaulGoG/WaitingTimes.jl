@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
-## [0.4.0] - 2026-10-26
+## [0.4.0] - 2026-10-31
 
 ### Added
 
@@ -75,11 +75,24 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   Fenwick batch is sized with them. The device-memory check applies to
   whichever kernel runs on a device, whose memory pools are reclaimed at the
   end of the session.
-- One reference comparison, `Orchestrator.compare_with_reference` with
-  `reference_thresholds`, serves the pipeline's checks and `validate`, which
-  runs the reference kernel once per threshold. `scripts/crosscheck.jl` is a
-  front end of `validate`; its CSV columns changed and `--reference-every`
-  thins the compared thresholds.
+- The pipeline's reference checks go through
+  `Orchestrator.compare_with_reference` and draw their thresholds with
+  `reference_thresholds`; `validate` draws its thresholds the same way, runs
+  the reference kernel once per threshold and compares every kernel with that
+  result, and reports `all_equal` only when at least one threshold was
+  compared. The early check finds the largest pending threshold within
+  `[limits].max_reference_work` by bisection under the naive reference
+  kernel, in logarithmically many runs of the kernel instead of one per
+  pending threshold. `scripts/crosscheck.jl` is a front end of `validate`;
+  its CSV columns changed, and both scripts end with an error when every
+  threshold lies above the work bound.
+- `[input].dataset` names a descriptor in `datasets/` beside the
+  configuration; the package's own `configs/datasets/` is no longer searched
+  as a fallback.
+- `update!` is `public` and no longer exported, so that `using WaitingTimes`
+  beside DataStructures does not clash on the name.
+- `scripts/run_pipeline.jl` loads the device packages from the validated
+  settings instead of a second, case-sensitive parse of the configuration.
 - The preprocessing operations are described once, in
   `Config.PREPROCESSING_OPS` (keys, defaults, validator, slug tag), consumed
   by the configuration validation, by `Preprocessing.apply_steps` and by
@@ -120,12 +133,17 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   carry `quantity` and `unit`. A configuration that still has them gets the
   unknown-key warning.
 - `Storage.schema`, unused.
+- `record!`; a preparation record is extended with `with_step`.
 
 ### Fixed
 
 - `source_summary` recognises a DeepSpaceTelemetry.jl run descriptor by the
   prefix of its schema, so the `deepspacetelemetry-run/2` descriptors written
   since 3.0 are summarised as the `/1` ones are.
+- `validate` reported agreement when every threshold had been skipped above
+  the work bound.
+- The device kernel copied its result through an extra host array on every
+  threshold.
 - `CITATION.cff` quotes the article number `035007`, so that YAML keeps the
   leading zero.
 - Docstrings: the suffix maximum of `GuardedSearch` runs over `m ≥ n`, not

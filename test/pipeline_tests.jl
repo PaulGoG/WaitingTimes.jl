@@ -67,9 +67,8 @@ end
         write(joinpath(dir, "chain.toml"), "base_config = \"overlay.toml\"\n")
         @test_throws ArgumentError effective_config(joinpath(dir, "chain.toml"))
     end
-    record = PreparationRecord("source"; sha256 = "abc")
-    WaitingTimes.record!(record, :op, Dict{String, Any}("w" => 3), Dict{String, Any}("n" =>
-        4))
+    record = WaitingTimes.with_step(PreparationRecord("source"; sha256 = "abc"), :op,
+        Dict{String, Any}("w" => 3), Dict{String, Any}("n" => 4))
     back = dict_to_record(record_to_dict(record))
     @test back.source == "source" && back.source_sha256 == "abc"
     @test back.steps[1].op === :op && back.steps[1].parameters["w"] == 3
@@ -461,7 +460,7 @@ end
             @test table.tau == WaitingTimes.support(d) &&
                   table.count == WaitingTimes.counts(d)
             @test table.ccdf ≈ WaitingTimes.survival(d)
-            series_path, gaps_path = write_series_files(joinpath(dir, String(format)), s, format)
+            write_series_files(joinpath(dir, String(format)), s, format)
             back = read_series_files(joinpath(dir, String(format)), s.digits, s.time_unit)
             @test back.values == s.values && back.times == s.times && back.gaps == s.gaps
         end
@@ -516,6 +515,7 @@ end
         wider = load_settings(joinpath(CONFIGS, "quickstart.toml"); output_dir = dir)
         raw = copy(wider.raw)
         mktempdir() do cdir
+            cp(joinpath(CONFIGS, "datasets"), joinpath(cdir, "datasets"))
             cfg = joinpath(cdir, "wider.toml")
             base = TOML.parsefile(joinpath(CONFIGS, "quickstart.toml"))
             base["input"]["path"] = settings.input_path
@@ -579,6 +579,7 @@ end
 
 @testset "Source descriptor" begin
     mktempdir() do dir
+        cp(joinpath(CONFIGS, "datasets"), joinpath(dir, "datasets"))
         base = TOML.parsefile(joinpath(CONFIGS, "quickstart.toml"))
         base["input"]["path"] = load_settings(joinpath(CONFIGS, "quickstart.toml")).input_path
         base["thresholds"] = Dict{String, Any}("mode" => "explicit",
@@ -707,6 +708,8 @@ end
 "quickstart configuration in `dir` with explicit thresholds, reference checks and limits"
 function quickstart_variant(dir, name; values = [0.0005, 0.001, 0.0015, 0.002],
         reference_checks = 0, limits = Dict{String, Any}())
+    isdir(joinpath(dir, "datasets")) ||
+        cp(joinpath(CONFIGS, "datasets"), joinpath(dir, "datasets"))
     base = TOML.parsefile(joinpath(CONFIGS, "quickstart.toml"))
     base["input"]["path"] = load_settings(joinpath(CONFIGS, "quickstart.toml")).input_path
     base["thresholds"] = Dict{String, Any}("mode" => "explicit", "values" => values)

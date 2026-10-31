@@ -114,7 +114,7 @@ export PreparationStep, PreparationRecord, QuantizedSeries
 export detect_gaps, declare_gaps, gap_table, classify, class_counts
 export AbstractSearch, NaiveSearch, GuardedSearch, SegmentTreeSearch, FenwickSweep,
        StreamingSearch, DeviceSearch, device_search, waiting_times, waiting_times!
-export StreamingState, DistributionAccumulator, update!, pending
+export StreamingState, DistributionAccumulator, pending
 export OnlineWaitingTimes, snapshot, status
 export WaitingTimeDistribution, empirical_distribution
 export Settings, load_settings, threshold_list, effective_config
@@ -122,11 +122,11 @@ export CollectionHandle, generate, prepare, run_pipeline, validate
 export Collection, load_collection, list_collections, distribution, thresholds,
        summary_table, load_series, export_legacy, source_descriptor
 
-public CLASS_EXACT, CLASS_GAP_CROSSING, CLASS_RIGHT_CENSORED, TIME_UNITS
+public CLASS_EXACT, CLASS_GAP_CROSSING, CLASS_RIGHT_CENSORED, TIME_UNITS, update!
 public narrow_integer, GRID_TOLERANCE, on_grid, suffix_maximum, SearchWorkspace, MaxTree,
        FenwickWorkspace,
        workspace, workspace_bytes, scan_work,
-       check_threshold, first_at_least, duration, record!
+       check_threshold, first_at_least, duration
 public support, counts, probabilities, cumulative, survival, nsamples, mean_waiting_time,
        ks_distance
 public GAP_KINDS, with_step, sampling_step, record_length, observed_mask, segment_lengths,
