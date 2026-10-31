@@ -1,7 +1,7 @@
 # Print the lineage of a collection directory or of a file inside one:
 # collection, series (with its preparation steps), dataset and source
 # descriptor, the code identity and environment of WaitingTimes, the
-# partitions, plus sessions.
+# partitions and the sessions.
 #
 #   julia scripts/lineage.jl PATH
 include(joinpath(dirname(@__DIR__), "activate.jl"))

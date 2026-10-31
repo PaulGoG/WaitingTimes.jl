@@ -14,9 +14,9 @@ tie_policy = "error"                        # one of: "error" | "first" | "last"
 steps = []                                  # ordered tables with an op key; see docs
 
 [gaps]
-declared = ""                               # TOML with intervals = [[start, stop], ...]; "" = none
+declared = ""                               # TOML of declared gaps (intervals and/or [[gaps]] tables); "" = none
 detect = "cadence"                          # one of: "none" | "cadence" | "threshold"
-cadence = 1                                 # >= 1; sample spacing treated as contiguous
+cadence = 1                                 # >= 1; largest spacing between consecutive observations that is not a gap, in time units
 mode = "elapsed"                            # one of: "elapsed" | "exact"
 
 [quantization]

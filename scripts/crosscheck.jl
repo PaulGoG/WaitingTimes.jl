@@ -8,12 +8,13 @@
 # Every K-th threshold of the grid is taken (default every one), and of these
 # every M-th is checked (default every one). On a checked threshold every
 # kernel is compared with the reference kernel of the configuration
-# ([algorithm].reference_kernel) through `validate`: number of differing
-# indices and the reference kernel's work and time; a comparison whose work
+# ([algorithm].reference_kernel) through `validate`, which reports the number of
+# differing indices and the reference kernel's work and time; a comparison whose work
 # exceeds [limits].max_reference_work is skipped. With --backend the device
 # kernel also runs on that GPU; the environment must then contain the GPU
-# package, which --env selects (test/device holds oneAPI). Rows go to the CSV;
-# a summary is printed; a non-zero exit signals disagreement.
+# package, which --env selects (test/device holds oneAPI). --out writes one row
+# per kernel and threshold to a CSV file; the summary is always printed, and any
+# disagreement ends the script with an error.
 function parse_commandline(argv)
     options = Dict{String, Any}("config" => nothing, "every" => 1, "reference-every" => 1,
         "backend" => "none", "env" => dirname(@__DIR__), "out" => nothing)
@@ -54,8 +55,8 @@ function main(options)
     deltas = threshold_list(settings, series)[1:options["every"]:end][1:options["reference-every"]:end]
     println(
         "series ", ids.series_id, ": ", length(series), " observations, ", length(deltas),
-        " thresholds checked (every ", options["every"] * options["reference-every"],
-        "th of the grid)")
+        " thresholds checked (one in ", options["every"] * options["reference-every"],
+        " of the grid)")
 
     kernels = Pair{String, AbstractSearch}["guarded" => GuardedSearch(),
         "segment_tree" => SegmentTreeSearch(), "fenwick" => FenwickSweep(),

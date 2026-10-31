@@ -4,8 +4,9 @@ One TOML file per run, parsed and validated by [`load_settings`](@ref) into
 an immutable [`Settings`](@ref). Relative paths resolve against the file's
 directory. A top-level `base_config = "file.toml"` merges the file onto a
 base (one level), so dataset files can share defaults with
-`configs/quickstart.toml`. Unknown keys produce warnings; unusable values
-raise errors naming the key.
+`configs/quickstart.toml`. Unknown keys, and keys the active mode ignores
+(`chunk_size` under the Fenwick sweep, `backend` without the device kernel),
+produce warnings; unusable values raise errors naming the key.
 
 ```toml
 [input]
@@ -34,7 +35,7 @@ steps = [                         # applied in order; see Preprocessing steps be
 [gaps]
 declared = ""                     # TOML of declared gaps (intervals and/or [[gaps]] tables); "" = none
 detect = "cadence"                # "none" | "cadence" | "threshold"
-cadence = 1                       # >= 1
+cadence = 1                       # >= 1; largest spacing between consecutive observations that is not a gap, in time units
 threshold = 0                     # > 0 in time units when detect = "threshold"
 mode = "elapsed"                  # "elapsed" | "exact"
 
@@ -184,7 +185,7 @@ when the configuration is loaded.
 | `clip_sigma` | `k = 3`, `center = "mean"`, `scale = "std"`, `splice = false` | prune the observations farther than `k` scale units from the centre; `"median"` with `"mad"` is the robust pair |
 | `collapse_ties` | `policy` | resolve equal time stamps (`"error"`, `"first"`, `"last"`, `"mean"`) |
 
-`log_levels` keeps the price path and its trends, so a threshold is a move
+`log_levels` keeps the path of the series and its trends, so a threshold is a move
 of a given share of the level, whereas the reference of
 `trailing_mean_fluctuations` moves with the series. The grid must then
 resolve the typical one-step move, about 0.03 % between consecutive BTC
@@ -203,11 +204,12 @@ percentage fluctuations from a 708-hour (lunar month) trailing mean with the
 automatic shift, and `clip_extremes` with `fraction = 0.004`. Rom. J. Phys.
 69, 111 (2024), §2.3
 ([doi:10.59277/RomJPhys.2024.69.111](https://doi.org/10.59277/RomJPhys.2024.69.111)),
-states the pruned share as 0.04 % of both signs; that figure is a misprint
-of the paper. The published tables were computed with the 0.4 % rule of the
-code, in whole magnitude levels, which reproduces Table 1 of the paper for
-the Trieste and fuel-consumption series. The shipped `trieste_sea_level.toml`
-and `trustee_fuel.toml` state it.
+states the pruned share as 0.04 % of both signs; that figure is a misprint.
+The published tables were computed with the 0.4 % rule of the
+code, in whole magnitude levels, which reproduces Table 1 of J. Phys.
+Complex. 7, 035007 (2026) for the Trieste and fuel-consumption series. The
+shipped `trieste_sea_level.toml` and `trustee_fuel.toml` carry this
+treatment.
 
 Thresholds are generated on the grid: a linear grid from `min` to `max` by
 `step`; a logarithmic grid with `points_per_decade` between `min > 0` and
@@ -261,6 +263,6 @@ configuration snapshot (`examples/tick_stream.jl`); it records no tree hash.
 The authoritative key of the producer's code is `git_tree_sha1` with
 `git_dirty = false`. `git_commit` adds the history and is filled when the
 producer ran from a checkout or was pinned by a full commit hash.
-DeepSpaceTelemetry records both since 2.6.1, also for a copy installed by
-Pkg. In a descriptor written before, a missing key means unknown and
-`git_commit` of an installed copy is empty.
+DeepSpaceTelemetry has recorded both since 2.6.1, also for a copy installed
+by Pkg; in a descriptor written by an earlier version a missing key means
+unknown, and an installed copy leaves `git_commit` empty.

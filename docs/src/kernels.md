@@ -30,7 +30,8 @@ distinct values holds the smallest index seen for each value; the passage of
 an index is the minimum index among values at least its target, a
 prefix-minimum query. Several thresholds share one sweep through
 `waiting_times(s, deltas, FenwickSweep())`, which saves the tree updates but
-not the per-threshold queries (at most a factor 1.5 over separate sweeps).
+not the per-threshold queries, so it is at most 1.5 times faster than
+separate sweeps.
 [`run_pipeline`](@ref) serves the thresholds of a session in batches with the
 Fenwick sweep, bounded by `[limits].max_ram_gb`, and one at a time with the
 other kernels.
@@ -63,7 +64,7 @@ backend, which [`device_search`](@ref) selects. Device access is serialised
 and the series arrays are uploaded once per series. The CPU backend runs in
 the default test suite; opt-in device tests live in `test/device/`.
 
-## Choosing a kernel
+## Default kernel and reference checks
 
 `SegmentTreeSearch` is the default of [`waiting_times`](@ref) and of the
 pipeline. Production runs recompute a configurable number of thresholds with

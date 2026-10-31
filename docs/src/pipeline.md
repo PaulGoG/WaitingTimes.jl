@@ -1,7 +1,8 @@
 # Pipeline
 
-A run is driven by one TOML file ([Configuration](@ref)) and proceeds in
-three stages.
+A run is driven by one TOML file ([Configuration](@ref)): it prepares the
+series, then generates the distributions; validation is a separate check on
+the same configuration.
 
 ## Prepare
 
@@ -63,14 +64,16 @@ grid of 1000 thresholds writes some 25 to 40 GB.
 Rerunning with a wider threshold grid adds partitions and appends a session;
 existing partitions are skipped unless `[output].overwrite = true`, in which
 case they are backed up as `<name>#k.<ext>` first. `index.toml`, `summary.csv`
-and `catalog.csv` are rewritten after every chunk of thresholds, so an
+and `catalog.csv` are rewritten at every checkpoint (`[run].checkpoint_seconds`,
+10 s by default) and at the end of the session, so an
 interrupted run resumes from the partitions already written. With reference
 checks enabled the kernel is compared with the reference kernel on the
 largest pending threshold before any partition is written.
 
 ## Validate
 
-[`validate`](@ref) compares the configured kernel with the reference kernel on chosen
+[`validate`](@ref) compares the configured kernel, or a given list of kernels
+(`kernels`), with the reference kernel on chosen
 thresholds and reports equality, the number of differing indices and the
 reference kernel's cost. `scripts/validate.jl` exits non-zero on any disagreement.
 

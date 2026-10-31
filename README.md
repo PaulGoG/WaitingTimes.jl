@@ -11,14 +11,15 @@
 [![Paper](https://img.shields.io/badge/paper-10.1088%2F2632--072X%2Fae8aa5-blue)](https://doi.org/10.1088/2632-072X/ae8aa5)
 
 Exact waiting-time distributions of scalar time series for threshold grids.
-The package is my rewrite of the numerical backbone of the analyses in
+The package is my rewrite of the code behind the analyses in
 P.-A. Gogîță et al., *J. Phys. Complex.* **7**, 035007 (2026),
 [doi:10.1088/2632-072X/ae8aa5](https://doi.org/10.1088/2632-072X/ae8aa5),
 and G. T. Pană, P.-A. Gogîță, A. Nicolin-Żaczek, *Rom. J. Phys.* **69**,
 111 (2024),
-[doi:10.59277/RomJPhys.2024.69.111](https://doi.org/10.59277/RomJPhys.2024.69.111),
-with verified fast kernels, provenance-tracked data products and interfaces
-for batch and real-time analysis.
+[doi:10.59277/RomJPhys.2024.69.111](https://doi.org/10.59277/RomJPhys.2024.69.111).
+Every fast kernel is checked index by index against a naive reference scan.
+The results are written as collections that carry their own provenance, and
+an online estimator follows the same distributions on a live stream.
 
 ![Survival functions of the Geisenheim wind-speed waiting times at a small
 and a large threshold, with scale-free and Pareto-Tsallis
@@ -59,11 +60,11 @@ the elapsed time to the first observed value at least `δ` above `Aₙ`. Indices
 without such an `m` are right-censored and contribute no waiting time.
 
 Values and thresholds are quantised to a decimal grid with `digits` decimals
-and handled as integers, so every kernel produces bit-identical results and
-the naive forward scan (`NaiveSearch`) is the permanent reference
-implementation. Time passes through missing samples and data gaps; gaps are
-recorded and reported (`gap_table`, `classify`) and never alter a waiting
-time.
+and handled as integers, so every kernel produces bit-identical results; the
+naive forward scan (`NaiveSearch`) is the permanent reference implementation
+the other kernels are checked against. Time passes through missing samples
+and data gaps; gaps are recorded and reported (`gap_table`, `classify`) and
+never alter a waiting time.
 
 `SegmentTreeSearch` is the default kernel, at milliseconds per threshold on
 millions of points. `FenwickSweep` serves many thresholds per sweep and
@@ -90,7 +91,7 @@ threshold grid from 0 to 50 km/h](docs/src/assets/sweep.gif)
 A collection holds one distribution per threshold. The downstream indicators
 of the 2026 paper, the difference of the two fits' Kolmogorov–Smirnov
 distances and the generalised Kullback–Leibler divergence between their
-tails, are computed along this sweep.
+tails, are computed downstream from the collection along this sweep.
 
 ## Setup
 
@@ -118,8 +119,8 @@ julia --threads=auto bench/run_benchmarks.jl                                   #
 julia --threads=auto test/device/runtests.jl                                   # opt-in GPU tests (oneAPI)
 julia docs/make.jl                                                             # documentation site into docs/build/
 JULIA_PKG_USE_CLI_GIT=true julia examples/check_environment.jl                 # instantiate the examples environment (clones two packages)
-julia --threads=auto examples/tick_stream.jl                                   # tick stream: online = batch; collections on both axes, contract asserted
-julia examples/telemetry_run.jl                                                # telemetry run → declared gaps → collections naming their run, contract asserted
+julia --threads=auto examples/tick_stream.jl                                   # tick stream: online estimator against batch, collections on both time axes, contract checked
+julia examples/telemetry_run.jl                                                # telemetry run: its declared gaps, collections that name the run, contract checked
 julia -e 'using Pkg; Pkg.activate("JuliaFormatter"; shared = true); Pkg.add("JuliaFormatter"); using JuliaFormatter; format(".")'   # formatting
 ```
 
@@ -129,19 +130,21 @@ collection directory `data/<collection id>/` (provenance schema 3) with a
 `README.md` describing its own files. Provenance lives in `config.toml`,
 `metadata.toml`, `hardware.txt`, the resolved manifest and, under
 `sessions/`, the per-session records, configuration snapshots and manifests.
-The prepared series is stored with its gaps by kind (`gaps.csv`) and the
-segments between them (`segments.csv`), each threshold as one partition
-under `distributions/` with its counts split into exact and gap-crossing
-waits, and the censoring histograms under `censoring/`; `index.toml`,
+Each threshold is one partition under `distributions/`, its counts split
+into exact and gap-crossing waits, with its censoring histogram under
+`censoring/`; beside them lie the prepared series, its gaps by kind
+(`gaps.csv`) and the segments between them (`segments.csv`). `index.toml`,
 `summary.csv` and `catalog.csv` are rewritten at every checkpoint of a session
-and at its end.
+and at its end, so an interrupted run leaves a collection that loads and
+resumes.
 
 When `[input].source_descriptor` names the identity file of the program that
 produced the input (a DeepSpaceTelemetry.jl run's `descriptor.toml`, a
 MarketTickStreamer.jl session sidecar), the collection keeps a verbatim copy
 as `source.toml` and records it in `metadata.toml` with the producer's code
 identity. `[input].time_axis = "index"` places the series on the row ordinal
-of the input, the trade count of a tick stream, with closures closed.
+of the input instead of its clock; for a tick stream that is the trade count,
+and exchange closures no longer count as elapsed time.
 Rerunning with a wider threshold grid adds partitions and appends a session.
 Existing partitions are rewritten only when `[output].overwrite = true`, and
 are backed up first.
@@ -160,7 +163,7 @@ WaitingTimes.support(d), WaitingTimes.probabilities(d), WaitingTimes.cumulative(
 From a collection on disk, and in real time:
 
 ```julia
-c = load_collection("data/<collection id>")   # overview when shown; thresholds(c), summary_table(c)
+c = load_collection("data/<collection id>")   # show(c) prints an overview; thresholds(c), summary_table(c)
 source_descriptor(c)                           # the producer's descriptor of the input, verbatim, or nothing
 WaitingTimes.source_summary(c)                 # its producer, version and code identity (git_tree_sha1)
 class_counts(c, "0.0005")                      # exact and gap-crossing waits per support value
@@ -185,7 +188,7 @@ push!(est, t_ns, price)                        # one sample; snapshot(est) gives
 | Configuration, storage, provenance, preprocessing, scripts | done; quickstart end to end in the tests |
 | Distributions.jl and CairoMakie extensions | done |
 | KernelAbstractions device kernel | done; a package extension (`using KernelAbstractions`); CPU backend in the default tests, oneAPI verified on an Intel Arc GPU |
-| Preprocessing (published treatment, `clip_sigma`, log returns, log levels) | done; Table 1 of the paper reproduced for the raw datasets |
+| Preprocessing (published treatment, `clip_sigma`, log returns, log levels) | done; Table 1 of the paper reproduced by `examples/published_fits.jl` |
 | Automatic choice of `digits` | done |
 | Collection read side, legacy export, per-collection README | done |
 | Source identity of a collection, code identity of every session | done; DeepSpaceTelemetry.jl run descriptors and MarketTickStreamer.jl session sidecars |
@@ -243,9 +246,10 @@ WaitingTimes.jl/
 │   ├── Kernels.jl                # NaiveSearch (reference kernel), GuardedSearch, scan_work
 │   ├── SegmentTree.jl            # SegmentTreeSearch, the production kernel
 │   ├── FenwickSweep.jl           # FenwickSweep, multi-threshold sweep
-│   ├── Streaming.jl              # StreamingSearch, StreamingState, online accumulator
+│   ├── Streaming.jl              # StreamingSearch, StreamingState, DistributionAccumulator
+│   ├── Online.jl                 # OnlineWaitingTimes, online estimation at several thresholds
 │   ├── Distribution.jl           # WaitingTimeDistribution, empirical_distribution
-│   ├── Synthetic.jl              # synthetic series and gap generators for tests and benchmarks
+│   ├── Synthetic.jl              # synthetic series for tests and benchmarks
 │   ├── Provenance.jl             # config overlays, canonical hashing, identifiers, fingerprints
 │   ├── Config.jl                 # TOML schema, validated Settings, threshold grids
 │   ├── Naming.jl                 # self-describing file-name grammar and parser
@@ -254,7 +258,8 @@ WaitingTimes.jl/
 │   ├── Storage.jl                # per-threshold partitions, index, summary, catalog
 │   ├── Orchestrator.jl           # prepare, generate (resume, reference checks), validate
 │   ├── Backends.jl               # backend registry and selection (probes from the extensions)
-│   └── DeviceKernels.jl          # DeviceSearch, its workspace type, backend selection
+│   ├── DeviceKernels.jl          # DeviceSearch, its workspace type, backend selection
+│   └── precompile.jl             # PrecompileTools workload
 ├── ext/
 │   ├── WaitingTimesDistributionsExt.jl   # DiscreteNonParametric view of a distribution
 │   ├── WaitingTimesCairoMakieExt.jl      # figure theme, decade ticks, series and distribution figures
@@ -288,7 +293,7 @@ WaitingTimes.jl/
 │   └── fixtures/                 # EUR-USD input and legacy outputs for regression
 │       └── schema2/              # hand-written schema-2 collection
 ├── docs/
-│   ├── Project.toml, activate.jl, make.jl
+│   ├── Project.toml, activate.jl, make.jl, make_readme_assets.jl
 │   └── src/                      # formulation, kernels, pipeline, configuration, provenance,
 │       └── literate/             #   validation, interfacing, producers, API, internals, references; executable example
 ├── examples/                     # own environment: the two public packages from GitHub

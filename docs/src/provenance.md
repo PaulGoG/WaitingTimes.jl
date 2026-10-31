@@ -41,15 +41,19 @@ descriptor, the `[source]` section when `[input].source_descriptor` is set,
   session, the file it is copied to (`manifest_snapshot.toml`) and the Julia
   version.
 
+`index.toml` lists every partition with its file, checksum, session and
+per-threshold statistics; `summary.csv` and `catalog.csv` are regenerated
+from it after every checkpoint of a session and at its end.
+
 Each session also has its own file under `sessions/`. It records the kernel
 and backend, thread count, package version, code identity, git state and
 Julia version; the SHA-256 of the session's manifest, copied to
 `sessions/<id>.manifest.toml`; the hardware fingerprint (host, CPU, cores,
 memory, BLAS threads, and the device report of a GPU backend); the
 configuration hash; the thresholds computed and skipped; the reference
-checks; the stage timings; and `status`, `"running"` while the session
-computes and `"completed"` once its record is final, so a session file still
-at `"running"` belongs to an interrupted run, whose partitions `index.toml`
+checks; and the stage timings. Its `status` is `"running"` while the session
+computes and `"completed"` once the record is final; a session file still at
+`"running"` belongs to an interrupted run, whose partitions `index.toml`
 already lists. `hardware.txt` carries
 `versioninfo` and the device report. Arrow partitions also carry the
 collection identifier, threshold and session in their schema metadata; CSV
@@ -59,9 +63,10 @@ or censoring histograms.
 
 ## Code identity
 
-The identity of the code that computed a collection is determined the same
-way however the package was obtained
-([`source_identity`](@ref WaitingTimes.Provenance.source_identity)):
+The code that computed a collection is identified by the same fields however
+the package was obtained
+([`source_identity`](@ref WaitingTimes.Provenance.source_identity)); they are
+read:
 
 - from git when the package directory is the top level of a work tree
   (`identity_source = "work_tree"`): `git_commit` is the `HEAD`,
@@ -78,10 +83,6 @@ way however the package was obtained
 exactly; together with the manifest snapshot it makes a collection
 attributable to code and environment. Producers of source descriptors are
 keyed the same way; DeepSpaceTelemetry.jl records these fields since 2.6.1.
-
-`index.toml` lists every partition with its file, checksum, session and
-per-threshold statistics; `summary.csv` and `catalog.csv` are regenerated
-from it after every checkpoint of a session and at its end.
 
 ## File names
 
