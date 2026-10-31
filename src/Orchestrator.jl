@@ -426,18 +426,21 @@ $(TYPEDSIGNATURES)
 
 Generate (or extend) the collection of waiting-time distributions described
 by `settings`: prepare the series, compute every configured threshold not yet
-present, write partitions, run reference checks, and record the session.
+present (every one under `[output].overwrite`, the existing files backed up
+first), write partitions, run reference checks, and record the session.
 `kernel` replaces the configured search kernel (`[algorithm].search`).
+Returns a [`CollectionHandle`](@ref).
 
 The session is resumable: `index.toml`, `summary.csv` and `catalog.csv` are
-rewritten after every chunk of thresholds, so an interrupted run leaves a
-collection whose index lists every partition written, and the next run
-computes only the rest. The session record is written with `status =
-"running"` before the first threshold and rewritten with `status =
-"completed"` at the end. With `[algorithm].reference_checks > 0` the kernel is
-compared with the reference kernel on the largest pending threshold within
-`[limits].max_reference_work` before any partition is written; a disagreement
-raises there.
+rewritten after a chunk of thresholds once `[run].checkpoint_seconds` have
+passed since the previous rewrite (after every chunk when it is 0), so an
+interrupted run leaves an index of every partition written up to its last
+checkpoint, and the next run computes the rest. The session record is written
+with `status = "running"` before the first threshold and rewritten with
+`status = "completed"` at the end. With `[algorithm].reference_checks > 0` the
+kernel is compared with the reference kernel on the largest pending threshold
+within `[limits].max_reference_work` before any partition is written; a
+disagreement raises there.
 """
 function generate(settings::Settings; kernel::AbstractSearch = make_kernel(settings))
     s, ids = prepare(settings)
@@ -583,8 +586,8 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
                 push!(computed, key)
                 next!(progress)
             end
-            # resume state: the index lists every partition written so far,
-            # rewritten at most every [run].checkpoint_seconds
+            # resume checkpoint: the index files are rewritten with every
+            # partition written so far, at most every [run].checkpoint_seconds
             if time() - last_checkpoint >= settings.checkpoint_seconds
                 @timeit timer "write" write_index_files(dir, existing, id, ids.series_slug,
                     s.digits)
@@ -745,9 +748,8 @@ $(TYPEDSIGNATURES)
 Recompute `settings.reference_checks` thresholds among those just computed with
 the reference kernel (always including the largest, see
 `reference_thresholds`) and compare exactly (`compare_with_reference`); the
-threshold `exclude`, already compared
-by the early check, is not repeated. A disagreement is logged, then
-raises; a check whose scan work ([`scan_work`](@ref), in element
+threshold `exclude`, already compared by the early check, is not repeated. A
+disagreement is logged, then raises; a check whose scan work ([`scan_work`](@ref), in element
 comparisons) exceeds `[limits].max_reference_work` is skipped with a warning.
 """
 function reference_check!(timer, s, thresholds, computed, alg, ws, reference, ws_ref,
@@ -868,7 +870,8 @@ end
 $(TYPEDSIGNATURES)
 
 Load the configuration at `config_path` (output root overridden by
-`output_dir` when given) and run [`generate`](@ref).
+`output_dir` when given) and run [`generate`](@ref); returns its
+[`CollectionHandle`](@ref).
 """
 function run_pipeline(config_path::AbstractString; output_dir = nothing)
     return generate(load_settings(config_path; output_dir = output_dir))

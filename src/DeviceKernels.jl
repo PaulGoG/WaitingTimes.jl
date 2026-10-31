@@ -21,7 +21,8 @@ struct DeviceSearch{B} <: AbstractSearch
 end
 DeviceSearch() = DeviceSearch(get_best_backend(; prefer = :none))
 
-# host-side copies of the values, times, suffix maxima and result
+# values, times, suffix maxima and result buffer on the backend: host memory on
+# the CPU backend, device memory on a GPU (bounded there by [limits].max_vram_gb)
 function workspace_bytes(::DeviceSearch, s::QuantizedSeries{Tv, Tt}) where {Tv, Tt}
     length(s) * (2 * sizeof(Tv) + 2 * sizeof(Tt))
 end
@@ -56,7 +57,7 @@ const DEVICE_LOCK = ReentrantLock()
 """
 $(TYPEDSIGNATURES)
 
-Device search on the backend selected by `backend` (`:none` for the CPU,
+[`DeviceSearch`](@ref) on the backend selected by `backend` (`:none` for the CPU,
 `:auto` for the first functional GPU, or a named backend), following
 [`Backends.get_best_backend`](@ref).
 """

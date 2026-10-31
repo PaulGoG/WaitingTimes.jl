@@ -8,7 +8,9 @@ const MAX_DIGITS = 15
 
 """
 Magnitude below which quantised values are narrowed to `Int32`. The margin of
-2^30 leaves room for every threshold that can still produce a passage.
+2^30 keeps `q_n + d` within `Int32` for every threshold up to 2^30 grid units,
+which covers every threshold that can produce a passage in a non-negative
+series; a larger threshold raises an `OverflowError` in `check_threshold`.
 """
 const INT32_NARROWING_LIMIT = 2^30
 

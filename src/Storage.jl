@@ -131,7 +131,7 @@ read_distribution(path::AbstractString) = read_table(path)
 $(TYPEDSIGNATURES)
 
 Write the dense waiting-time vector with its classification and bounds
-(`tau`, `class`, `lower`, `upper`, one row per index).
+(`tau`, `class`, `lower`, `upper`, one row per index); returns the file's SHA-256.
 """
 function write_waiting_times(
         path::AbstractString, τ::AbstractVector, class::AbstractVector,
@@ -293,7 +293,7 @@ $(TYPEDSIGNATURES)
 
 Write `catalog.csv`: every distribution partition of the collection with its
 descriptor columns, identifier, checksum and session, through a temporary
-file moved into place.
+file moved into place; returns the path, or `nothing` without rows.
 """
 function write_catalog(dir::AbstractString, rows::AbstractVector)
     isempty(rows) && return nothing
@@ -447,7 +447,7 @@ end
 """
 $(TYPEDSIGNATURES)
 
-The distribution of the collection at threshold `δ` (a `Threshold`, a real
+The [`WaitingTimeDistribution`](@ref) of the collection at threshold `δ` (a `Threshold`, a real
 value or a fixed-decimal string), read from its partition with the
 accounting recorded in the index.
 """
@@ -507,7 +507,8 @@ end
 """
 $(TYPEDSIGNATURES)
 
-One row per threshold with the counts and statistics of `summary.csv`.
+`DataFrame` with one row per threshold, the counts and statistics of
+`summary.csv`, or of the index entries when that file is absent.
 """
 function summary_table(c::Collection)
     path = joinpath(c.dir, "summary.csv")
@@ -522,7 +523,7 @@ $(TYPEDSIGNATURES)
 
 Normalised identity of the source of the collection's input (see
 [`source_summary`](@ref WaitingTimes.Provenance.source_summary)): `producer`,
-`producer_version`, `git_tree_sha1` (authoritative with `git_dirty`),
+`producer_version`, `git_tree_sha1` (authoritative when `git_dirty` is false),
 `git_dirty`, `git_commit`, `identity`, `producer_compat`, `compat_checked`,
 `compat_satisfied` and `schema`, as a named tuple; `nothing` without a source
 descriptor. For a collection written before the summary was recorded it is
@@ -617,9 +618,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Every collection under `root` as a table: identifier, series slug, mode,
-number of thresholds, smallest and largest threshold, observations, gaps,
-sessions and creation time.
+Every collection directly under `root` as a `DataFrame` with the columns `id`,
+`series`, `mode`, `n_thresholds`, `delta_min`, `delta_max`, `n_observations`,
+`n_gaps`, `sessions`, `created` and `dir`; empty when `root` does not exist.
 """
 function list_collections(root::AbstractString)
     rows = DataFrame(

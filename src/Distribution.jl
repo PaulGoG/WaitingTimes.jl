@@ -55,7 +55,8 @@ Empirical distribution of the waiting times `τ` (as returned by
 passage; `mode = :exact` keeps only passages without an intervening gap. With
 `horizon = H` (in the time unit of `s`) waits longer than `H` are counted as
 right-censored, which reproduces the snapshot of an [`OnlineWaitingTimes`](@ref)
-estimator with the same horizon.
+estimator with the same horizon on a series without gaps (a stream counts
+every resolved wait as exact).
 """
 function empirical_distribution(
         τ::AbstractVector{Tt}, δ::Threshold, s::QuantizedSeries{Tv, Tt};
