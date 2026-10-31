@@ -770,7 +770,7 @@ function write_collection_readme(dir::AbstractString, meta::AbstractDict,
             "| `waiting_times/delta=<δ>.", ext,
             "` | optional: every index's waiting time with class and bounds (`store_waiting_times = true`) |")
         println(io,
-            "| `index.toml`, `catalog.csv` | machine index of the partitions with checksums |")
+            "| `index.toml`, `catalog.csv` | the partitions with their checksums and per-threshold statistics; one catalogue row per partition with its descriptor columns |")
         println(io,
             "| `metadata.toml`, `config.toml`, `sessions/` | provenance: identity, dataset descriptor, source summary, code identity of WaitingTimes (`[producer]`), environment, per-session records, configuration snapshots, hardware |")
         println(io, "| `", MANIFEST_FILE,

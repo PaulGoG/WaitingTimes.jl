@@ -100,13 +100,12 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   BenchmarkTools leaves the environment.
 - The documentation checks every exported and `public` name; the API page
   lists them all, the Base methods on the package's types included, and the
-  producers page joins the contents.
-- The kernel-equivalence tests at 10⁵ points keep two series families
-  without the fully censored threshold, where CI spent most of its time.
-- Prose and docstrings revised for voice and accuracy: README, documentation
-  pages, examples, configuration comments, docstrings. `DeviceSearch` is
-  described as the guarded scan, which it is; the 0.04 % pruning share of
-  Rom. J. Phys. 69, 111 (2024) is called a misprint.
+  producers page is listed in the contents.
+- At 10⁵ points the kernel-equivalence tests run two series families and omit
+  the fully censored threshold; those cases took most of the CI time.
+- Documentation corrections: `DeviceSearch` is described as the guarded scan
+  it implements, and the 0.04 % pruning share of Rom. J. Phys. 69, 111
+  (2024) is called a misprint.
 
 ### Removed
 
