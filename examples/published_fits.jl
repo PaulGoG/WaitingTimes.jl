@@ -1,7 +1,7 @@
 # Reproduction of Table 1 of Gogîță et al., J. Phys. Complex. 7 (2026) 035007
 # from the distributions this package computes, with the fitting recipe of the
 # 2024 analysis (legacy_fit.jl). The series are prepared by the shipped
-# configurations, whose preprocessing states the published treatment.
+# configurations, which encode the published preprocessing.
 #
 #   julia --threads=auto examples/published_fits.jl [--out results.csv]
 #

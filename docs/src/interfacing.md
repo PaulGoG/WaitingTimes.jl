@@ -62,7 +62,7 @@ c.metadata["producer"]                    # code identity of WaitingTimes in the
 `class_counts` and `censoring_histogram` return `nothing` for a collection of
 provenance schema 2. The segment lengths ``L_s`` give the erosion weight
 ``w(k) = \sum_s (L_s - k)_+``, the number of index pairs `k` observations
-apart inside one segment, without the series. `describe(s)`
+apart inside one segment, without the series. `WaitingTimes.describe(s)`
 summarises a series (observations, record length, time span, value
 statistics, sampling step, gaps by kind), and with CairoMakie loaded
 `WaitingTimes.plot_values(s)` draws its value histogram.
@@ -90,7 +90,7 @@ Downstream tools may rely on the exported names and on those declared
 | series tools | `classify`, `gap_table`, `observed_mask`, `describe` |
 | accessors of a distribution | `support`, `counts`, `probabilities`, `cumulative`, `survival`, `nsamples`, `ks_distance` |
 | figures (CairoMakie extension) | `figure_theme`, `decade_ticks`, `save_figure`, `plot_series`, `plot_distribution`, `plot_values` |
-| provenance and naming | `Provenance.artefact_id`, `content_hash`, `canonical_toml`, `git_state`, `hardware_fingerprint`, `backup_existing!`, `session_id`, `write_toml`, `Naming.artefact_name` |
+| provenance and naming | `Provenance.artefact_id`, `content_hash`, `canonical_toml`, `git_state`, `hardware_fingerprint`, `backup_existing!`, `Naming.artefact_name` |
 
 The field layout of [`WaitingTimeDistribution`](@ref) (twelve fields,
 `horizon` last) and its twelve- and eleven-argument constructors, the latter

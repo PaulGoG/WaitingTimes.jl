@@ -20,13 +20,15 @@ currency and automotive data.
 
 The package computes these distributions exactly and reproducibly. Values
 and thresholds live on a decimal integer grid, so every kernel produces
-bit-identical results and the naive scan is the permanent reference
-implementation ([Formulation](formulation.md)). A segment-tree kernel serves
-production runs in milliseconds per threshold, a Fenwick sweep serves dense
-grids and a streaming kernel live pipelines, and a KernelAbstractions kernel
-runs the guarded reference scan on GPUs ([Kernels](kernels.md)). A validated
-TOML configuration drives ingestion, preprocessing, generation with resume
-and reference checks, and provenance ([Pipeline](pipeline.md),
+bit-identical results; the naive scan is the permanent reference
+implementation the others are checked against
+([Formulation](formulation.md)). A segment-tree kernel serves production runs
+in milliseconds per threshold, a Fenwick sweep serves dense grids and a
+streaming kernel live pipelines, and a KernelAbstractions kernel runs the
+guarded scan on GPUs ([Kernels](kernels.md)). A validated TOML configuration
+drives a run from ingestion to the written collection, which records its own
+provenance; an interrupted run resumes, and reference checks recompute part
+of the grid with the reference kernel ([Pipeline](pipeline.md),
 [Configuration](configuration.md), [Provenance](provenance.md)).
 
 ## Contents
