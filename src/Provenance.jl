@@ -435,13 +435,14 @@ end
 """
 Producers whose source descriptors are recognised, with the oldest producer
 version whose file contract this version of WaitingTimes reads: the
-DeepSpaceTelemetry.jl run descriptor (`descriptor.toml`, schema
-`deepspacetelemetry-run/1`, written since 2.5.0) and the MarketTickStreamer.jl
-session sidecar (`<session>.meta.toml`, with the tick files read by
-`format = :tick` since 0.3.0; the file contract is fixed by 1.0.0).
+DeepSpaceTelemetry.jl run descriptor (`descriptor.toml`, written since 2.5.0;
+schema `deepspacetelemetry-run/1`, and `/2` since 3.0.0, read alike) and the
+MarketTickStreamer.jl session sidecar (`<session>.meta.toml`, with the
+processed tick files read by `format = :tick`; the file contract is fixed by
+1.0.0 and kept by 2.0).
 """
 const MINIMUM_PRODUCER_VERSION = Dict("DeepSpaceTelemetry" => v"2.5.0",
-    "MarketTickStreamer" => v"0.3.0")
+    "MarketTickStreamer" => v"1.0.0")
 
 "a recorded commit, with the placeholders some producers write for none mapped to empty"
 commit_or_empty(x) = (c = string(something(x, "")); c in ("unknown", "nothing") ? "" : c)
@@ -467,7 +468,7 @@ function source_summary(descriptor::AbstractDict)
     schema = string(get(descriptor, "schema", ""))
     keys_from = descriptor
     producer = string(get(descriptor, "producer", ""))
-    if schema == "deepspacetelemetry-run/1"
+    if startswith(schema, "deepspacetelemetry-run/")
         producer = "DeepSpaceTelemetry"
     elseif haskey(descriptor, "session") &&
            get(descriptor, "provenance", nothing) isa AbstractDict
