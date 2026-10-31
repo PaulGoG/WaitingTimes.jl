@@ -1,5 +1,5 @@
-# Phase 3 tests: provenance, configuration, naming, preprocessing, storage,
-# orchestration and the package extensions.
+# Provenance, configuration, naming, preprocessing, storage, orchestration and
+# the package extensions.
 
 using WaitingTimes.Provenance: artefact_id, backup_existing!, canonical_toml, content_hash,
                                dict_to_record, effective_config, record_to_dict, slugify,
@@ -67,9 +67,8 @@ end
         write(joinpath(dir, "chain.toml"), "base_config = \"overlay.toml\"\n")
         @test_throws ArgumentError effective_config(joinpath(dir, "chain.toml"))
     end
-    record = PreparationRecord("source"; sha256 = "abc")
-    WaitingTimes.record!(record, :op, Dict{String, Any}("w" => 3), Dict{String, Any}("n" =>
-        4))
+    record = WaitingTimes.with_step(PreparationRecord("source"; sha256 = "abc"), :op,
+        Dict{String, Any}("w" => 3), Dict{String, Any}("n" => 4))
     back = dict_to_record(record_to_dict(record))
     @test back.source == "source" && back.source_sha256 == "abc"
     @test back.steps[1].op === :op && back.steps[1].parameters["w"] == 3
@@ -139,8 +138,9 @@ end
             D("steps" =>
                 Any[D("op" => "clip_sigma", "k" => 2.5, "center" => "median",
                     "scale" => "mad", "splice" => false)])))).steps) == 1
-        # digits = "auto": the fixture's 26 values finer than 10^-4 lie below the
-        # tolerance, so the choice is the configured 4
+        # digits = "auto": the threshold grid needs 4 decimals and the fixture's 26
+        # values finer than 10^-4 move the δ = 0 distribution by less than the
+        # tolerance, so 4 is kept
         auto = load_settings(write_config(D("quantization" => D("digits" => "auto"))))
         @test auto.digits === nothing && auto.auto_max_digits == 8 &&
               WaitingTimes.Config.threshold_decimals(auto) == 4
@@ -221,7 +221,7 @@ end
           tm.values[3] ≈ (12 - 10.5) * 100 / 10.5
     @test tm.values[4] ≈ (6 - 11.5) * 100 / 11.5
     @test_throws ArgumentError trailing_mean_fluctuations(raw_from([0.0, 1.0]); window = 1)
-    # the papers' shift: the minimum becomes 1 before the percentage
+    # the shift of the original analysis: the minimum becomes 1 before the percentage
     sh = trailing_mean_fluctuations(raw_from([-4.0, 1.0, 6.0]); window = 1, offset = :auto)
     @test sh.record.steps[end].summary["shift"] == 5.0
     @test sh.values[2] ≈ (6 - 1) * 100 / 1 && sh.values[3] ≈ (11 - 6) * 100 / 6
@@ -311,7 +311,7 @@ end
     sr = select_range(raw_from([1.0, 2.0, 3.0, 4.0]); from = 2, to = 3)
     @test sr.values == [2.0, 3.0]
     @test_throws ArgumentError select_range(rs; from = 10, to = 20)
-    # surgical cut with splice closes the time axis
+    # a spliced cut closes the time axis
     ex = exclude_intervals(
         raw_from([1.0, 2.0, 3.0, 4.0, 5.0]; times = [1, 2, 3, 4, 10], unit = :second),
         [(2, 4)])
@@ -460,7 +460,7 @@ end
             @test table.tau == WaitingTimes.support(d) &&
                   table.count == WaitingTimes.counts(d)
             @test table.ccdf ≈ WaitingTimes.survival(d)
-            series_path, gaps_path = write_series_files(joinpath(dir, String(format)), s, format)
+            write_series_files(joinpath(dir, String(format)), s, format)
             back = read_series_files(joinpath(dir, String(format)), s.digits, s.time_unit)
             @test back.values == s.values && back.times == s.times && back.gaps == s.gaps
         end
@@ -515,6 +515,7 @@ end
         wider = load_settings(joinpath(CONFIGS, "quickstart.toml"); output_dir = dir)
         raw = copy(wider.raw)
         mktempdir() do cdir
+            cp(joinpath(CONFIGS, "datasets"), joinpath(cdir, "datasets"))
             cfg = joinpath(cdir, "wider.toml")
             base = TOML.parsefile(joinpath(CONFIGS, "quickstart.toml"))
             base["input"]["path"] = settings.input_path
@@ -578,6 +579,7 @@ end
 
 @testset "Source descriptor" begin
     mktempdir() do dir
+        cp(joinpath(CONFIGS, "datasets"), joinpath(dir, "datasets"))
         base = TOML.parsefile(joinpath(CONFIGS, "quickstart.toml"))
         base["input"]["path"] = load_settings(joinpath(CONFIGS, "quickstart.toml")).input_path
         base["thresholds"] = Dict{String, Any}("mode" => "explicit",
@@ -678,4 +680,135 @@ end
     end
     empty = empirical_distribution(zeros(Int64, length(s)), δ, s)
     @test_throws ArgumentError WaitingTimes.plot_distribution(empty)
+end
+
+# Test kernels: one that fails after `after` thresholds, as an interrupted run
+# does, and one whose results are wrong everywhere.
+struct FailingSearch <: WaitingTimes.AbstractSearch
+    after::Int
+end
+const FAILING_CALLS = Ref(0)
+WaitingTimes.workspace(::FailingSearch, ::QuantizedSeries) = nothing
+WaitingTimes.workspace_bytes(::FailingSearch, ::QuantizedSeries) = 0
+function WaitingTimes.waiting_times!(τ::AbstractVector, s::QuantizedSeries, δ::Threshold,
+        alg::FailingSearch; workspace = nothing)
+    FAILING_CALLS[] += 1
+    FAILING_CALLS[] == alg.after + 1 && throw(ErrorException("simulated interruption"))
+    return waiting_times!(τ, s, δ, NaiveSearch())
+end
+
+struct WrongSearch <: WaitingTimes.AbstractSearch end
+WaitingTimes.workspace(::WrongSearch, ::QuantizedSeries) = nothing
+WaitingTimes.workspace_bytes(::WrongSearch, ::QuantizedSeries) = 0
+function WaitingTimes.waiting_times!(τ::AbstractVector, s::QuantizedSeries, δ::Threshold,
+        ::WrongSearch; workspace = nothing)
+    return fill!(τ, zero(eltype(τ)))
+end
+
+"quickstart configuration in `dir` with explicit thresholds, reference checks and limits"
+function quickstart_variant(dir, name; values = [0.0005, 0.001, 0.0015, 0.002],
+        reference_checks = 0, limits = Dict{String, Any}())
+    isdir(joinpath(dir, "datasets")) ||
+        cp(joinpath(CONFIGS, "datasets"), joinpath(dir, "datasets"))
+    base = TOML.parsefile(joinpath(CONFIGS, "quickstart.toml"))
+    base["input"]["path"] = load_settings(joinpath(CONFIGS, "quickstart.toml")).input_path
+    base["thresholds"] = Dict{String, Any}("mode" => "explicit", "values" => values)
+    base["algorithm"]["reference_checks"] = reference_checks
+    merge!(base["limits"], limits)
+    base["run"]["checkpoint_seconds"] = 0.0   # checkpoint after every chunk
+    base["output"]["root"] = joinpath(dir, "collections")
+    path = joinpath(dir, name * ".toml")
+    open(io -> TOML.print(io, base), path, "w")
+    return path
+end
+
+"the only collection directory under `dir`/collections"
+function only_collection(dir)
+    only(filter(isdir, readdir(joinpath(dir, "collections"); join = true)))
+end
+
+@testset "Resumable generation and reference comparison" begin
+    @testset "Interrupted run and resume" begin
+        mktempdir() do dir
+            settings = load_settings(quickstart_variant(dir, "four"))
+            FAILING_CALLS[] = 0
+            @test_throws ErrorException generate(settings; kernel = FailingSearch(2))
+            cdir = only_collection(dir)
+            index = read_index(cdir)
+            @test [e["delta"] for e in index] == ["0.0005", "0.0010"]
+            @test all(e -> isfile(joinpath(cdir, e["file"])), index)
+            records = filter(
+                f -> endswith(f, ".toml") && !endswith(f, ".config.toml") &&
+                     !endswith(f, ".manifest.toml"),
+                readdir(joinpath(cdir, "sessions")))
+            interrupted = TOML.parsefile(joinpath(cdir, "sessions", only(records)))
+            @test interrupted["status"] == "running"
+            @test load_collection(cdir).id == basename(cdir)   # loadable while interrupted
+            handle = generate(settings)
+            @test handle.id == basename(cdir) && length(handle.computed) == 2 &&
+                  length(handle.skipped) == 2
+            index = read_index(cdir)
+            @test length(index) == 4
+            @test all(e -> e["session"] == interrupted["id"], index[1:2])
+            session = TOML.parsefile(joinpath(cdir, "sessions", handle.session * ".toml"))
+            @test session["status"] == "completed"
+            @test length(thresholds(load_collection(cdir))) == 4
+        end
+    end
+
+    @testset "Early reference check" begin
+        mktempdir() do dir
+            settings = load_settings(quickstart_variant(dir, "wrong"; reference_checks = 1))
+            @test_throws ErrorException generate(settings; kernel = WrongSearch())
+            partitions = joinpath(only_collection(dir), "distributions")
+            @test !isdir(partitions) || isempty(readdir(partitions))
+        end
+    end
+
+    @testset "Memory accounting" begin
+        s = QuantizedSeries(rounded_walk(StableRNG(3), 2_000), 2)
+        Tv, Tt = eltype(s.values), eltype(s.times)
+        for alg in (NaiveSearch(), GuardedSearch(), SegmentTreeSearch(), FenwickSweep(),
+            StreamingSearch(), DeviceSearch())
+            bytes = estimate_memory_bytes(s, alg)
+            @test bytes >=
+                  WaitingTimes.workspace_bytes(alg, s) +
+                  length(s) * (sizeof(Tv) + 2 * sizeof(Tt))
+            @test estimate_memory_bytes(s, alg; store_waiting_times = true) > bytes
+        end
+        mktempdir() do dir
+            path = quickstart_variant(dir, "tight";
+                limits = Dict{String, Any}("max_ram_gb" => 1e-9))
+            err = try
+                run_pipeline(path)
+                nothing
+            catch e
+                e
+            end
+            @test err isa ArgumentError && occursin("max_ram_gb", err.msg)
+        end
+    end
+
+    @testset "Validation of several kernels" begin
+        mktempdir() do dir
+            settings = load_settings(quickstart_variant(dir, "validate"))
+            report = validate(settings; deltas = [Threshold(5, 4), Threshold(20, 4)],
+                kernels = ["naive" => NaiveSearch(), "tree" => SegmentTreeSearch()])
+            @test length(report["kernels"]) == 2
+            @test all(k -> k["equal"] && k["n_checked"] == 2, report["kernels"])
+            @test report["all_equal"] && length(report["results"]) == 4
+        end
+    end
+
+    @testset "Session record of a completed run" begin
+        mktempdir() do dir
+            handle = run_pipeline(quickstart_variant(dir, "checked"; reference_checks = 1))
+            record = TOML.parsefile(joinpath(handle.dir, "sessions", handle.session *
+                                                                     ".toml"))
+            @test record["status"] == "completed"
+            @test length(record["reference_checks"]) == 1
+            check = only(record["reference_checks"])
+            @test check["early"] == true && check["equal"] && check["delta"] == "0.0020"
+        end
+    end
 end

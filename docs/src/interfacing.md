@@ -5,7 +5,7 @@ settings: a series in memory, a collection on disk, or a live stream. The
 rest (configuration, provenance, storage layout, orchestration) is
 infrastructure for reproducible batch runs.
 
-## In memory: three calls
+## In memory
 
 ```julia
 using WaitingTimes
@@ -32,7 +32,7 @@ With Distributions.jl loaded, `WaitingTimes.discrete_distribution(d)` is a
 and `rand`; expanding the support by its counts gives the sample itself,
 ready for `fit_mle` or any other estimator.
 
-## On disk: a collection
+## On disk
 
 A run of the pipeline writes a collection directory whose `README.md`
 describes its own files. From Julia:
@@ -50,7 +50,7 @@ d = distribution(c, threshold(1.0, c.digits))   # or by Threshold
 summary_table(c)                          # one row per threshold: counts and statistics
 s = load_series(c)                        # the prepared QuantizedSeries, as stored
 c.time_axis                               # :elapsed or :index
-WaitingTimes.class_counts(c, "1.0")       # (support, exact, gap_crossing) per support value
+class_counts(c, "1.0")                    # (support, exact, gap_crossing) per support value
 WaitingTimes.censoring_histogram(c, "1.0")   # (lower, count) of the right-censored indices
 WaitingTimes.segment_lengths(c)           # runs of observations between gaps
 WaitingTimes.record_length(c)             # grid positions from the first to the last observation
@@ -60,47 +60,42 @@ c.metadata["producer"]                    # code identity of WaitingTimes in the
 ```
 
 `class_counts` and `censoring_histogram` return `nothing` for a collection of
-provenance schema 2. With the segment lengths ``L_s`` the number of index
-pairs `k` observations apart inside one segment, the erosion weight
-``w(k) = \sum_s (L_s - k)_+``, follows without the series. `describe(s)`
+provenance schema 2. The segment lengths ``L_s`` give the erosion weight
+``w(k) = \sum_s (L_s - k)_+``, the number of index pairs `k` observations
+apart inside one segment, without the series. `WaitingTimes.describe(s)`
 summarises a series (observations, record length, time span, value
 statistics, sampling step, gaps by kind), and with CairoMakie loaded
 `WaitingTimes.plot_values(s)` draws its value histogram.
 
-A collection generated with `[input].source_descriptor` names its source:
-`source_descriptor(c)` returns the descriptor's table (for a
-DeepSpaceTelemetry.jl run `run_id`, `package_version`, `git_tree_sha1`,
-`git_dirty`, `git_commit`, `config_sha256`, `rng_seed`, the checksums of the
-run's tables; the producer's code is keyed by `git_tree_sha1` with
-`git_dirty = false`, and `git_commit` is filled when the producer was pinned
-by a full commit hash), and `source.toml` in the collection directory is the
-file as the producer wrote it. A key the descriptor lacks is unknown.
-`source_summary(c)` gives the same identity for every producer: `producer`,
-`producer_version`, `git_tree_sha1`, `git_dirty`, `git_commit`, `identity`,
-and the version check (`producer_compat`, `compat_checked`,
-`compat_satisfied`). A downstream tool keys a collection's producer by
-`git_tree_sha1` and `git_dirty`, shows `git_commit` when it is not empty, and
-reports a source without `git_tree_sha1` (DeepSpaceTelemetry.jl 2.6.0 and
-earlier, MarketTickStreamer.jl) as having no code identity.
+A collection generated with `[input].source_descriptor` names its source.
+`source_descriptor(c)` returns the descriptor's table, and `source.toml` in
+the collection directory is the file as the producer wrote it; for a
+DeepSpaceTelemetry.jl run the table holds `run_id`, `package_version`,
+`git_tree_sha1`, `git_dirty`, `git_commit`, `config_sha256`, `rng_seed` and
+the checksums of the run's tables. A key the descriptor lacks is unknown.
+`source_summary(c)` gives the same identity for every producer
+([Source descriptors](@ref)). A downstream tool keys a collection's producer
+by `git_tree_sha1` and `git_dirty`, shows `git_commit` when it is not empty,
+and reports a source without `git_tree_sha1` (DeepSpaceTelemetry.jl 2.6.0
+and earlier, MarketTickStreamer.jl) as having no code identity.
 
 ## The public contract
 
 Downstream tools may rely on the exported names and on those declared
-`public`, among them the read side of collections (`load_collection`,
-`thresholds`, `distribution`, `class_counts`, `censoring_histogram`,
-`source_descriptor`, `source_summary`, `segment_lengths`, `record_length`),
-the series tools (`classify`, `gap_table`, `observed_mask`, `describe`), the
-accessors of a distribution (`support`, `counts`, `probabilities`,
-`cumulative`, `survival`, `nsamples`, `ks_distance`), the figure functions
-of the CairoMakie extension (`figure_theme`, `decade_ticks`, `save_figure`,
-`plot_series`, `plot_distribution`, `plot_values`), and the provenance and
-naming helpers (`Provenance.artefact_id`, `content_hash`, `canonical_toml`,
-`git_state`, `hardware_fingerprint`, `backup_existing!`, `session_id`,
-`write_toml`, `Naming.artefact_name`). The field layout of
-[`WaitingTimeDistribution`](@ref) (twelve fields, `horizon` last) and its
-constructors, the twelve-argument one and the eleven-argument one without a
-horizon, are part of the contract, as are the file layout and column names
-of a collection of provenance schema 3.
+`public`, among them
+
+| Group | Names |
+|---|---|
+| read side of collections | `load_collection`, `thresholds`, `distribution`, `class_counts`, `censoring_histogram`, `source_descriptor`, `source_summary`, `segment_lengths`, `record_length` |
+| series tools | `classify`, `gap_table`, `observed_mask`, `describe` |
+| accessors of a distribution | `support`, `counts`, `probabilities`, `cumulative`, `survival`, `nsamples`, `ks_distance` |
+| figures (CairoMakie extension) | `figure_theme`, `decade_ticks`, `save_figure`, `plot_series`, `plot_distribution`, `plot_values` |
+| provenance and naming | `Provenance.artefact_id`, `content_hash`, `canonical_toml`, `git_state`, `hardware_fingerprint`, `backup_existing!`, `Naming.artefact_name` |
+
+The field layout of [`WaitingTimeDistribution`](@ref) (twelve fields,
+`horizon` last) and its twelve- and eleven-argument constructors, the latter
+without a horizon, are part of the contract, as are the file layout and
+column names of a collection of provenance schema 3.
 
 Two lower-level readers remain for tabular work:
 
@@ -112,16 +107,16 @@ table = load_distributions(dir; deltas = ["1.0"])    # a subset
 stats = read_index(dir)                              # per-threshold counts and statistics
 ```
 
-From any language: the partitions `distributions/delta=<δ>.csv` (or Arrow)
-are plain tables with a header row, `delta` in the file name has exactly
-`digits` decimals, `censoring/delta=<δ>` holds the censoring histograms,
+Outside Julia, the partitions `distributions/delta=<δ>.csv` (or Arrow) are
+plain tables with a header row; `delta` in the file name has exactly
+`digits` decimals. `censoring/delta=<δ>` holds the censoring histograms,
 `gaps.csv` and `segments.csv` the gaps with their kinds and the segments
 between them, and `summary.csv` the per-threshold statistics.
 
 ### The format of the original analysis
 
 Tools written against the 2024 generator read one space-delimited file per
-threshold, `WTS_<id>_deltais<δ>.dat`, with the columns `time pdf cdf`.
+threshold, `WTS_<slug>_deltais<δ>.dat`, with the columns `time pdf cdf`.
 [`export_legacy`](@ref) writes exactly those files from a collection, so an
 existing tool can consume a new collection unchanged:
 
@@ -129,7 +124,7 @@ existing tool can consume a new collection unchanged:
 export_legacy(c, "outputData/ftEURUSD_clsng_raw"; slug = "ftEURUSD_clsng_raw")
 ```
 
-## Live: an online estimator
+## Live
 
 [`OnlineWaitingTimes`](@ref) keeps one streaming state per threshold and
 consumes raw `(time, value)` samples; memory is set by the pending indices,
@@ -175,25 +170,24 @@ evaluation; memory stays below twice the samples within one horizon.
 `status(est)` reports the evicted and unreachable indices per threshold.
 
 The lower-level pieces remain available: a [`StreamingState`](@ref) at one
-threshold fed with [`update!`](@ref), and a
+threshold fed with [`update!`](@ref WaitingTimes.update!), and a
 [`DistributionAccumulator`](@ref) turned into a distribution by
 [`empirical_distribution`](@ref).
 
 ## Worked consumers
 
-`examples/` holds three runnable consumers with their own environment:
+`examples/` holds three runnable consumers with their own environment.
 `tick_stream.jl` drives the online estimator from a `Channel{Trade}` of
 MarketTickStreamer.jl (a synthetic tape, a replayed recording or a followed
-session) under the producer's snapshot convention, checks it against the
-batch result on the same ticks and takes the session through the producer's
-persistence (raw sink, sidecar, compaction, corpus read); `telemetry_run.jl`
-runs a DeepSpaceTelemetry.jl mission on the tick clock, reads its run
-directory through the producer's adapter into a series whose gaps are the
-holes the run declares in `masks/gaps.csv` (lost, undelivered, pruned, not
-generated),
-checks them against the gaps found from the sample spacing, and generates a
-collection that carries the run's `descriptor.toml` as its source;
-`published_fits.jl` reproduces Table 1 of the paper with the fitting recipe
-of the 2024 analysis (`legacy_fit.jl`) on the shipped configurations. The
-[Downstream example](@ref) puts the in-memory pieces together for a model
-fit.
+session) under the producer's snapshot convention and checks it against the
+batch result on the same ticks; it also takes the session through the
+producer's persistence (raw sink, sidecar, compaction, corpus read).
+`telemetry_run.jl` runs a DeepSpaceTelemetry.jl mission on the tick clock and
+reads its run directory through the producer's adapter. The gaps of the
+series are the holes the run declares in `masks/gaps.csv` (lost,
+undelivered, pruned, not generated), checked against the gaps found from the
+sample spacing, and the generated collection carries the run's
+`descriptor.toml` as its source. `published_fits.jl` reproduces Table 1 of
+the paper with the fitting recipe of the 2024 analysis (`legacy_fit.jl`) on
+the shipped configurations. The [Downstream example](@ref) puts the
+in-memory pieces together for a model fit.

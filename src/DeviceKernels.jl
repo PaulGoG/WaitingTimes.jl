@@ -1,24 +1,31 @@
-# Device search: the naive scan as a KernelAbstractions kernel, one work-item
-# per index, runnable on the multi-threaded CPU backend and on every GPU
-# backend registered by the extensions.
+# Device search: DeviceSearch, its workspace type and the backend selection; the
+# kernel itself lives in ext/WaitingTimesKernelAbstractionsExt.jl.
 
-using .Backends: get_best_backend, to_backend
+using .Backends: get_best_backend
 
 """
-    DeviceSearch(backend = CPU())
+    DeviceSearch(backend = get_best_backend(; prefer = :none))
 
-The naive scan as a KernelAbstractions kernel: one work-item per index scans
+The guarded scan as a KernelAbstractions kernel: one work-item per index scans
 forward from its position until the target is reached, after an O(1)
-censoring test on the host-computed suffix maxima. The CPU backend is always
-available; GPU backends come from loading CUDA, oneAPI, AMDGPU or Metal.
-Results equal [`NaiveSearch`](@ref) bit for bit. Work is that of the guarded
-scan ([`scan_work`](@ref) with `guarded = true`); as a reference kernel it is
-bounded by `[limits].max_reference_work` before a check is launched.
+censoring test on the host-computed suffix maxima. Provided by the
+KernelAbstractions extension (`using KernelAbstractions`) on its CPU backend
+and on every GPU backend registered by the CUDA, oneAPI, AMDGPU or Metal
+extension. Results equal [`NaiveSearch`](@ref) bit for bit. Work is that of
+the guarded scan ([`scan_work`](@ref) with `guarded = true`); as a reference
+kernel it is bounded by `[limits].max_reference_work` before a check is
+launched.
 """
-struct DeviceSearch{B <: Backend} <: AbstractSearch
+struct DeviceSearch{B} <: AbstractSearch
     backend::B
 end
-DeviceSearch() = DeviceSearch(CPU())
+DeviceSearch() = DeviceSearch(get_best_backend(; prefer = :none))
+
+# values, times, suffix maxima and result buffer on the backend: host memory on
+# the CPU backend, device memory on a GPU (bounded there by [limits].max_vram_gb)
+function workspace_bytes(::DeviceSearch, s::QuantizedSeries{Tv, Tt}) where {Tv, Tt}
+    length(s) * (2 * sizeof(Tv) + 2 * sizeof(Tt))
+end
 
 """
     DeviceWorkspace
@@ -41,59 +48,16 @@ struct DeviceWorkspace{Q, T, M, R}
     N::Int
 end
 
-function workspace(alg::DeviceSearch, s::QuantizedSeries{Tv, Tt}) where {Tv, Tt}
-    N = length(s)
-    return DeviceWorkspace(
-        to_backend(s.values, alg.backend), to_backend(s.times, alg.backend),
-        to_backend(suffix_maximum(s.values), alg.backend),
-        fill!(KernelAbstractions.allocate(alg.backend, Tt, N), zero(Tt)), N)
-end
-
-@kernel function waiting_times_kernel!(τ, @Const(q), @Const(t), @Const(M), d, N::Int)
-    i = @index(Global, Linear)
-    @inbounds if i < N
-        target = q[i] + d
-        if target > M[i + 1]
-            τ[i] = zero(eltype(τ))
-        else
-            j = i + 1
-            while q[j] < target
-                j += 1
-            end
-            τ[i] = t[j] - t[i]
-        end
-    elseif i == N
-        τ[i] = zero(eltype(τ))
-    end
-end
-
 """
 Device access is serialised: GPU drivers are not reliably safe under
 concurrent multi-task launches (observed with Level Zero).
 """
 const DEVICE_LOCK = ReentrantLock()
 
-function waiting_times!(τ::AbstractVector{Tt}, s::QuantizedSeries{Tv, Tt}, δ::Threshold,
-        alg::DeviceSearch; workspace::Union{Nothing, DeviceWorkspace} = nothing) where {
-        Tv, Tt}
-    N = length(s)
-    length(τ) == N || throw(DimensionMismatch("τ has length $(length(τ)), series has $N"))
-    d = check_threshold(s, δ)
-    ws = workspace === nothing ? WaitingTimes.workspace(alg, s) : workspace
-    ws.N == N || throw(DimensionMismatch("workspace was built for another series"))
-    lock(DEVICE_LOCK) do
-        kernel = waiting_times_kernel!(alg.backend)
-        kernel(ws.result, ws.values, ws.times, ws.suffix, d, N; ndrange = N)
-        KernelAbstractions.synchronize(alg.backend)
-        copyto!(τ, Array(ws.result))
-    end
-    return τ
-end
-
 """
 $(TYPEDSIGNATURES)
 
-Device search on the backend selected by `backend` (`:none` for the CPU,
+[`DeviceSearch`](@ref) on the backend selected by `backend` (`:none` for the CPU,
 `:auto` for the first functional GPU, or a named backend), following
 [`Backends.get_best_backend`](@ref).
 """

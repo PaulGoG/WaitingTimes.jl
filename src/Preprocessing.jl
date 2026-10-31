@@ -13,12 +13,14 @@ using Dates: DateTime, DateFormat, Dates, unix2datetime
 using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
 using Statistics: mean, median, quantile, std
 using UnicodePlots: UnicodePlots
-using ..WaitingTimes: MAX_DIGITS, AbstractSearch, PreparationRecord, QuantizedSeries,
-                      SegmentTreeSearch, TIME_UNITS, Threshold, declare_gaps, detect_gaps,
-                      merge_gaps,
-                      empirical_distribution, ks_distance, record!, threshold,
+using ..WaitingTimes: MAX_DIGITS, GRID_TOLERANCE, AbstractSearch, PreparationRecord,
+                      QuantizedSeries, SegmentTreeSearch, TIME_UNITS, Threshold,
+                      check_digits,
+                      declare_gaps, detect_gaps, merge_gaps,
+                      empirical_distribution, ks_distance, on_grid, threshold,
                       waiting_times, with_step
 using ..Provenance: file_sha256, read_toml
+using ..Config: PREPROCESSING_OPS
 
 export RawSeries, read_series, select_range, exclude_intervals, round_values,
        trailing_mean_fluctuations, log_returns, log_levels, differences,
@@ -68,16 +70,19 @@ const UNIT_NANOSECONDS = Dict(:nanosecond => 1, :microsecond => 10^3, :milliseco
 """
 $(TYPEDSIGNATURES)
 
-Read a series from `path`. `format` is `:csv`, `:dat` (space-delimited with a
-header), `:arrow`, `:tick` (MarketTickStreamer compacted files: `time_ns` and
-`price`) or `:auto` (from the extension). Columns are selected by 1-based index
-or name. Time stamps are parsed with `time_format` when it is given; otherwise
-they are integers in `epoch_unit` or ISO 8601 date-times with up to nine
-fractional digits. They are converted to `time_unit` since the UNIX epoch and
-must be exact multiples of the unit. Values that are absent or unparsable
-become `missing` under `missing_policy = :drop` or raise under `:error`. Equal
-time stamps are resolved by `tie_policy` (`:error`, `:first`, `:last`,
-`:mean`).
+Read a series from `path`. `format` is `:csv`, `:dat` (space-delimited unless
+`delimiter` is given, runs of delimiters collapsed), `:arrow`, `:tick`
+(MarketTickStreamer processed day files: time column
+`time_ns` unless given, value column `price` when `value_column = ""`, integer
+nanosecond stamps, and `time_unit = :sample` taken as `:nanosecond`) or `:auto`
+(from the file extension: `.csv`, `.dat`, `.arrow`, `.feather`). Columns are
+selected by 1-based index or name. Time stamps are parsed with `time_format`
+when it is given; otherwise they are integers in `epoch_unit` or ISO 8601
+date-times with up to nine fractional digits. They are converted to
+`time_unit` since the UNIX epoch, must be exact multiples of the unit, and
+must not decrease. Values that are absent or unparsable become `missing` under
+`missing_policy = :drop` or raise under `:error`. Equal time stamps are
+resolved by `tie_policy` (`:error`, `:first`, `:last`, `:mean`).
 """
 function read_series(path::AbstractString; format::Symbol = :auto,
         value_column::Union{Integer, AbstractString},
@@ -104,7 +109,7 @@ function read_series(path::AbstractString; format::Symbol = :auto,
         times, epoch = parse_times(column(table, time_column, "time_column"), time_unit,
             epoch_unit, time_format)
     end
-    record!(record, :read_series,
+    record = with_step(record, :read_series,
         Dict{String, Any}("format" => String(format), "value_column" => value_column,
             "time_column" => time_column, "time_unit" => String(time_unit),
             "epoch_unit" => String(epoch_unit), "missing_policy" => String(missing_policy),
@@ -244,7 +249,8 @@ $(TYPEDSIGNATURES)
 
 Resolve equal time stamps: `:error` rejects them, `:first`/`:last` keep one
 observation, `:mean` averages the observed values. Rows are merged, so the
-series length may shrink.
+series length may shrink. Time stamps must be non-decreasing; a series
+without times is returned unchanged.
 """
 function collapse_ties(rs::RawSeries, policy::Symbol)
     rs.times === nothing && return rs
@@ -302,8 +308,8 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Surgical removal of blocks: rows whose time (or index) lies in any `[a, b)`
-interval are removed. With `splice = true` the time axis closes over each cut
+Remove the rows whose time (or index) lies in any `[a, b)` interval. With
+`splice = true` (the default) the time axis closes over each cut
 (later times shift back by the cut length, so no elapsed time is counted
 across it); with `splice = false` the rows are set to `missing` and the cut
 remains a gap.
@@ -373,8 +379,7 @@ this step before a transformation reproduces that order, while the final
 quantisation always rounds once more at the end of the pipeline.
 """
 function round_values(rs::RawSeries; digits::Integer)
-    0 <= digits <= MAX_DIGITS ||
-        throw(ArgumentError("digits must lie in 0:$(MAX_DIGITS), got $digits"))
+    check_digits(digits)
     values = Union{Missing, Float64}[ismissing(v) ? missing : round(v; digits = digits)
                                      for v in rs.values]
     return with_values(rs, values, :round, Dict("digits" => Int(digits)),
@@ -385,12 +390,14 @@ end
 $(TYPEDSIGNATURES)
 
 Deviation of every observation from the mean of the previous `window`
-observations (the trailing mean ``\\mathrm{RA}_k``); the first observation is
-set to zero. `denominator` selects the normalisation:
+observations, or of all previous ones while fewer exist (the trailing mean
+``\\mathrm{RA}_k``); the first observation is set to zero. `denominator`
+selects the normalisation:
 
 - `:mean`, the percentage fluctuation ``(x_k - \\mathrm{RA}_k) \\cdot 100 / \\mathrm{RA}_k``
   of the original analysis (Pană, Gogîță, Nicolin-Żaczek, Rom. J. Phys. 69,
-  111 (2024), eq. 6), undefined where the trailing mean is not positive;
+  111 (2024), eq. 6, doi:10.59277/RomJPhys.2024.69.111), undefined where the
+  trailing mean is not positive;
 - `:scale`, the deviation divided by the standard deviation of all
   deviations, dimensionless and defined for any series;
 - `:none`, the deviation in data units.
@@ -495,12 +502,12 @@ Logarithmic levels in percent, `100 log(x_k / x_ref)`, of every observation
 against one fixed reference: the first observed value (`reference = :first`)
 or a positive number. Values must be positive; missing observations stay
 missing. The series keeps its path and its trends, so a threshold ``\\delta``
-is a move of ``\\delta`` per cent of the level (to first order), whereas the
+is a move of ``\\delta`` percent of the level (to first order), whereas the
 reference of [`trailing_mean_fluctuations`](@ref) moves with the series. The
 quantisation grid must resolve the typical one-step move, about 0.03 %
 between consecutive BTC minute closes, so three to four decimals or
-`digits = "auto"`. The step records the reference, its value and the unit,
-per cent.
+`digits = "auto"`. The step records the reference, its value and the unit
+(`"percent"`).
 """
 function log_levels(rs::RawSeries; reference::Union{Symbol, Real} = :first)
     reference isa Symbol && reference !== :first &&
@@ -562,8 +569,10 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Remove the rows selected by `remove` (a mask over the rows of `rs`). With
-`splice = false` the value is set to `missing` and its time position remains:
+Remove the rows selected by `remove` (a mask over the rows of `rs`) and record
+the step `op` with `parameters` and `summary`, the latter extended by
+`n_removed`, `fraction_removed` and `positions`. With `splice = false` the
+value is set to `missing` and its time position remains:
 the measurement is discarded as invalid but the time passed, so the cut is a
 recorded gap; this is what the 2024 analysis did (its time column kept the
 original row indices) and what reproduces the published results. With
@@ -640,15 +649,14 @@ its floor at `digits` decimals afterwards. The batches remove whole magnitude
 levels at once, so the removed share exceeds `fraction` by up to one level.
 `fraction = 0.004` is the rule of the 2024 code, with which the published
 tables were computed; the 0.04 % stated in Rom. J. Phys. 69, 111 (2024),
-§2.3, is an omission of the paper. With `splice = false` (the default, as
-the 2024 code) this step reproduces the published Table 1 entries of the
-pruned series; see [`remove_rows`](@ref).
+§2.3 (doi:10.59277/RomJPhys.2024.69.111), is a misprint of the paper. With
+`splice = false` (the default, as in the 2024 code) this step reproduces the
+published Table 1 entries of the pruned series; see [`remove_rows`](@ref).
 """
 function clip_extremes(rs::RawSeries; fraction::Real = 0.004, digits::Integer,
         splice::Bool = false)
     0 < fraction < 1 || throw(ArgumentError("fraction must lie in (0, 1), got $fraction"))
-    0 <= digits <= MAX_DIGITS ||
-        throw(ArgumentError("digits must lie in 0:$(MAX_DIGITS), got $digits"))
+    check_digits(digits)
     idx, x = observed(rs)
     isempty(x) && throw(ArgumentError("the series has no observed value"))
     n_initial = length(rs)
@@ -712,53 +720,51 @@ function clip_sigma(
             "upper" => c + k * s); splice = splice)
 end
 
+"symbol for a textual parameter, the number itself otherwise"
+symbol_or_number(value) = value isa AbstractString ? Symbol(value) : value
+
+"transform of every preprocessing operation: `(rs, p) -> RawSeries`, `p` the step merged over the operation's defaults"
+const STEP_TRANSFORMS = Dict{String, Function}(
+    "select_range" => (rs, p) -> select_range(rs; from = p["from"], to = p["to"]),
+    "exclude_intervals" =>
+        (rs, p) -> exclude_intervals(
+            rs, [Tuple(iv) for iv in p["intervals"]]; splice = p["splice"]),
+    "round" => (rs, p) -> round_values(rs; digits = p["digits"]),
+    "trailing_mean_fluctuations" =>
+        (rs, p) -> trailing_mean_fluctuations(rs;
+            window = p["window"], denominator = Symbol(p["denominator"]),
+            offset = symbol_or_number(p["offset"]),
+            on_nonpositive = Symbol(p["on_nonpositive"])),
+    "log_returns" => (rs, p) -> log_returns(rs),
+    "log_levels" => (rs, p) -> log_levels(rs; reference = symbol_or_number(p["reference"])),
+    "differences" => (rs, p) -> differences(rs),
+    "centered_moving_average" =>
+        (rs, p) -> centered_moving_average(rs; window = p["window"]),
+    "clip_quantile" => (rs, p) -> clip_quantile(rs; q = p["q"], splice = p["splice"]),
+    "clip_extremes" =>
+        (rs, p) -> clip_extremes(rs; fraction = p["fraction"],
+            digits = p["digits"], splice = p["splice"]),
+    "clip_sigma" =>
+        (rs, p) -> clip_sigma(rs; k = p["k"], center = Symbol(p["center"]),
+            scale = Symbol(p["scale"]), splice = p["splice"]),
+    "collapse_ties" => (rs, p) -> collapse_ties(rs, Symbol(p["policy"]))
+)
+
 """
 $(TYPEDSIGNATURES)
 
-Apply preprocessing `steps` (tables with an `op` key) in order. After every
-step the observed values must be finite; a non-finite value aborts naming the
-step and the row.
+Apply preprocessing `steps` (tables with an `op` key) in order, each merged
+over the defaults of its operation in `PREPROCESSING_OPS`. After every step
+the observed values must be finite; a non-finite value aborts naming the step
+and the row.
 """
 function apply_steps(rs::RawSeries, steps::AbstractVector)
     for step in steps
         op = String(step["op"])
-        symbol(key, default) = Symbol(get(step, key, default))
-        if op == "select_range"
-            rs = select_range(rs; from = get(step, "from", -Inf), to = get(step, "to", Inf))
-        elseif op == "exclude_intervals"
-            rs = exclude_intervals(rs, [Tuple(iv) for iv in step["intervals"]];
-                splice = get(step, "splice", true))
-        elseif op == "round"
-            rs = round_values(rs; digits = step["digits"])
-        elseif op == "trailing_mean_fluctuations"
-            offset = get(step, "offset", "none")
-            rs = trailing_mean_fluctuations(rs; window = step["window"],
-                denominator = symbol("denominator", "mean"),
-                offset = offset isa AbstractString ? Symbol(offset) : offset,
-                on_nonpositive = symbol("on_nonpositive", "error"))
-        elseif op == "log_returns"
-            rs = log_returns(rs)
-        elseif op == "log_levels"
-            reference = get(step, "reference", "first")
-            rs = log_levels(rs;
-                reference = reference isa AbstractString ? Symbol(reference) : reference)
-        elseif op == "differences"
-            rs = differences(rs)
-        elseif op == "centered_moving_average"
-            rs = centered_moving_average(rs; window = step["window"])
-        elseif op == "clip_quantile"
-            rs = clip_quantile(rs; q = step["q"], splice = get(step, "splice", false))
-        elseif op == "clip_extremes"
-            rs = clip_extremes(rs; fraction = get(step, "fraction", 0.004),
-                digits = step["digits"], splice = get(step, "splice", false))
-        elseif op == "clip_sigma"
-            rs = clip_sigma(rs; k = get(step, "k", 3), center = symbol("center", "mean"),
-                scale = symbol("scale", "std"), splice = get(step, "splice", false))
-        elseif op == "collapse_ties"
-            rs = collapse_ties(rs, Symbol(step["policy"]))
-        else
+        (haskey(PREPROCESSING_OPS, op) && haskey(STEP_TRANSFORMS, op)) ||
             throw(ArgumentError("unknown preprocessing op $(repr(op))"))
-        end
+        p = merge(PREPROCESSING_OPS[op].defaults, Dict{String, Any}(step))
+        rs = STEP_TRANSFORMS[op](rs, p)::RawSeries
         check_finite(rs, op)
     end
     return rs
@@ -815,7 +821,8 @@ Quantise a prepared series: values to the `digits` grid, missing rows kept as
 elapsed time, gaps detected by `detect` (`:none`, `:cadence` with `cadence`,
 `:threshold` with `threshold`) and merged with `declared` intervals (pairs, or
 named tuples with `kind` and `source` as returned by
-[`read_gap_intervals`](@ref)).
+[`read_gap_intervals`](@ref)). With `narrow = true` the values are stored as
+`Int32` when they fit ([`narrow_integer`](@ref WaitingTimes.narrow_integer)).
 """
 function quantized_series(rs::RawSeries, digits::Integer; detect::Symbol = :cadence,
         cadence::Integer = 1, threshold::Integer = 0,
@@ -929,19 +936,18 @@ Recorded resolution of the observed values: the smallest number of decimals
 `d ≤ max_digits` such that every value lies on the ``10^{-d}`` grid to within
 `tolerance` grid units, or `nothing` when no such `d` exists (values off any
 decimal grid, as after most transformations). Quantising with `digits = d`
-merges no distinct observed values, a coarser grid does, and a finer grid only
-enlarges the integers; `d` is therefore the natural choice of `digits` for a
-series used as recorded.
+reproduces every observed value, a coarser grid moves at least one, and a
+finer grid only enlarges the integers; `d` is therefore the natural choice of
+`digits` for a series used as recorded.
 """
 function resolution_digits(rs::RawSeries; max_digits::Integer = MAX_DIGITS,
-        tolerance::Real = 1e-6)
+        tolerance::Real = GRID_TOLERANCE)
     0 <= max_digits <= MAX_DIGITS ||
         throw(ArgumentError("max_digits must lie in 0:$(MAX_DIGITS), got $max_digits"))
     _, x = observed(rs)
     isempty(x) && throw(ArgumentError("the series has no observed value"))
     for d in 0:max_digits
-        scale = 10.0^d
-        all(v -> abs(v * scale - round(v * scale)) <= tolerance, x) && return Int(d)
+        all(v -> on_grid(v, d; tolerance), x) && return Int(d)
     end
     return nothing
 end
@@ -986,7 +992,7 @@ retained at ``d``, the ratio of the grid step to the increment scale
 distance `ks` between the elapsed distributions at ``d`` and ``d + 1``
 (`missing` when `δ` is not on the ``10^{-d}`` grid). A distance that stays
 below the analysis tolerance from some ``d`` on marks the grids at which the
-product no longer depends on the choice.
+distribution no longer depends on the choice. Returns a `DataFrame`.
 """
 function digits_sensitivity(rs::RawSeries; digits = 0:8, deltas = [0.0],
         kernel::AbstractSearch = SegmentTreeSearch())
@@ -1001,8 +1007,8 @@ function digits_sensitivity(rs::RawSeries; digits = 0:8, deltas = [0.0],
     for d in ds, δ in deltas
 
         s_d = series_at(d)
-        on_grid = abs(δ * 10.0^d - round(δ * 10.0^d)) <= 1e-6
-        ks = on_grid ?
+        δ_on_grid = on_grid(δ, d)
+        ks = δ_on_grid ?
              ks_distance(trial_distribution(s_d, threshold(δ, d), kernel),
             trial_distribution(series_at(d + 1), threshold(δ, d + 1), kernel)) :
              missing
@@ -1025,7 +1031,7 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Choice of `digits` by the rules of the configuration guide. A series whose
+Choice of `digits` for `digits = "auto"`. A series whose
 values lie on a decimal grid (as recorded, rounded, or differenced) takes its
 recorded resolution ([`resolution_digits`](@ref)), raised to `min_digits`
 (the decimals the threshold grid needs). Otherwise the choice is the smallest

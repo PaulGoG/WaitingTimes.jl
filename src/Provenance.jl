@@ -7,7 +7,6 @@ module Provenance
 
 using DocStringExtensions: TYPEDSIGNATURES
 using Dates: DateTime, Dates, UTC, now
-using DrWatson: gitdescribe
 using InteractiveUtils: versioninfo
 using LinearAlgebra: BLAS
 using SHA: SHA1_CTX, digest!, sha1, sha256, update!
@@ -28,8 +27,8 @@ $(TYPEDSIGNATURES)
 
 Parsed configuration with its base file resolved: a top-level
 `base_config = "file.toml"` (relative to the overlay's directory) names a base
-whose tables are deep-merged beneath the overlay's, one level only. The key is
-stripped, so the result is self-contained.
+whose tables are deep-merged beneath the overlay's; the base may not name a
+base of its own. The key is stripped, so the result is self-contained.
 """
 function effective_config(config_path::AbstractString)
     config = TOML.parsefile(config_path)
@@ -76,7 +75,8 @@ toml_ready(x) = string(x)
 """
 $(TYPEDSIGNATURES)
 
-Canonical TOML serialisation (keys sorted, values only) used for hashing.
+Canonical TOML serialisation of `x` for hashing: keys sorted, values
+converted by `toml_ready`.
 """
 canonical_toml(x::AbstractDict) = sprint(io -> TOML.print(io, toml_ready(x); sorted = true))
 
@@ -120,16 +120,12 @@ file_sha256(path::AbstractString) = open(io -> bytes2hex(sha256(io)), path)
 """
 $(TYPEDSIGNATURES)
 
-`git describe`-style state of the repository at `root` (commit, tags, dirty
-flag) via DrWatson, or `"unknown"` outside a repository.
+`git describe --tags --always --dirty` of the repository at `root`, or
+`"unknown"` outside a repository or without git.
 """
 function git_state(root::AbstractString)
-    desc = try
-        gitdescribe(root)
-    catch
-        nothing
-    end
-    return desc === nothing ? "unknown" : String(desc)
+    desc = git_output(root, "describe", "--tags", "--always", "--dirty")
+    return desc === nothing || isempty(desc) ? "unknown" : String(desc)
 end
 
 # --- source identity -----------------------------------------------------------
@@ -439,13 +435,14 @@ end
 """
 Producers whose source descriptors are recognised, with the oldest producer
 version whose file contract this version of WaitingTimes reads: the
-DeepSpaceTelemetry.jl run descriptor (`descriptor.toml`, schema
-`deepspacetelemetry-run/1`, written since 2.5.0) and the MarketTickStreamer.jl
-session sidecar (`<session>.meta.toml`, with the tick files read by
-`format = :tick` since 0.3.0; the file contract is fixed by 1.0.0).
+DeepSpaceTelemetry.jl run descriptor (`descriptor.toml`, written since 2.5.0;
+schema `deepspacetelemetry-run/1`, and `/2` since 3.0.0, read alike) and the
+MarketTickStreamer.jl session sidecar (`<session>.meta.toml`, with the
+processed tick files read by `format = :tick`; the file contract is fixed by
+1.0.0 and kept by 2.0).
 """
 const MINIMUM_PRODUCER_VERSION = Dict("DeepSpaceTelemetry" => v"2.5.0",
-    "MarketTickStreamer" => v"0.3.0")
+    "MarketTickStreamer" => v"1.0.0")
 
 "a recorded commit, with the placeholders some producers write for none mapped to empty"
 commit_or_empty(x) = (c = string(something(x, "")); c in ("unknown", "nothing") ? "" : c)
@@ -471,7 +468,7 @@ function source_summary(descriptor::AbstractDict)
     schema = string(get(descriptor, "schema", ""))
     keys_from = descriptor
     producer = string(get(descriptor, "producer", ""))
-    if schema == "deepspacetelemetry-run/1"
+    if startswith(schema, "deepspacetelemetry-run/")
         producer = "DeepSpaceTelemetry"
     elseif haskey(descriptor, "session") &&
            get(descriptor, "provenance", nothing) isa AbstractDict
@@ -518,7 +515,7 @@ end
 $(TYPEDSIGNATURES)
 
 Write the platform fingerprint text file: `versioninfo`, host totals and,
-when given, the device report of a GPU backend.
+when given, the device report of a GPU backend; returns `path`.
 """
 function write_hardware_fingerprint(path::AbstractString; device_report::AbstractString = "")
     open(path, "w") do io
@@ -557,8 +554,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Session identifier from the UTC wall clock and the first characters of the
-git state.
+Session identifier `<yyyymmddTHHMMSS>_<tag>` from the UTC wall clock and the
+slug of the first 12 characters of `git`; `generate` passes the commit of the
+package code, or its tree hash when no commit is known.
 """
 function session_id(git::AbstractString = "unknown")
     stamp = Dates.format(now(UTC), "yyyymmddTHHMMSS")
@@ -566,7 +564,11 @@ function session_id(git::AbstractString = "unknown")
     return string(stamp, '_', tag)
 end
 
-"parse a TOML file into a dictionary"
+"""
+$(TYPEDSIGNATURES)
+
+Parsed TOML file at `path` as a dictionary; throws on malformed input.
+"""
 read_toml(path::AbstractString) = TOML.parsefile(path)
 
 """

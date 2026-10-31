@@ -18,6 +18,9 @@ prefix.
 struct StreamingSearch <: AbstractSearch end
 
 workspace(::StreamingSearch, ::QuantizedSeries) = nothing
+function workspace_bytes(::StreamingSearch, s::QuantizedSeries{Tv, Tt}) where {Tv, Tt}
+    length(s) * (sizeof(Tv) + 8 + sizeof(Tt))
+end
 
 "heap length below which a state with a horizon is never compacted"
 const MIN_COMPACTION = 1024
@@ -37,8 +40,9 @@ whose target exceeds it cannot resolve and is counted as censored on arrival
 instead of being stored, which leaves every result unchanged as long as the
 data respect the bound. `horizon` is the longest wait, in time units, kept
 pending: an index older than the horizon is evicted and counted as censored,
-so resolved waits satisfy ``\\tau \\le H`` and memory stays below twice the
-number of samples within one horizon.
+so resolved waits satisfy ``\\tau \\le H`` and the heap stays below twice the
+number of samples within one horizon, or `MIN_COMPACTION` entries, whichever
+is larger.
 
 $(TYPEDFIELDS)
 """
@@ -70,6 +74,8 @@ $(TYPEDSIGNATURES)
 
 Fresh state for threshold `δ` with value type `Tv` and time type `Tt`;
 `upper_bound` is on the integer grid, `horizon` in time units.
+`StreamingState(s, δ; upper_bound, horizon)` takes `Tv` and `Tt` from the
+series `s`.
 """
 function StreamingState{Tv, Tt}(
         δ::Threshold; upper_bound::Union{Nothing, Integer} = nothing,
@@ -89,6 +95,7 @@ end
 $(TYPEDSIGNATURES)
 
 Number of indices awaiting a passage (within the horizon, when one is set).
+With a horizon, expired entries are evicted first and counted in `n_evicted`.
 """
 function pending(state::StreamingState)
     state.horizon === nothing || compact!(state)
@@ -99,9 +106,10 @@ end
 $(TYPEDSIGNATURES)
 
 Remove the pending indices older than the horizon at the time of the last
-sample and count them as evicted. Called by [`update!`](@ref) whenever the
-heap has doubled since the previous call, so the cost is amortised
-``O(\\log h)`` per sample.
+sample and count them as evicted. Called by [`pending`](@ref) and by
+[`update!`](@ref) once the heap has doubled since the previous compaction and
+holds at least `MIN_COMPACTION` entries, so the cost is amortised
+``O(\\log h)`` per sample, ``h`` the heap length.
 """
 function compact!(state::StreamingState{Tv, Tt}) where {Tv, Tt}
     H = state.horizon
@@ -193,7 +201,11 @@ function Base.push!(acc::DistributionAccumulator{Tt}, τ::Integer) where {Tt}
     return acc
 end
 
-"number of waiting times accumulated"
+"""
+$(TYPEDSIGNATURES)
+
+Number of waiting times accumulated in `acc`.
+"""
 nsamples(acc::DistributionAccumulator) = sum(values(acc.counts); init = 0)
 
 """
@@ -214,6 +226,7 @@ Distribution of the waiting times accumulated so far, with the accounting of
 the streaming state: candidates are the samples seen but the last, resolved
 indices count as exact (gaps are not known to a stream), the rest (pending,
 evicted at the horizon, above the upper bound) are right-censored.
+`time_unit` labels the support (default `:sample`).
 """
 function empirical_distribution(
         acc::DistributionAccumulator{Tt}, state::StreamingState{Tv, Tt};

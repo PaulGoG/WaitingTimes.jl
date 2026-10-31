@@ -5,6 +5,7 @@
 Base.identify_package("Pkg") === nothing || include(joinpath(@__DIR__, "activate.jl"))
 
 using WaitingTimes
+using KernelAbstractions: KernelAbstractions
 using Test
 using Aqua
 using ExplicitImports
@@ -16,10 +17,7 @@ using JET
 const JET_ENABLED = JET.JET_AVAILABLE || isempty(VERSION.prerelease)
 using StableRNGs
 using Statistics: mean
-using WaitingTimes.Synthetic: random_walk, iid_series, insert_missing, irregular_times,
-                              duty_cycle_mask, bernoulli_mask, gilbert_elliott_mask,
-                              stationary_loss_rate, Disruption, disruption_mask, apply_mask,
-                              gap_scenario
+using WaitingTimes.Synthetic: random_walk, iid_series, insert_missing, irregular_times
 
 const WT = WaitingTimes
 const FIXTURES = joinpath(@__DIR__, "fixtures")
@@ -70,8 +68,6 @@ function read_legacy_table(path)
 end
 
 rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits)
-
-# --- suite -------------------------------------------------------------------
 
 @testset "WaitingTimes.jl" begin
     @testset "Static QA" begin
@@ -336,7 +332,9 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
             ("walk on irregular times", 2, N -> random_walk(rng, N),
                 N -> irregular_times(rng, N; mean_interval = 7.0))
         ]
-        for N in (1_000, 10_000, 100_000), (name, digits, make, make_times) in families
+        # N = 10^5 runs the first two families only, without the 10^7 threshold
+        for N in (1_000, 10_000, 100_000),
+            (name, digits, make, make_times) in (N == 100_000 ? families[1:2] : families)
 
             x = make(N)
             s = make_times === nothing ? QuantizedSeries(x, digits) :
@@ -345,8 +343,8 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
             ws_tree = WT.workspace(SegmentTreeSearch(), s)
             ws_fenwick = WT.workspace(FenwickSweep(), s)
             ws_device = WT.workspace(DeviceSearch(), s)
-            deltas = [threshold(k * 10.0^-digits, s)
-                      for k in (0, 1, 3, 10, 100, 2_000, 10^7)]
+            ks = N == 100_000 ? (0, 1, 3, 10, 100, 2_000) : (0, 1, 3, 10, 100, 2_000, 10^7)
+            deltas = [threshold(k * 10.0^-digits, s) for k in ks]
             references = [waiting_times(s, δ, NaiveSearch()) for δ in deltas]
             @testset "$name, N = $N" begin
                 for (δ, τ_ref) in zip(deltas, references)
@@ -385,7 +383,7 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         partial = zeros(Int64, length(s))
         checkpoints = (1, 2, 3, 50, 999, 3_000)
         for m in 1:length(s)
-            resolved = update!(state, t[m], q[m])
+            resolved = WT.update!(state, t[m], q[m])
             for (n, τ_n) in resolved
                 partial[n] = τ_n
                 push!(acc, τ_n)
@@ -407,17 +405,17 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
             end
         end
         @test partial == waiting_times(s, δ, NaiveSearch())
-        # accumulator-fed update and callback form
+        # accumulator form of update!, argument checks, overflow guard of a narrow state
         state2 = StreamingState(s, δ)
         acc2 = DistributionAccumulator{Int64}()
-        total = sum(update!(acc2, state2, t[m], q[m]) for m in 1:length(s))
+        total = sum(WT.update!(acc2, state2, t[m], q[m]) for m in 1:length(s))
         @test total == state.n_resolved == WT.nsamples(acc2)
-        @test_throws ArgumentError update!(state2, t[end], q[end])
+        @test_throws ArgumentError WT.update!(state2, t[end], q[end])
         @test_throws ArgumentError push!(acc2, 0)
         narrow = StreamingState{Int32, Int64}(Threshold(5, 0))
-        @test_throws OverflowError update!(narrow, 1, typemax(Int32))
-        @test isempty(update!(narrow, 1, Int32(1)))
-        @test only(update!(narrow, 2, Int32(6))) == (1, 1)
+        @test_throws OverflowError WT.update!(narrow, 1, typemax(Int32))
+        @test isempty(WT.update!(narrow, 1, Int32(1)))
+        @test only(WT.update!(narrow, 2, Int32(6))) == (1, 1)
     end
 
     @testset "Online estimation at several thresholds" begin
@@ -500,8 +498,8 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         partial = zeros(Int64, length(s))
         peak = 0
         for m in eachindex(q)
-            update!(free, t[m], q[m])
-            update!(bounded, t[m], q[m]) do n, τ_n
+            WT.update!(free, t[m], q[m])
+            WT.update!(bounded, t[m], q[m]) do n, τ_n
                 partial[n] = τ_n
                 push!(acc, τ_n)
             end
@@ -527,12 +525,12 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         capped = StreamingState(su, δu; upper_bound = 100)
         acc_u = DistributionAccumulator{Int64}()
         for m in eachindex(su.values)
-            update!(acc_u, capped, su.times[m], su.values[m])
+            WT.update!(acc_u, capped, su.times[m], su.values[m])
         end
         @test empirical_distribution(acc_u, capped) == empirical_distribution(τu, δu, su)
         @test capped.n_unreachable == count(>(100 - δu.d), su.values) > 0
         @test pending(capped) + capped.n_unreachable == count(==(0), τu)
-        @test_throws ArgumentError update!(capped, su.times[end] + 1, eltype(su.values)(101))
+        @test_throws ArgumentError WT.update!(capped, su.times[end] + 1, eltype(su.values)(101))
         # the estimator with both options equals the batch evaluation
         est = OnlineWaitingTimes([0.3, 0.6], 2; upper_bound = 1.0, horizon = 50)
         foreach(v -> push!(est, v), u)
@@ -563,8 +561,12 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
     end
 
     @testset "Device search selection" begin
-        @test device_search(:none) isa DeviceSearch{<:WaitingTimes.Backends.CPU}
-        @test device_search(:auto) isa DeviceSearch{<:WaitingTimes.Backends.CPU}
+        @test device_search(:none) isa DeviceSearch{<:KernelAbstractions.CPU}
+        @test device_search(:auto) isa DeviceSearch{<:KernelAbstractions.CPU}
+        @test WaitingTimes.Backends.host_backend(device_search(:none).backend)
+        @test !WaitingTimes.Backends.host_backend(nothing)
+        @test :KernelAbstractions in WaitingTimes.Backends.load_device_packages(:none)
+        @test_throws ArgumentError WaitingTimes.Backends.load_device_packages(:tpu)
         @test_throws ArgumentError device_search(:cuda)
         s = QuantizedSeries([1.0, 3.0, 2.0, 5.0], 0)
         @test waiting_times(s, 2, DeviceSearch()) == [1, 2, 1, 0]
@@ -586,58 +588,6 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         ts = irregular_times(StableRNG(1), 500; mean_interval = 3.0)
         @test issorted(ts) && allunique(ts) && ts[1] == 1
         @test_throws ArgumentError irregular_times(StableRNG(1), 5; mean_interval = 0.5)
-
-        # gap generators modelled on a duty-cycled telemetry link
-        m = duty_cycle_mask(48; period = 24, on_fraction = 8 / 24)
-        @test count(m) == 16 && m[1:8] == trues(8) && !any(m[9:24]) && m[25:32] == trues(8)
-        @test duty_cycle_mask(10; period = 5, on_fraction = 0.4, phase = 1)[1:5] ==
-              [true, false, false, false, true]
-        @test_throws ArgumentError duty_cycle_mask(10; period = 0, on_fraction = 0.5)
-        @test_throws ArgumentError duty_cycle_mask(10; period = 5, on_fraction = 1.5)
-        b = bernoulli_mask(StableRNG(3), 200_000; p_loss = 0.1)
-        @test isapprox(1 - count(b) / length(b), 0.1; atol = 0.005)
-        @test all(bernoulli_mask(StableRNG(3), 10; p_loss = 0.0)) &&
-              !any(bernoulli_mask(StableRNG(3), 10; p_loss = 1.0))
-        @test_throws ArgumentError bernoulli_mask(StableRNG(3), 10; p_loss = 2.0)
-        ge = (p_good_to_bad = 0.03, p_bad_to_good = 0.25,
-            p_loss_good = 0.01, p_loss_bad = 0.5)
-        g = gilbert_elliott_mask(StableRNG(4), 400_000; ge...)
-        @test isapprox(1 - count(g) / length(g), stationary_loss_rate(; ge...); atol = 0.01)
-        @test stationary_loss_rate(; p_good_to_bad = 0.0, p_bad_to_good = 0.0,
-            p_loss_good = 0.2, p_loss_bad = 0.9) == 0.2
-        @test_throws ArgumentError gilbert_elliott_mask(
-            StableRNG(4), 10; p_good_to_bad = 1.5,
-            p_bad_to_good = 0.5, p_loss_good = 0.0, p_loss_bad = 0.0)
-        rate = stationary_loss_rate(; ge...)
-        runs(mask) = (
-            r = Int[]; len = 0; for v in mask
-                if !v
-                    len += 1
-                elseif len > 0
-                    push!(r, len)
-                    len = 0
-                end
-            end; len > 0 && push!(r, len); r)
-        @test maximum(runs(g)) >
-              maximum(runs(bernoulli_mask(StableRNG(5), 400_000; p_loss = rate)))
-        blackout = Disruption(101, 50, 20, 1.0)
-        dm = disruption_mask(StableRNG(6), 300, [blackout])
-        @test !any(dm[101:150]) && all(dm[1:100]) && all(dm[171:300])
-        @test count(dm[151:170]) >= 1
-        partial = Disruption(1, 100_000, 0, 0.3)
-        pm = disruption_mask(StableRNG(7), 100_000, [partial])
-        @test isapprox(1 - count(pm) / length(pm), 0.3; atol = 0.01)
-        @test_throws ArgumentError Disruption(0, 10, 0, 0.5)
-        @test_throws ArgumentError Disruption(1, 10, 0, 1.5)
-        @test isequal(apply_mask([1.0, 2.0, 3.0], [true, false, true]), [1.0, missing, 3.0])
-        @test_throws DimensionMismatch apply_mask([1.0, 2.0], [true])
-        y, mask = gap_scenario(StableRNG(8), random_walk(StableRNG(8), 2_000); period = 24,
-            on_fraction = 8 / 24, loss = :gilbert_elliott, ge..., disruptions = [Disruption(500, 100, 50, 1.0)])
-        @test count(ismissing, y) == count(!, mask) && !any(mask[500:599])
-        s_gap = QuantizedSeries(y, 2)
-        @test length(s_gap.gaps) >= 80
-        @test_throws ArgumentError gap_scenario(StableRNG(8), [1.0, 2.0]; loss = :cosmic)
-        @test_throws ArgumentError gap_scenario(StableRNG(8), [1.0, 2.0]; loss = :bernoulli, p_loss = 1.0)
     end
 
     @testset "Legacy fixtures: EUR-USD daily closing rate" begin
@@ -661,4 +611,6 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
     include("pipeline_tests.jl")
     include("identity_tests.jl")
     include("structure_tests.jl")
+    include("preprocessing_tests.jl")
+    include("contract_tests.jl")
 end

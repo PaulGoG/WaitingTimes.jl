@@ -7,8 +7,6 @@ format = "csv"
 dataset = "trustee-fuel_consumption"
 value_column = 7
 header = true
-quantity_label = "fuel consumption"
-unit_label = "mg/s"
 
 [preprocessing]
 steps = [

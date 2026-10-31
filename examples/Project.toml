@@ -11,14 +11,16 @@ TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 WaitingTimes = "78cbc771-1cb5-4db9-b01d-2cca60acb935"
 
 [sources]
-DeepSpaceTelemetry = {rev = "4352f565558d485c8d6cdd624e9ec6f40936aa24", url = "https://github.com/PaulGoG/DeepSpaceTelemetry.jl"}
-MarketTickStreamer = {rev = "b7f6b242d3392bcd660b7a17779db25d479c9c5f", url = "https://github.com/PaulGoG/MarketTickStreamer.jl"}
+DeepSpaceTelemetry = {rev = "dd3c30e7b41cb11a812997776a5af4c7c8231555", url = "https://github.com/PaulGoG/DeepSpaceTelemetry.jl"}
+MarketTickStreamer = {rev = "bd0bfa223b37908e3bcf0d63518dfdba6994e673", url = "https://github.com/PaulGoG/MarketTickStreamer.jl"}
 WaitingTimes = {path = ".."}
 
 [compat]
 CSV = "1.1"
 DataFrames = "1"
 Dates = "1"
+DeepSpaceTelemetry = "3"
+MarketTickStreamer = "2"
 Optim = "2"
 Printf = "1"
 StableRNGs = "1"

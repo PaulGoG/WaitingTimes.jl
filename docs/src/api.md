@@ -1,5 +1,9 @@
 # API
 
+```@docs
+WaitingTimes
+```
+
 ## Grid and thresholds
 
 ```@docs
@@ -9,6 +13,9 @@ threshold
 format_threshold
 parse_threshold
 WaitingTimes.narrow_integer
+WaitingTimes.GRID_TOLERANCE
+WaitingTimes.on_grid
+float(::Threshold)
 ```
 
 ## Series and gaps
@@ -20,7 +27,6 @@ PreparationStep
 detect_gaps
 declare_gaps
 WaitingTimes.GAP_KINDS
-WaitingTimes.merge_gaps
 gap_table
 classify
 class_counts
@@ -32,6 +38,10 @@ WaitingTimes.segment_lengths
 WaitingTimes.segment_table
 WaitingTimes.describe
 WaitingTimes.SeriesDescription
+WaitingTimes.TIME_UNITS
+WaitingTimes.CLASS_EXACT
+WaitingTimes.CLASS_GAP_CROSSING
+WaitingTimes.CLASS_RIGHT_CENSORED
 ```
 
 ## Kernels
@@ -50,17 +60,26 @@ waiting_times!
 WaitingTimes.workspace
 WaitingTimes.suffix_maximum
 WaitingTimes.scan_work
+WaitingTimes.workspace_bytes
+WaitingTimes.SearchWorkspace
+WaitingTimes.MaxTree
+WaitingTimes.FenwickWorkspace
+WaitingTimes.check_threshold
+WaitingTimes.first_at_least
+WaitingTimes.duration
 ```
 
 ## Streaming and online estimation
 
 ```@docs
 StreamingState
-update!
+WaitingTimes.update!
 pending
-WaitingTimes.compact!
 DistributionAccumulator
 OnlineWaitingTimes
+push!(::OnlineWaitingTimes, ::Integer, ::Real)
+push!(::OnlineWaitingTimes, ::Real)
+append!(::OnlineWaitingTimes, ::Any, ::Any)
 snapshot
 status
 ```
@@ -70,6 +89,7 @@ status
 ```@docs
 WaitingTimeDistribution
 empirical_distribution
+==(::WaitingTimeDistribution, ::WaitingTimeDistribution)
 WaitingTimes.support
 WaitingTimes.counts
 WaitingTimes.probabilities
@@ -94,6 +114,10 @@ generate
 validate
 run_pipeline
 CollectionHandle
+WaitingTimes.PACKAGE_ROOT
+WaitingTimes.Config.KNOWN_KEYS
+WaitingTimes.Config.PREPROCESSING_OPS
+WaitingTimes.Config.step_tag
 ```
 
 ## Preprocessing
@@ -112,7 +136,6 @@ WaitingTimes.Preprocessing.centered_moving_average
 WaitingTimes.Preprocessing.clip_quantile
 WaitingTimes.Preprocessing.clip_sigma
 WaitingTimes.Preprocessing.clip_extremes
-WaitingTimes.Preprocessing.remove_rows
 WaitingTimes.Preprocessing.collapse_ties
 WaitingTimes.Preprocessing.quantized_series
 WaitingTimes.Preprocessing.index_series
@@ -165,6 +188,14 @@ WaitingTimes.Storage.write_collection_readme
 WaitingTimes.Backends.get_best_backend
 WaitingTimes.Backends.to_backend
 WaitingTimes.Backends.backend_name
+WaitingTimes.Backends.register_backend!
+WaitingTimes.Backends.BACKEND_PROBES
+WaitingTimes.Backends.cpu_model
+WaitingTimes.Backends.device_fingerprint
+WaitingTimes.Backends.reclaim_device_memory!
+WaitingTimes.Backends.host_backend
+WaitingTimes.Backends.load_device_packages
+WaitingTimes.Backends.GPU_PACKAGES
 WaitingTimes.figure_theme
 WaitingTimes.decade_ticks
 WaitingTimes.plot_series
@@ -180,12 +211,4 @@ WaitingTimes.Synthetic.random_walk
 WaitingTimes.Synthetic.iid_series
 WaitingTimes.Synthetic.insert_missing
 WaitingTimes.Synthetic.irregular_times
-WaitingTimes.Synthetic.duty_cycle_mask
-WaitingTimes.Synthetic.bernoulli_mask
-WaitingTimes.Synthetic.gilbert_elliott_mask
-WaitingTimes.Synthetic.stationary_loss_rate
-WaitingTimes.Synthetic.Disruption
-WaitingTimes.Synthetic.disruption_mask
-WaitingTimes.Synthetic.apply_mask
-WaitingTimes.Synthetic.gap_scenario
 ```

@@ -3,42 +3,43 @@
 # waiting-time distributions, on the elapsed and on the index axis, that name
 # the run they came from.
 #
-#   julia --threads=3 examples/telemetry_run.jl [RUN_DIRECTORY] [--out DIR]
+#   julia examples/telemetry_run.jl [RUN_DIRECTORY] [--out DIR]
 #
-# Without a run directory the shipped `drop_policy` scenario is run first on
-# the tick clock (three mission days, deterministic, about a minute with its
-# post-processing; a lossy channel whose rejected transfers are dropped for
-# good, so about one sixth of the batches are lost and as many are still
-# undelivered at mission end), with its data root redirected to the output
-# directory so that nothing is written into the installed package. A given
-# run directory must be a finished run of DeepSpaceTelemetry 2.5 or later.
+# Without a run directory the shipped `drop_policy` scenario runs first, on
+# the tick clock: three mission days, deterministic, about a minute with its
+# post-processing, the figure stages skipped. Its lossy channel drops rejected transfers for good, so
+# about one sixth of the batches are lost and as many are still undelivered
+# at mission end. The run is placed under the output directory
+# (`run_mission(cfg; data_root)`), so nothing is written into the installed
+# package. A given run directory must be a finished run of DeepSpaceTelemetry
+# 2.6 or later, the oldest producer the adapter opens by default.
 #
-# The run directory is read through the producer's own adapter
-# (`DeepSpaceTelemetry.RunAdapter`, public since 2.6.2): `open_run` checks
-# the producer's version and the lifecycle sentinel, `run_geometry` gives
-# the sample rate, the payload origin and the clock mode, `list_batches` the
-# delivered batches with their payload rows, `read_batch` the samples of a
-# batch (sample `k` at payload row `payload_row + k - 1`, so time
-# `(r - 1) / sample_rate` from the origin is payload row `r`; `row_time`
-# states it), and `declared_holes` the producer's feed of holes with the
-# instant of each declaration. `masks/gaps.csv`, the settled table of every
+# The run directory is read through the producer's adapter
+# (`DeepSpaceTelemetry.RunAdapter`, public since 2.6.2; since 2.9.0 it lives
+# in the reader subpackage `DeepSpaceTelemetryReader`, re-exported under the
+# same qualified names; stable within 3.x, where the producer is maintained
+# rather than extended; see the producers page of the documentation). Sample
+# `k` of a batch lies at payload row
+# `payload_row + k - 1`, and time `(r - 1) / sample_rate` from the origin is
+# payload row `r` (`row_time`). `masks/gaps.csv`, the settled table of every
 # hole of the delivered record with its cause (lost, pruned, undelivered,
-# generation gaps), is read with `TelemetryCore.read_table`, which states
-# the column types of the file contract: the holes are the declared gaps of
-# the series, of kind "gap", and a cross-check of the gaps detected from the
-# sample spacing, which cannot tell the causes apart and cannot see a hole
-# before the first or after the last delivered sample. `descriptor.toml` is
-# the run's identity (run, producer version and code identity, configuration
-# hash, seed, product checksums); `[input].source_descriptor` carries it into
-# the collection. The authoritative key of the producer's code is
-# `git_tree_sha1` with `git_dirty = false`; `git_commit` is filled when the
-# producer was pinned by a full commit hash, as here (DeepSpaceTelemetry
-# 2.6.1 and later; in an older run the keys are missing, which means
-# unknown). The delivered payload of the synthetic scenario is a flag
-# series, so a second series is built by masking a random walk with the same
-# availability, which shows the gap classification on a signal with
-# structure. The collections of the masked walk assert the collection
-# contract (see the last section).
+# generation gaps), is read with `TelemetryCore.read_table`. Its holes are the
+# declared gaps of the series, of kind "gap", and cross-check the gaps
+# detected from the sample spacing, which cannot tell the causes apart and
+# cannot see a hole before the first or after the last delivered sample.
+#
+# `descriptor.toml` is the run's identity (run, producer version and code
+# identity, configuration hash, seed, product checksums);
+# `[input].source_descriptor` carries it into the collection. The
+# authoritative key of the producer's code is `git_tree_sha1` with
+# `git_dirty = false`; `git_commit` is filled when the producer was pinned by
+# a full commit hash, as here (DeepSpaceTelemetry 2.6.1 and later; in an older
+# run the keys are missing, which means unknown).
+#
+# The delivered payload of the synthetic scenario is a flag series, so a
+# second series is built by masking a random walk with the same availability;
+# it shows the gap classification on a signal with structure. The collections
+# of the masked walk assert the collection contract (see the last section).
 include(joinpath(@__DIR__, "activate.jl"))
 
 using CSV: CSV
@@ -63,20 +64,19 @@ end
 TC = DeepSpaceTelemetry.TelemetryCore
 RA = DeepSpaceTelemetry.RunAdapter
 if run_dir === nothing
-    TC.DATA_ROOT[] = joinpath(out_dir, "dst")
-    mkpath(TC.runs_root())
     scenario = joinpath(pkgdir(DeepSpaceTelemetry), "scenarios", "drop_policy.toml")
     run_id = "wt_drop_" * string(round(Int, time()))
-    seconds = @elapsed DeepSpaceTelemetry.Supervisor.run_mission(
-        TC.tick_configuration(TC.load_config(scenario)); run_id = run_id)
-    global run_dir = TC.run_directory(run_id)
-    @printf("tick-clock mission and post-processing: %.0f s\n", seconds)
+    started = time()
+    global run_dir = DeepSpaceTelemetry.Supervisor.run_mission(
+        TC.tick_configuration(TC.load_config(scenario));
+        run_id, figures = false, data_root = joinpath(out_dir, "dst"))
+    @printf("tick-clock mission and post-processing: %.0f s\n", time() - started)
 end
 println("run directory ", run_dir)
 descriptor_path = joinpath(run_dir, "descriptor.toml")
 gaps_path = joinpath(run_dir, "masks", "gaps.csv")
 isfile(descriptor_path) && isfile(gaps_path) ||
-    error("$run_dir has no descriptor.toml or masks/gaps.csv; a finished run of DeepSpaceTelemetry 2.5 or later is required")
+    error("$run_dir has no descriptor.toml or masks/gaps.csv; a finished run of DeepSpaceTelemetry 2.6 or later is required")
 
 # --- the run, through the producer's adapter ----------------------------------------
 run = RA.open_run(run_dir)                 # the producer's version and the lifecycle sentinel checked

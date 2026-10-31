@@ -5,11 +5,13 @@ Hard errors name the offending key; unknown keys produce warnings.
 module Config
 
 using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
-using ..WaitingTimes: TIME_UNITS, QuantizedSeries, threshold, check_digits
+using ..WaitingTimes: MAX_DIGITS, TIME_UNITS, QuantizedSeries, threshold, check_digits,
+                      on_grid
 using ..Provenance: effective_config
 using TOML: TOML
 
-export Settings, load_settings, threshold_list, threshold_decimals, KNOWN_KEYS
+export Settings, load_settings, threshold_list, threshold_decimals, KNOWN_KEYS,
+       PREPROCESSING_OPS, step_tag
 
 """
     Settings
@@ -53,10 +55,6 @@ Base.@kwdef struct Settings
     missing_policy::Symbol
     "`:error`, `:first`, `:last` or `:mean`"
     tie_policy::Symbol
-    "label of the observed quantity (plots only)"
-    quantity_label::String
-    "unit label of the observed quantity (plots only)"
-    unit_label::String
     # preprocessing
     "ordered preprocessing steps, each a table with an `op` key"
     steps::Vector{Dict{String, Any}}
@@ -121,10 +119,12 @@ Base.@kwdef struct Settings
     "recompute existing partitions after backing them up"
     overwrite::Bool
     # run
-    "seed for synthetic generators"
+    "seed of the random choice of reference-check thresholds"
     seed::Int
     "`:debug`, `:info` or `:warn`"
     log_level::Symbol
+    "seconds between resume checkpoints of a session (index, summary and catalogue rewritten); 0 after every chunk"
+    checkpoint_seconds::Float64 = 10.0
     "effective configuration as parsed"
     raw::Dict{String, Any}
 end
@@ -135,8 +135,7 @@ const KNOWN_KEYS = Dict(
         "algorithm", "limits", "output", "run"],
     "input" => ["path", "format", "dataset", "source_descriptor",
         "value_column", "time_column", "time_unit", "time_axis",
-        "time_format", "epoch_unit", "delimiter", "header", "missing_policy", "tie_policy",
-        "quantity_label", "unit_label"],
+        "time_format", "epoch_unit", "delimiter", "header", "missing_policy", "tie_policy"],
     "preprocessing" => ["steps"],
     "gaps" => ["declared", "detect", "cadence", "threshold", "mode"],
     "quantization" => ["digits", "auto_max_digits", "auto_tolerance", "auto_step_ratio"],
@@ -145,86 +144,185 @@ const KNOWN_KEYS = Dict(
         ["search", "backend", "chunk_size", "reference_checks", "reference_kernel"],
     "limits" => ["max_ram_gb", "max_vram_gb", "max_reference_work"],
     "output" => ["root", "format", "store_waiting_times", "overwrite"],
-    "run" => ["seed", "log_level"]
-)
-
-"preprocessing operations and their accepted parameter keys"
-const STEP_KEYS = Dict(
-    "select_range" => ["from", "to"],
-    "exclude_intervals" => ["intervals", "splice"],
-    "round" => ["digits"],
-    "trailing_mean_fluctuations" => ["window", "denominator", "offset", "on_nonpositive"],
-    "log_returns" => String[],
-    "log_levels" => ["reference"],
-    "differences" => String[],
-    "centered_moving_average" => ["window"],
-    "clip_quantile" => ["q", "splice"],
-    "clip_sigma" => ["k", "center", "scale", "splice"],
-    "clip_extremes" => ["fraction", "digits", "splice"],
-    "collapse_ties" => ["policy"]
+    "run" => ["seed", "log_level", "checkpoint_seconds"]
 )
 
 """
-Validate the parameters of preprocessing step `k` (types, choices, bounds) so
-that a run cannot start from a step it cannot execute.
+A preprocessing operation: its accepted parameter keys, the default of every
+optional key, the validator of a step table and the tag it contributes to the
+series slug.
+
+$(TYPEDFIELDS)
 """
-function validate_step(step::AbstractDict, op::AbstractString, k::Integer)
+struct PreprocessingOp
+    "accepted parameter keys, `op` excluded"
+    keys::Vector{String}
+    "default of every optional key; required keys are absent"
+    defaults::Dict{String, Any}
+    "validator `(step::AbstractDict, where_::AbstractString) -> nothing`"
+    validate::Function
+    "slug tag `(step::AbstractDict) -> String`"
+    tag::Function
+end
+
+"preprocessing operations by name"
+const PREPROCESSING_OPS = Dict{String, PreprocessingOp}(
+    "select_range" => PreprocessingOp(["from", "to"],
+        Dict{String, Any}("from" => -Inf, "to" => Inf),
+        function (step, where_)
+            haskey(step, "from") && as_float(step["from"], where_, "from")
+            haskey(step, "to") && as_float(step["to"], where_, "to")
+            return nothing
+        end,
+        step -> "range"),
+    "exclude_intervals" => PreprocessingOp(["intervals", "splice"],
+        Dict{String, Any}("splice" => true),
+        function (step, where_)
+            ivs = require(step, where_, "intervals")
+            ivs isa AbstractVector &&
+            all(iv -> iv isa AbstractVector && length(iv) == 2, ivs) ||
+                throw(ArgumentError("[$where_] intervals must be an array of [start, stop] pairs"))
+            haskey(step, "splice") && as_bool(step["splice"], where_, "splice")
+            return nothing
+        end,
+        step -> "cut"),
+    "round" => PreprocessingOp(["digits"],
+        Dict{String, Any}(),
+        function (step, where_)
+            as_int(require(step, where_, "digits"), where_,
+                "digits"; min = 0, max = MAX_DIGITS)
+            return nothing
+        end,
+        step -> "round" * string(step["digits"])),
+    "trailing_mean_fluctuations" =>
+        let defaults = Dict{String, Any}(
+                "denominator" => "mean", "offset" => "none", "on_nonpositive" => "error")
+            PreprocessingOp(
+                ["window", "denominator", "offset", "on_nonpositive"], defaults,
+                function (step, where_)
+                    as_int(require(step, where_, "window"), where_, "window"; min = 1)
+                    denominator = as_symbol(
+                        fetch(step, where_, "denominator", "mean"), where_,
+                        "denominator", (:mean, :scale, :none))
+                    offset = fetch(step, where_, "offset", "none")
+                    if offset isa AbstractString
+                        as_symbol(offset, where_, "offset", (:none, :auto))
+                    else
+                        as_float(offset, where_, "offset")
+                    end
+                    (offset == "none" || denominator === :mean) ||
+                        throw(ArgumentError("[$where_] offset applies to denominator = \"mean\" only"))
+                    as_symbol(fetch(step, where_, "on_nonpositive", "error"), where_,
+                        "on_nonpositive", (:error, :missing))
+                    return nothing
+                end,
+                function (step)
+                    denominator = String(get(step, "denominator", defaults["denominator"]))
+                    suffix = denominator == "mean" ? "" :
+                             denominator == "scale" ? "scaled" : "abs"
+                    return "trailing" * string(step["window"]) * suffix
+                end)
+        end,
+    "log_returns" => PreprocessingOp(String[], Dict{String, Any}(),
+        (step, where_) -> nothing, step -> "logret"),
+    "log_levels" => PreprocessingOp(["reference"],
+        Dict{String, Any}("reference" => "first"),
+        function (step, where_)
+            reference = fetch(step, where_, "reference", "first")
+            if reference isa AbstractString
+                as_symbol(reference, where_, "reference", (:first,))
+            else
+                r = as_float(reference, where_, "reference")
+                r > 0 ||
+                    throw(ArgumentError("[$where_] reference must be positive, got $r"))
+            end
+            return nothing
+        end,
+        step -> "loglevels"),
+    "differences" => PreprocessingOp(String[], Dict{String, Any}(),
+        (step, where_) -> nothing, step -> "diff"),
+    "centered_moving_average" => PreprocessingOp(["window"],
+        Dict{String, Any}(),
+        function (step, where_)
+            w = as_int(require(step, where_, "window"), where_, "window"; min = 1)
+            isodd(w) || throw(ArgumentError("[$where_] window must be odd, got $w"))
+            return nothing
+        end,
+        step -> "cma" * string(step["window"])),
+    "clip_quantile" => PreprocessingOp(["q", "splice"],
+        Dict{String, Any}("splice" => false),
+        function (step, where_)
+            q = as_float(require(step, where_, "q"), where_, "q"; min = 0.0, max = 1.0)
+            q > 0 || throw(ArgumentError("[$where_] q must be positive"))
+            haskey(step, "splice") && as_bool(step["splice"], where_, "splice")
+            return nothing
+        end,
+        step -> "clip" * string(step["q"])),
+    "clip_sigma" =>
+        let defaults = Dict{String, Any}(
+                "k" => 3, "center" => "mean", "scale" => "std", "splice" => false)
+            PreprocessingOp(["k", "center", "scale", "splice"], defaults,
+                function (step, where_)
+                    k_ = as_float(fetch(step, where_, "k", 3.0), where_, "k")
+                    k_ > 0 || throw(ArgumentError("[$where_] k must be positive, got $k_"))
+                    as_symbol(fetch(step, where_, "center", "mean"), where_, "center",
+                        (:mean, :median))
+                    as_symbol(fetch(step, where_, "scale", "std"), where_, "scale", (
+                        :std, :mad))
+                    haskey(step, "splice") && as_bool(step["splice"], where_, "splice")
+                    return nothing
+                end,
+                step -> "sigma" * string(get(step, "k", defaults["k"])))
+        end,
+    "clip_extremes" =>
+        let defaults = Dict{String, Any}("fraction" => 0.004, "splice" => false)
+            PreprocessingOp(["fraction", "digits", "splice"], defaults,
+                function (step, where_)
+                    f = as_float(fetch(step, where_, "fraction", 0.004), where_, "fraction")
+                    0 < f < 1 ||
+                        throw(ArgumentError("[$where_] fraction must lie in (0, 1), got $f"))
+                    as_int(require(step, where_, "digits"), where_, "digits";
+                        min = 0, max = MAX_DIGITS)
+                    haskey(step, "splice") && as_bool(step["splice"], where_, "splice")
+                    return nothing
+                end,
+                step -> "prune" * string(get(step, "fraction", defaults["fraction"])))
+        end,
+    "collapse_ties" => PreprocessingOp(["policy"],
+        Dict{String, Any}(),
+        function (step, where_)
+            as_symbol(require(step, where_, "policy"), where_, "policy",
+                (:error, :first, :last, :mean))
+            return nothing
+        end,
+        step -> "ties")
+)
+
+"""
+$(TYPEDSIGNATURES)
+
+Tag that the preprocessing step table `step` contributes to the series slug,
+e.g. `"trailing30"` for `{op = "trailing_mean_fluctuations", window = 30}`.
+"""
+step_tag(step::AbstractDict) = PREPROCESSING_OPS[String(step["op"])].tag(step)
+
+"""
+Validate preprocessing step `k`: the operation `name` must be one of
+[`PREPROCESSING_OPS`](@ref), keys it does not accept produce warnings, and its
+parameters (types, choices, bounds) are checked so that a run cannot start
+from a step it cannot execute.
+"""
+function validate_step(step::AbstractDict, name::AbstractString, k::Integer)
     where_ = "preprocessing.steps[$k]"
-    if op == "select_range"
-        haskey(step, "from") && as_float(step["from"], where_, "from")
-        haskey(step, "to") && as_float(step["to"], where_, "to")
-    elseif op == "exclude_intervals"
-        ivs = require(step, where_, "intervals")
-        ivs isa AbstractVector &&
-        all(iv -> iv isa AbstractVector && length(iv) == 2, ivs) ||
-            throw(ArgumentError("[$where_] intervals must be an array of [start, stop] pairs"))
-        haskey(step, "splice") && as_bool(step["splice"], where_, "splice")
-    elseif op == "round"
-        as_int(require(step, where_, "digits"), where_, "digits"; min = 0, max = 15)
-    elseif op == "trailing_mean_fluctuations"
-        as_int(require(step, where_, "window"), where_, "window"; min = 1)
-        denominator = as_symbol(fetch(step, where_, "denominator", "mean"), where_,
-            "denominator", (:mean, :scale, :none))
-        offset = fetch(step, where_, "offset", "none")
-        if offset isa AbstractString
-            as_symbol(offset, where_, "offset", (:none, :auto))
-        else
-            as_float(offset, where_, "offset")
-        end
-        (offset == "none" || denominator === :mean) ||
-            throw(ArgumentError("[$where_] offset applies to denominator = \"mean\" only"))
-        as_symbol(fetch(step, where_, "on_nonpositive", "error"), where_, "on_nonpositive",
-            (:error, :missing))
-    elseif op == "log_levels"
-        reference = fetch(step, where_, "reference", "first")
-        if reference isa AbstractString
-            as_symbol(reference, where_, "reference", (:first,))
-        else
-            r = as_float(reference, where_, "reference")
-            r > 0 || throw(ArgumentError("[$where_] reference must be positive, got $r"))
-        end
-    elseif op == "centered_moving_average"
-        w = as_int(require(step, where_, "window"), where_, "window"; min = 1)
-        isodd(w) || throw(ArgumentError("[$where_] window must be odd, got $w"))
-    elseif op == "clip_quantile"
-        q = as_float(require(step, where_, "q"), where_, "q"; min = 0.0, max = 1.0)
-        q > 0 || throw(ArgumentError("[$where_] q must be positive"))
-        haskey(step, "splice") && as_bool(step["splice"], where_, "splice")
-    elseif op == "clip_extremes"
-        f = as_float(fetch(step, where_, "fraction", 0.004), where_, "fraction")
-        0 < f < 1 || throw(ArgumentError("[$where_] fraction must lie in (0, 1), got $f"))
-        as_int(require(step, where_, "digits"), where_, "digits"; min = 0, max = 15)
-        haskey(step, "splice") && as_bool(step["splice"], where_, "splice")
-    elseif op == "clip_sigma"
-        k_ = as_float(fetch(step, where_, "k", 3.0), where_, "k")
-        k_ > 0 || throw(ArgumentError("[$where_] k must be positive, got $k_"))
-        as_symbol(fetch(step, where_, "center", "mean"), where_, "center", (:mean, :median))
-        as_symbol(fetch(step, where_, "scale", "std"), where_, "scale", (:std, :mad))
-        haskey(step, "splice") && as_bool(step["splice"], where_, "splice")
-    elseif op == "collapse_ties"
-        as_symbol(require(step, where_, "policy"), where_, "policy",
-            (:error, :first, :last, :mean))
+    haskey(PREPROCESSING_OPS, name) || throw(ArgumentError(
+        "[preprocessing] steps[$k].op = $(repr(name)) is not one of $(join(sort(collect(keys(PREPROCESSING_OPS))), ", "))",
+    ))
+    op = PREPROCESSING_OPS[name]
+    for key in keys(step)
+        key == "op" || key in op.keys ||
+            @warn "unknown preprocessing step key ignored" op = name key
     end
+    op.validate(step, where_)
     return nothing
 end
 
@@ -350,13 +448,6 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
         step isa AbstractDict ||
             throw(ArgumentError("[preprocessing] steps[$k] must be a table with an op key"))
         op = as_string(require(step, "preprocessing.steps[$k]", "op"), "preprocessing", "op")
-        haskey(STEP_KEYS, op) || throw(ArgumentError(
-            "[preprocessing] steps[$k].op = $(repr(op)) is not one of $(join(sort(collect(keys(STEP_KEYS))), ", "))",
-        ))
-        for key in keys(step)
-            key == "op" || key in STEP_KEYS[op] ||
-                @warn "unknown preprocessing step key ignored" op key
-        end
         validate_step(step, op, k)
         push!(steps, Dict{String, Any}(step))
     end
@@ -379,11 +470,12 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
     digits_raw = require(quant, "quantization", "digits")
     digits = if digits_raw isa AbstractString
         lowercase(digits_raw) == "auto" || throw(ArgumentError(
-            "[quantization] digits must be an integer in 0:15 or \"auto\", got $(repr(digits_raw))",
+            "[quantization] digits must be an integer in 0:$(MAX_DIGITS) or \"auto\", got $(repr(digits_raw))",
         ))
         nothing
     else
-        check_digits(as_int(digits_raw, "quantization", "digits"; min = 0, max = 15))
+        check_digits(as_int(
+            digits_raw, "quantization", "digits"; min = 0, max = MAX_DIGITS))
     end
     auto_max_digits = as_int(fetch(quant, "quantization", "auto_max_digits", 8),
         "quantization", "auto_max_digits"; min = 0, max = 14)
@@ -468,6 +560,10 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
     seed = as_int(fetch(run, "run", "seed", 12345), "run", "seed")
     log_level = as_symbol(fetch(run, "run", "log_level", "info"), "run", "log_level", (
         :debug, :info, :warn))
+    checkpoint_seconds = as_float(fetch(run, "run", "checkpoint_seconds", 10.0), "run",
+        "checkpoint_seconds"; min = 0.0)
+
+    warn_ignored_keys(alg, gaps, thr; search, reference_kernel, gap_detect, threshold_mode)
 
     return Settings(;
         config_path, config_dir, input_path, input_format,
@@ -486,15 +582,13 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
         tie_policy = as_symbol(
             fetch(inp, "input", "tie_policy", "error"), "input", "tie_policy",
             (:error, :first, :last, :mean)),
-        quantity_label = as_string(fetch(inp, "input", "quantity_label", ""), "input", "quantity_label"),
-        unit_label = as_string(fetch(inp, "input", "unit_label", ""), "input", "unit_label"),
         steps, declared_gaps, gap_detect, gap_cadence, gap_threshold, mode, digits,
         auto_max_digits, auto_tolerance, auto_step_ratio, threshold_mode, threshold_min,
         threshold_max, threshold_step, points_per_decade,
         threshold_values, search, backend, chunk_size, reference_checks, reference_kernel,
         max_ram_gb, max_vram_gb, max_reference_work,
         output_root = root, output_format, store_waiting_times, overwrite,
-        seed, log_level, raw)
+        seed, log_level, checkpoint_seconds, raw)
 end
 
 "a source descriptor must exist and parse as a TOML table"
@@ -506,18 +600,35 @@ function validate_source_descriptor(path::AbstractString)
     return path
 end
 
-"whether `value` is a multiple of `10^-digits` to within `1e-6` grid units"
-function on_grid(value::Real, digits::Integer)
-    scaled = value * 10.0^digits
-    return abs(scaled - round(scaled)) <= 1e-6
+"""
+Warn about keys present in the raw `[algorithm]`, `[gaps]` and `[thresholds]`
+tables that the active modes ignore.
+"""
+function warn_ignored_keys(alg::AbstractDict, gaps::AbstractDict, thr::AbstractDict;
+        search::Symbol, reference_kernel::Symbol, gap_detect::Symbol, threshold_mode::Symbol)
+    haskey(alg, "chunk_size") && search ∉ (:naive, :guarded, :segment_tree) &&
+        @warn "[algorithm] chunk_size is ignored under search = \"$search\""
+    haskey(alg, "backend") && alg["backend"] != "none" && search !== :device &&
+        reference_kernel !== :device &&
+        @warn "[algorithm] backend is ignored under search = \"$search\" and reference_kernel = \"$reference_kernel\""
+    haskey(gaps, "cadence") && gap_detect === :threshold &&
+        @warn "[gaps] cadence is ignored under detect = \"threshold\""
+    haskey(gaps, "threshold") && gap_detect === :cadence &&
+        @warn "[gaps] threshold is ignored under detect = \"cadence\""
+    for (key, used_in) in ("step" => :linear, "points_per_decade" => :log, "values" =>
+        :explicit)
+        haskey(thr, key) && threshold_mode !== used_in &&
+            @warn "[thresholds] $key is ignored under mode = \"$threshold_mode\""
+    end
+    return nothing
 end
 
-"decimals needed to place `value` on a grid (at most 15)"
+"decimals needed to place `value` on a grid (at most `MAX_DIGITS`)"
 function decimals(value::Real)
-    for d in 0:15
+    for d in 0:MAX_DIGITS
         on_grid(value, d) && return d
     end
-    throw(ArgumentError("$value has more than 15 decimals"))
+    throw(ArgumentError("$value has more than $(MAX_DIGITS) decimals"))
 end
 
 "threshold values that must lie on the grid: the explicit values, or the grid ends and step"
@@ -542,7 +653,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Sorted distinct thresholds of the configured grid on the grid of `s`.
+Sorted distinct thresholds of the configured grid on the grid of `s`. Points
+of a logarithmic grid are rounded to the nearest grid integer (at least one
+step), and that grid always ends at `max`.
 """
 function threshold_list(settings::Settings, s::QuantizedSeries)
     digits = s.digits

@@ -3,16 +3,154 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
-## [Unreleased]
+## [0.4.0] - 2026-10-31
+
+### Added
+
+- `[run].checkpoint_seconds`: seconds between the resume checkpoints of a
+  session (10 by default; 0 checkpoints after every chunk of thresholds).
+- `generate(settings; kernel)` runs the pipeline with a given kernel.
+- `validate(settings; deltas, kernels)` compares several kernels with the
+  reference kernel on given thresholds. The report keeps its keys and gains
+  `kernels`, one summary per kernel, and `skipped` per result.
+- `workspace_bytes(alg, s)`, part of the kernel interface beside
+  `waiting_times!` and `workspace`.
+- `Backends.host_backend`, `Backends.load_device_packages` and
+  `Backends.GPU_PACKAGES`.
+- `GRID_TOLERANCE`, `on_grid` and a scalar `quantize`.
+- `Config.PREPROCESSING_OPS`, `Config.step_tag` and
+  `Preprocessing.STEP_TRANSFORMS`.
+- The session record carries `status` (`"running"` until the record is
+  final, then `"completed"`) and marks the early reference check with
+  `early = true`. `scripts/launch_run.jl` writes `run_<timestamp>.toml` beside
+  its log, with the process identifier, the command, the log, the start time
+  and the configuration.
+- An Internals page in the documentation; a hand-written schema-2 collection
+  among the test fixtures.
 
 ### Changed
 
-- KernelAbstractions 0.10 is supported alongside 0.9, and DocStringExtensions
-  0.10 alongside 0.9. The device workspace is allocated through the public
-  `allocate`, as `zeros` is no longer public in KernelAbstractions 0.10.
-- The auxiliary environments (`test/`, `docs/`, `bench/`, `examples/`) state
-  `julia = "1.12"` in their compat, so dependency updates no longer propose
-  the `<0.0.1` bounds of pre-1.10 standard libraries.
+- KernelAbstractions is a weak dependency. `DeviceSearch` keeps its type,
+  workspace and backend selection in the package; the kernel, the CPU backend
+  probe and the CPU methods of the backend registry live in the
+  KernelAbstractions extension, enabled by `using KernelAbstractions`.
+  KernelAbstractions 0.10 brings the pocl CPU backend with its LLVM and SPIR-V
+  binaries, about 800 MiB that only the device kernel needs. `DeviceSearch()`
+  and `device_search` throw without the extension. `run_pipeline.jl` loads
+  KernelAbstractions and the GPU package named by `[algorithm].backend` when
+  the configuration uses the device kernel. The CPU backend is named
+  `CPU (<model>)` in the session records.
+- KernelAbstractions 0.10 and DocStringExtensions 0.10 are admitted beside
+  0.9; the device workspace is allocated through `allocate`, as `zeros` is no
+  longer public in KernelAbstractions 0.10.
+- DrWatson, Adapt and Printf are no longer dependencies; `git_state` runs git
+  itself.
+- The auxiliary environments state `julia = "1.12"`, so dependency updates no
+  longer propose the `<0.0.1` bounds of pre-1.10 standard libraries.
+- The examples environment pins MarketTickStreamer.jl 2.0.3 and
+  DeepSpaceTelemetry.jl 3.1.0, with `[compat]` bounds `2` and `3`.
+  `examples/tick_stream.jl` passes the replay pace as a `Symbol` and compacts
+  through the configuration form of `compact_raw`, as MarketTickStreamer 2.0
+  asks; the file contract is that of 1.0.0. `examples/telemetry_run.jl`
+  places the shipped scenario under the output directory with
+  `run_mission(cfg; data_root)` and skips its figure stages
+  (`figures = false`). Since DeepSpaceTelemetry 2.8 the producer runs its
+  components on one thread, so the `--threads=3` advice is gone from the
+  README, the example and CI; since 2.9 the reader (`TelemetryCore`,
+  `RunAdapter`) is the subpackage `DeepSpaceTelemetryReader`, reached under
+  the same qualified names, which a consumer that only reads run directories
+  can add alone; since 3.0 the adapter admits runs of 2.6.0 and later.
+- `MINIMUM_PRODUCER_VERSION` admits MarketTickStreamer.jl from 1.0.0, the
+  release that fixed the file contract, instead of 0.3.0.
+- `generate` is resumable. `index.toml`, `summary.csv` and `catalog.csv` are
+  rewritten atomically at every checkpoint and at the end of a session;
+  `metadata.toml` is written at the first session; an interrupted run leaves
+  a loadable collection whose next session computes only the rest.
+- With reference checks enabled, the kernel is compared with the reference
+  kernel on the largest pending threshold within
+  `[limits].max_reference_work` before any partition is written.
+- `estimate_memory_bytes` counts the workspace of the kernel and the
+  per-threshold transients (classification, distribution, class columns,
+  censoring counts, the dense table when `store_waiting_times` is set). The
+  Fenwick batch is sized with them. The device-memory check applies to
+  whichever kernel runs on a device, whose memory pools are reclaimed at the
+  end of the session.
+- The pipeline's reference checks go through
+  `Orchestrator.compare_with_reference` and draw their thresholds with
+  `reference_thresholds`; `validate` draws its thresholds the same way, runs
+  the reference kernel once per threshold and compares every kernel with that
+  result, and reports `all_equal` only when at least one threshold was
+  compared. The early check finds the largest pending threshold within
+  `[limits].max_reference_work` by bisection under the naive reference
+  kernel, in logarithmically many runs of the kernel instead of one per
+  pending threshold. `scripts/crosscheck.jl` is a front end of `validate`;
+  its CSV columns changed, and both scripts end with an error when every
+  threshold lies above the work bound.
+- `[input].dataset` names a descriptor in `datasets/` beside the
+  configuration; the package's own `configs/datasets/` is no longer searched
+  as a fallback.
+- `update!` is `public` and no longer exported, so that `using WaitingTimes`
+  beside DataStructures does not clash on the name.
+- `scripts/run_pipeline.jl` loads the device packages from the validated
+  settings instead of a second, case-sensitive parse of the configuration.
+- The preprocessing operations are described once, in
+  `Config.PREPROCESSING_OPS` (keys, defaults, validator, slug tag), consumed
+  by the configuration validation, by `Preprocessing.apply_steps` and by
+  `Config.step_tag`. Tags and hashed step tables are unchanged, so series
+  identities are stable.
+- `load_settings` warns about keys the active mode ignores: `chunk_size`
+  under the Fenwick, streaming or device kernel, `backend` without a device
+  kernel, `cadence` or `threshold` under the other gap detection, and
+  `step`, `points_per_decade` or `values` outside their threshold mode.
+- `scripts/launch_run.jl` detaches the child and logs both streams through
+  one descriptor; `scripts/lineage.jl` reads collections through the read
+  side.
+- Thresholds are sorted on their grid integer wherever a collection or a
+  session orders them.
+- The benchmark measures with Chairmarks (minimum over samples within a
+  two-second budget, with allocations), times the multi-threshold Fenwick
+  sweep and gates the naive kernel by its scan work (`--naive-work-limit`).
+  BenchmarkTools leaves the environment.
+- The documentation checks every exported and `public` name; the API page
+  lists them all, the Base methods on the package's types included, and the
+  producers page is listed in the contents.
+- At 10⁵ points the kernel-equivalence tests run two series families and omit
+  the fully censored threshold; those cases took most of the CI time.
+- Documentation corrections: `DeviceSearch` is described as the guarded scan
+  it implements, and the 0.04 % pruning share of Rom. J. Phys. 69, 111
+  (2024) is called a misprint.
+
+### Removed
+
+- The synthetic gap generators (`duty_cycle_mask`, `bernoulli_mask`,
+  `gilbert_elliott_mask`, `stationary_loss_rate`, `Disruption`,
+  `disruption_mask`, `apply_mask`, `gap_scenario`) and the references that
+  only they cited; nothing but their own tests used them once
+  DeepSpaceTelemetry.jl supplied real gapped records. `WaitingTimes.Synthetic`
+  keeps `random_walk`, `iid_series`, `insert_missing` and `irregular_times`.
+- `[input].quantity_label` and `[input].unit_label`, which nothing read; the
+  figure functions take the labels as keywords and the dataset descriptors
+  carry `quantity` and `unit`. A configuration that still has them gets the
+  unknown-key warning.
+- `Storage.schema`, unused.
+- `record!`; a preparation record is extended with `with_step`.
+
+### Fixed
+
+- `source_summary` recognises a DeepSpaceTelemetry.jl run descriptor by the
+  prefix of its schema, so the `deepspacetelemetry-run/2` descriptors written
+  since 3.0 are summarised as the `/1` ones are.
+- `validate` reported agreement when every threshold had been skipped above
+  the work bound.
+- The device kernel copied its result through an extra host array on every
+  threshold.
+- `CITATION.cff` quotes the article number `035007`, so that YAML keeps the
+  leading zero.
+- Docstrings: the suffix maximum of `GuardedSearch` runs over `m ≥ n`, not
+  `m > n`; `pending` does not list the latest sample when its target exceeds
+  `upper_bound`; `narrow_integer` returns a copy when it does not narrow;
+  `irregular_times` rounds to the nearest unit; `[run].seed` drives the
+  choice of reference-check thresholds.
 
 ## [0.3.2] - 2026-10-23
 
@@ -20,18 +158,20 @@ Keep a Changelog and the project adheres to Semantic Versioning.
 
 - The examples environment pins MarketTickStreamer.jl 1.0.0, whose exported
   API and file contract are fixed from that release; DeepSpaceTelemetry.jl
-  stays at 2.6.2, its latest. `examples/tick_stream.jl` follows the 1.0.0
-  interface: the session plumbing is reached qualified (`write_session_meta`
-  is no longer exported), the online estimator is fed under the producer's
-  snapshot convention (`snapshots`), the tape goes through the producer's
-  raw sink, sidecar and compaction and is read back through
-  `read_processed` and `follow_source`, the tick file is written in the
-  processed schema (`trades_table`), and `--follow RAW_DIR [SESSION]`
-  follows a session's raw files as the source. `examples/telemetry_run.jl`
-  reads the run through `DeepSpaceTelemetry.RunAdapter` (public since 2.6.2)
-  and its tables with `TelemetryCore.read_table`. The producers page states
-  the three sources of a tick stream, the snapshot convention, the corpus
-  read and the adapter.
+  stays at 2.6.2, its latest.
+- `examples/tick_stream.jl` follows the MarketTickStreamer 1.0.0 interface.
+  It reaches the session plumbing qualified (`write_session_meta` is no
+  longer exported) and feeds the online estimator under the producer's
+  snapshot convention (`snapshots`). The tape goes through the producer's
+  raw sink, sidecar and compaction and is read back through `read_processed`
+  and `follow_source`; the tick file is written in the processed schema
+  (`trades_table`); `--follow RAW_DIR [SESSION]` follows a session's raw
+  files as the source.
+- `examples/telemetry_run.jl` reads the run through
+  `DeepSpaceTelemetry.RunAdapter` (public since 2.6.2) and its tables with
+  `TelemetryCore.read_table`.
+- The producers page states the three sources of a tick stream, the snapshot
+  convention, the corpus read and the adapter.
 - The test suite skips the JET package analysis on a pre-release Julia where
   JET loads as empty stubs (1.14.0-alpha1 at the time of writing) and still
   fails on a release with an unsupported JET.
@@ -231,7 +371,7 @@ Keep a Changelog and the project adheres to Semantic Versioning.
 
 ## [0.1.0] - 2026-09-26
 
-First release. Everything below is new.
+First release.
 
 ### Added
 

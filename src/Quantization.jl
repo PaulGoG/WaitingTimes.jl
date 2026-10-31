@@ -8,7 +8,9 @@ const MAX_DIGITS = 15
 
 """
 Magnitude below which quantised values are narrowed to `Int32`. The margin of
-2^30 leaves room for every threshold that can still produce a passage.
+2^30 keeps `q_n + d` within `Int32` for every threshold up to 2^30 grid units,
+which covers every threshold that can produce a passage in a non-negative
+series; a larger threshold raises an `OverflowError` in `check_threshold`.
 """
 const INT32_NARROWING_LIMIT = 2^30
 
@@ -16,6 +18,20 @@ function check_digits(digits::Integer)
     0 <= digits <= MAX_DIGITS ||
         throw(ArgumentError("digits must lie in 0:$(MAX_DIGITS), got $digits"))
     return Int(digits)
+end
+
+"tolerance, in grid units, within which a real value counts as lying on the grid"
+const GRID_TOLERANCE = 1e-6
+
+"""
+$(TYPEDSIGNATURES)
+
+Whether `value` is a multiple of `10^-digits` to within `GRID_TOLERANCE` grid
+units, or `tolerance` grid units when given.
+"""
+function on_grid(value::Real, digits::Integer; tolerance::Real = GRID_TOLERANCE)
+    scaled = value * 10.0^digits
+    return abs(scaled - round(scaled)) <= tolerance
 end
 
 """
@@ -46,15 +62,14 @@ $(TYPEDSIGNATURES)
 
 Integer grid coordinate of the real threshold `δ` for the given `digits`.
 Throws `ArgumentError` when `δ` is negative or not a multiple of
-``10^{-\\mathrm{digits}}`` (to within `1e-6` grid units).
+``10^{-\\mathrm{digits}}`` (to within `GRID_TOLERANCE` grid units).
 """
 function threshold_integer(δ::Real, digits::Integer)
     digits = check_digits(digits)
     isfinite(δ) || throw(ArgumentError("threshold must be finite, got $δ"))
     δ >= 0 || throw(ArgumentError("thresholds are non-negative, got $δ"))
-    scaled = Float64(δ) * 10.0^digits
-    k = round(scaled)
-    abs(scaled - k) <= 1e-6 || throw(ArgumentError(
+    k = round(Float64(δ) * 10.0^digits)
+    on_grid(δ, digits) || throw(ArgumentError(
         "threshold $δ is not on the 10^-$digits grid; choose a multiple of $(10.0^-digits)",
     ))
     k < 9.0e18 || throw(ArgumentError("threshold $δ overflows the integer grid"))
@@ -135,13 +150,10 @@ to the legacy code's rounding. Non-finite values are rejected.
 """
 function quantize(x::AbstractVector{<:Real}, digits::Integer)
     digits = check_digits(digits)
-    scale = 10.0^digits
     q = Vector{Int64}(undef, length(x))
     for (i, v) in enumerate(x)
         isfinite(v) || throw(ArgumentError("non-finite value $v at index $i"))
-        rounded = round(Float64(v); digits = digits) * scale
-        abs(rounded) < 9.0e18 || throw(ArgumentError("value $v overflows the integer grid"))
-        q[i] = round(Int64, rounded)
+        q[i] = quantize(v, digits)
     end
     return q
 end
@@ -149,8 +161,24 @@ end
 """
 $(TYPEDSIGNATURES)
 
+Grid integer of the real value `x` with `digits` decimals: `x` rounded with
+`round(x; digits)` (half to even) and scaled by `10^digits`, as the vector
+method does element by element. Non-finite values and values beyond the
+`Int64` grid are rejected.
+"""
+function quantize(x::Real, digits::Integer)
+    digits = check_digits(digits)
+    isfinite(x) || throw(ArgumentError("non-finite value $x"))
+    scaled = round(Float64(x); digits = digits) * 10.0^digits
+    abs(scaled) < 9.0e18 || throw(ArgumentError("value $x overflows the integer grid"))
+    return round(Int64, scaled)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Narrow a vector of grid integers to `Int32` when every magnitude is below
-`INT32_NARROWING_LIMIT`; otherwise return it unchanged.
+`INT32_NARROWING_LIMIT`; otherwise return an `Int64` copy.
 """
 function narrow_integer(q::AbstractVector{Int64})
     (isempty(q) || maximum(abs, q) < INT32_NARROWING_LIMIT) && return Int32.(q)

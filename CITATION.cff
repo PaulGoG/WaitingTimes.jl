@@ -6,8 +6,8 @@ authors:
   - family-names: "Gogîță"
     given-names: "Paul-Adrian"
     affiliation: "Faculty of Physics, University of Bucharest; Institute of Space Science, Măgurele"
-version: 0.3.2
-date-released: 2026-10-23
+version: 0.4.0
+date-released: 2026-10-31
 license: MIT
 repository-code: "https://github.com/PaulGoG/WaitingTimes.jl"
 keywords:
@@ -36,7 +36,7 @@ references:
         given-names: "Alexandru"
     journal: "Journal of Physics: Complexity"
     volume: 7
-    start: 035007
+    start: "035007"
     year: 2026
     doi: "10.1088/2632-072X/ae8aa5"
   - type: article

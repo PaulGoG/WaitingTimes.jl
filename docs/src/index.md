@@ -13,27 +13,29 @@ index ``n`` is
 the elapsed time to the first observed value at least ``\delta`` above
 ``A_n``. The distribution of ``\{\tau_n\}`` over a grid of thresholds is the
 dynamical fingerprint studied in Gogîță et al., *J. Phys. Complex.* 7 (2026)
-035007, where it shows a scale-free regime at small ``\delta`` and a
+035007 ([doi:10.1088/2632-072X/ae8aa5](https://doi.org/10.1088/2632-072X/ae8aa5)),
+where it shows a scale-free regime at small ``\delta`` and a
 Pareto-Tsallis regime at large ``\delta`` across weather, sea-level,
 currency and automotive data.
 
-The package computes these distributions exactly and reproducibly:
-
-- values and thresholds live on a decimal integer grid, so every kernel
-  produces bit-identical results and the naive scan is the permanent
-  reference implementation ([Formulation](formulation.md));
-- a segment-tree kernel serves production runs in milliseconds per threshold,
-  a Fenwick sweep and a streaming kernel cross-check it, and a
-  KernelAbstractions kernel runs the reference kernel on GPUs ([Kernels](kernels.md));
-- a validated TOML configuration drives ingestion, preprocessing, generation
-  with resume and reference checks, and provenance ([Pipeline](pipeline.md),
-  [Configuration](configuration.md), [Provenance](provenance.md)).
+The package computes these distributions exactly and reproducibly. Values
+and thresholds live on a decimal integer grid, so every kernel produces
+bit-identical results; the naive scan is the permanent reference
+implementation the others are checked against
+([Formulation](formulation.md)). A segment-tree kernel serves production runs
+in milliseconds per threshold, a Fenwick sweep serves dense grids and a
+streaming kernel live pipelines, and a KernelAbstractions kernel runs the
+guarded scan on GPUs ([Kernels](kernels.md)). A validated TOML configuration
+drives a run from ingestion to the written collection, which records its own
+provenance; an interrupted run resumes, and reference checks recompute part
+of the grid with the reference kernel ([Pipeline](pipeline.md),
+[Configuration](configuration.md), [Provenance](provenance.md)).
 
 ## Contents
 
 ```@contents
 Pages = ["formulation.md", "kernels.md", "pipeline.md", "configuration.md",
-    "provenance.md", "validation.md", "interfacing.md", "generated/downstream_fit.md",
-    "api.md", "references.md"]
+    "provenance.md", "validation.md", "interfacing.md", "producers.md",
+    "generated/downstream_fit.md", "api.md", "internals.md", "references.md"]
 Depth = 1
 ```

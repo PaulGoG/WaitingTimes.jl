@@ -2,8 +2,9 @@
 
 """
 Recognised time units of a series. `:sample` means the time axis is the
-observation index; the others are integer counts of the named unit since the
-first observation (or since `epoch` when one is recorded).
+observation index; the others are integer counts of the named unit from
+`epoch` when one is recorded (the UNIX epoch for series read from files),
+otherwise from an unstated origin.
 """
 const TIME_UNITS = (:sample, :nanosecond, :microsecond, :millisecond, :second,
     :minute, :hour, :day)
@@ -46,18 +47,6 @@ end
 
 function PreparationRecord(source::AbstractString = ""; sha256::AbstractString = "")
     PreparationRecord(String(source), String(sha256), PreparationStep[])
-end
-
-"""
-$(TYPEDSIGNATURES)
-
-Append a step to `record` in place and return it. Transformations use the
-non-mutating [`with_step`](@ref).
-"""
-function record!(record::PreparationRecord, op::Symbol, parameters::Dict{String, Any},
-        summary::Dict{String, Any})
-    push!(record.steps, PreparationStep(op, parameters, summary))
-    return record
 end
 
 """

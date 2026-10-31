@@ -12,7 +12,7 @@ using PrecompileTools: @compile_workload, @setup_workload
         s = QuantizedSeries(values, 2)
         δ = threshold(0.5, s)
         for alg in (NaiveSearch(), GuardedSearch(), SegmentTreeSearch(), FenwickSweep(),
-            StreamingSearch(), DeviceSearch())
+            StreamingSearch())
             τ = waiting_times(s, δ, alg)
             d = empirical_distribution(τ, δ, s)
             classify(τ, s)

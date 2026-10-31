@@ -55,7 +55,8 @@ Empirical distribution of the waiting times `τ` (as returned by
 passage; `mode = :exact` keeps only passages without an intervening gap. With
 `horizon = H` (in the time unit of `s`) waits longer than `H` are counted as
 right-censored, which reproduces the snapshot of an [`OnlineWaitingTimes`](@ref)
-estimator with the same horizon.
+estimator with the same horizon on a series without gaps (a stream counts
+every resolved wait as exact).
 """
 function empirical_distribution(
         τ::AbstractVector{Tt}, δ::Threshold, s::QuantizedSeries{Tv, Tt};
@@ -155,17 +156,47 @@ function censoring_counts(class::AbstractVector{UInt8}, lower::AbstractVector{Tt
     return run_lengths(sort!(bounds))
 end
 
-"sorted distinct waiting times"
+"""
+$(TYPEDSIGNATURES)
+
+Sorted distinct waiting times of `d`, in its `time_unit`.
+"""
 support(d::WaitingTimeDistribution) = d.support
-"multiplicity of each support value"
+
+"""
+$(TYPEDSIGNATURES)
+
+Multiplicity of each support value of `d`.
+"""
 counts(d::WaitingTimeDistribution) = d.counts
-"probability mass at each support value"
+
+"""
+$(TYPEDSIGNATURES)
+
+Probability mass at each support value, `counts(d) / nsamples(d)`.
+"""
 probabilities(d::WaitingTimeDistribution) = d.pmf
-"cumulative distribution ``P(\\tau \\le k)`` at each support value"
+
+"""
+$(TYPEDSIGNATURES)
+
+Cumulative distribution ``P(\\tau \\le k)`` at each support value ``k``.
+"""
 cumulative(d::WaitingTimeDistribution) = d.cdf
-"survival function ``P(\\tau > k)`` at each support value"
+
+"""
+$(TYPEDSIGNATURES)
+
+Survival function ``P(\\tau > k)`` at each support value ``k``; a new vector on
+every call.
+"""
 survival(d::WaitingTimeDistribution) = 1.0 .- d.cdf
-"number of waiting times in the distribution"
+
+"""
+$(TYPEDSIGNATURES)
+
+Number of waiting times in `d`, the sum of its counts.
+"""
 nsamples(d::WaitingTimeDistribution) = sum(d.counts)
 
 """

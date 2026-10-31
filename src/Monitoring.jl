@@ -12,7 +12,11 @@ using TerminalLoggers: TerminalLogger
 
 export with_run_logging, run_progress, log_level
 
-"logging level from a configuration symbol"
+"""
+$(TYPEDSIGNATURES)
+
+Logging level of `:debug`, `:info` or `:warn`; any other symbol throws an `ArgumentError`.
+"""
 function log_level(level::Symbol)
     level === :debug && return Debug
     level === :info && return Info
@@ -38,7 +42,8 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Progress bar over `n` steps, enabled only when `stdout` is a terminal.
+Progress bar over `n` steps labelled `desc`, enabled only when `stdout` is a
+terminal.
 """
 function run_progress(n::Integer; desc::AbstractString = "thresholds")
     return Progress(n; desc = desc * ": ", dt = 0.5, enabled = stdout isa Base.TTY)

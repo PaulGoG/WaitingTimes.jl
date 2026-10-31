@@ -7,8 +7,6 @@ format = "csv"
 dataset = "iss-ionospheric_tec"
 value_column = 3
 header = true
-quantity_label = "total electron content"
-unit_label = "TECU"
 
 [quantization]
 digits = 1

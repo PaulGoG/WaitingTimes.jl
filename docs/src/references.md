@@ -17,6 +17,10 @@
 - A. Clauset, C. R. Shalizi, M. E. J. Newman, Power-law distributions in
   empirical data, *SIAM Rev.* **51**, 661 (2009),
   [doi:10.1137/070710111](https://doi.org/10.1137/070710111).
+  The maximum-likelihood exponent of a power-law tail above ``x_{\min}``, as
+  fitted in the [Downstream example](@ref) and, at every point of an
+  ``x_{\min}`` scan, as the starting value of the scale-free fit in
+  `examples/legacy_fit.jl`.
 - R. Połoczański, A. Wyłomańska, M. Maciejewska, A. Szczurek, J. Gajda,
   Modified cumulative distribution function in application to waiting time
   analysis in the continuous time random walk scenario, *J. Phys. A* **50**,
@@ -41,23 +45,6 @@
   an index is its nearest larger-or-equal value to the right, found with a
   monotone stack; `StreamingSearch` generalises the stack to ``\delta > 0``
   with a priority queue.
-- E. N. Gilbert, Capacity of a burst-noise channel, *Bell Syst. Tech. J.*
-  **39**, 1253 (1960),
-  [doi:10.1002/j.1538-7305.1960.tb03959.x](https://doi.org/10.1002/j.1538-7305.1960.tb03959.x);
-  E. O. Elliott, Estimates of error rates for codes on burst-noise channels,
-  *Bell Syst. Tech. J.* **42**, 1977 (1963),
-  [doi:10.1002/j.1538-7305.1963.tb00955.x](https://doi.org/10.1002/j.1538-7305.1963.tb00955.x).
-  The two-state loss channel of the synthetic gap generator.
-- Q. Baghi et al., Gravitational-wave parameter estimation with gaps in LISA:
-  a Bayesian data augmentation method, *Phys. Rev. D* **100**, 022003 (2019),
-  [doi:10.1103/PhysRevD.100.022003](https://doi.org/10.1103/PhysRevD.100.022003).
-- K. Dey et al., Effect of data gaps on the detectability and parameter
-  estimation of massive black hole binaries with LISA, *Phys. Rev. D* **104**,
-  044035 (2021),
-  [doi:10.1103/PhysRevD.104.044035](https://doi.org/10.1103/PhysRevD.104.044035).
-- O. Burke, S. Marsat, J. R. Gair, M. L. Katz, Addressing data gaps and
-  assessing noise mismodeling in LISA, *Phys. Rev. D* **111**, 124053 (2025),
-  [doi:10.1103/5jr8-k2ss](https://doi.org/10.1103/5jr8-k2ss).
 - B. Widrow, I. Kollár, M.-C. Liu, Statistical theory of quantization, *IEEE
   Trans. Instrum. Meas.* **45**, 353 (1996),
   [doi:10.1109/19.492748](https://doi.org/10.1109/19.492748); W. F. Sheppard,

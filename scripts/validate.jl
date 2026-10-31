@@ -29,8 +29,17 @@ report = validate(settings; deltas = deltas)
 println("kernel ", report["kernel"], " against reference kernel ",
     report["reference_kernel"], " on ", report["series"])
 for r in report["results"]
-    println("  delta = ", r["delta"], "  equal = ", r["equal"], "  differences = ",
-        r["n_differences"], "  reference seconds = ", round(r["seconds"]; digits = 3))
+    if r["skipped"]
+        println("  delta = ", r["delta"], "  skipped: scan work ", r["work"],
+            " exceeds [limits] max_reference_work")
+    else
+        println("  delta = ", r["delta"], "  equal = ", r["equal"], "  differences = ",
+            r["n_differences"], "  reference seconds = ", round(r["seconds"]; digits = 3))
+    end
+end
+if all(k -> k["n_checked"] == 0, report["kernels"])
+    println("no threshold compared: the scan work of every threshold exceeds [limits] max_reference_work")
+    exit(2)
 end
 println(report["all_equal"] ? "all thresholds agree" : "DISAGREEMENT DETECTED")
 exit(report["all_equal"] ? 0 : 1)
