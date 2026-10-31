@@ -40,17 +40,16 @@ args = parse_commandline(ARGS)
 config_path = abspath(args["config"])
 isfile(config_path) || error("Configuration file not found: $config_path")
 
+settings = load_settings(config_path; output_dir = args["output-dir"])
+
 # Load KernelAbstractions and the GPU package named by [algorithm].backend when
 # the configuration uses the device kernel; the package extensions then
 # register the backends.
-let alg = get(effective_config(config_path), "algorithm", Dict{String, Any}())
-    uses_device = get(alg, "search", "") == "device" ||
-                  get(alg, "reference_kernel", "") == "device"
-    uses_device && WaitingTimes.Backends.load_device_packages(
-        Symbol(lowercase(String(get(alg, "backend", "none")))))
+if settings.search === :device || settings.reference_kernel === :device
+    WaitingTimes.Backends.load_device_packages(settings.backend)
 end
 
-handle = run_pipeline(config_path; output_dir = args["output-dir"])
+handle = generate(settings)
 println("collection ", handle.id, " at ", handle.dir)
 println(
     "session ", handle.session, ": ", length(handle.computed), " thresholds computed, ",

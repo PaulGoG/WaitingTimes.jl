@@ -383,7 +383,7 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         partial = zeros(Int64, length(s))
         checkpoints = (1, 2, 3, 50, 999, 3_000)
         for m in 1:length(s)
-            resolved = update!(state, t[m], q[m])
+            resolved = WT.update!(state, t[m], q[m])
             for (n, τ_n) in resolved
                 partial[n] = τ_n
                 push!(acc, τ_n)
@@ -408,14 +408,14 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         # accumulator form of update!, argument checks, overflow guard of a narrow state
         state2 = StreamingState(s, δ)
         acc2 = DistributionAccumulator{Int64}()
-        total = sum(update!(acc2, state2, t[m], q[m]) for m in 1:length(s))
+        total = sum(WT.update!(acc2, state2, t[m], q[m]) for m in 1:length(s))
         @test total == state.n_resolved == WT.nsamples(acc2)
-        @test_throws ArgumentError update!(state2, t[end], q[end])
+        @test_throws ArgumentError WT.update!(state2, t[end], q[end])
         @test_throws ArgumentError push!(acc2, 0)
         narrow = StreamingState{Int32, Int64}(Threshold(5, 0))
-        @test_throws OverflowError update!(narrow, 1, typemax(Int32))
-        @test isempty(update!(narrow, 1, Int32(1)))
-        @test only(update!(narrow, 2, Int32(6))) == (1, 1)
+        @test_throws OverflowError WT.update!(narrow, 1, typemax(Int32))
+        @test isempty(WT.update!(narrow, 1, Int32(1)))
+        @test only(WT.update!(narrow, 2, Int32(6))) == (1, 1)
     end
 
     @testset "Online estimation at several thresholds" begin
@@ -498,8 +498,8 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         partial = zeros(Int64, length(s))
         peak = 0
         for m in eachindex(q)
-            update!(free, t[m], q[m])
-            update!(bounded, t[m], q[m]) do n, τ_n
+            WT.update!(free, t[m], q[m])
+            WT.update!(bounded, t[m], q[m]) do n, τ_n
                 partial[n] = τ_n
                 push!(acc, τ_n)
             end
@@ -525,12 +525,12 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         capped = StreamingState(su, δu; upper_bound = 100)
         acc_u = DistributionAccumulator{Int64}()
         for m in eachindex(su.values)
-            update!(acc_u, capped, su.times[m], su.values[m])
+            WT.update!(acc_u, capped, su.times[m], su.values[m])
         end
         @test empirical_distribution(acc_u, capped) == empirical_distribution(τu, δu, su)
         @test capped.n_unreachable == count(>(100 - δu.d), su.values) > 0
         @test pending(capped) + capped.n_unreachable == count(==(0), τu)
-        @test_throws ArgumentError update!(capped, su.times[end] + 1, eltype(su.values)(101))
+        @test_throws ArgumentError WT.update!(capped, su.times[end] + 1, eltype(su.values)(101))
         # the estimator with both options equals the batch evaluation
         est = OnlineWaitingTimes([0.3, 0.6], 2; upper_bound = 1.0, horizon = 50)
         foreach(v -> push!(est, v), u)

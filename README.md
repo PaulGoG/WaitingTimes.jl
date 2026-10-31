@@ -68,9 +68,11 @@ never alter a waiting time.
 
 `SegmentTreeSearch` is the default kernel, at milliseconds per threshold on
 millions of points. `FenwickSweep` serves many thresholds per sweep and
-`StreamingSearch` runs online, for live pipelines. `NaiveSearch` and
-`GuardedSearch` are the reference kernels; `DeviceSearch`, the guarded scan as
-a KernelAbstractions kernel on CPU or GPU, comes with the KernelAbstractions
+`StreamingSearch` runs online, for live pipelines. `NaiveSearch` is the
+reference kernel; `GuardedSearch`, the same scan under a suffix-maximum guard
+and multithreaded, may stand in for it where the naive scan is too slow
+(`[algorithm].reference_kernel`), and `DeviceSearch` runs that guarded scan
+as a KernelAbstractions kernel on CPU or GPU with the KernelAbstractions
 extension (`using KernelAbstractions`).
 
 ![How each kernel resolves the waiting times of one index on a 48-sample

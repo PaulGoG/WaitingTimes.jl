@@ -71,18 +71,14 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Dataset descriptor named by `[input].dataset`, searched in `<config dir>/datasets/`
-and in the package's `configs/datasets/`; `nothing` when the setting is empty.
+Dataset descriptor named by `[input].dataset`, read from
+`<config dir>/datasets/<name>.toml`; `nothing` when the setting is empty.
 """
 function dataset_descriptor(settings::Settings)
     isempty(settings.dataset) && return nothing
-    name = settings.dataset * ".toml"
-    for dir in (joinpath(settings.config_dir, "datasets"),
-        joinpath(WaitingTimes.PACKAGE_ROOT, "configs", "datasets"))
-        path = joinpath(dir, name)
-        isfile(path) && return read_toml(path)
-    end
-    throw(ArgumentError("dataset descriptor $(settings.dataset) not found"))
+    path = joinpath(settings.config_dir, "datasets", settings.dataset * ".toml")
+    isfile(path) || throw(ArgumentError("dataset descriptor not found: $path"))
+    return read_toml(path)
 end
 
 """
@@ -505,7 +501,7 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
         devices = DeviceSearch[k for k in (alg, reference) if k isa DeviceSearch]
         for k in devices
             host_backend(k.backend) && continue
-            vram = length(s) * (2 * sizeof(eltype(s.values)) + 2 * sizeof(eltype(s.times)))
+            vram = workspace_bytes(k, s)
             vram <= settings.max_vram_gb * 2^30 || throw(ArgumentError(
                 "estimated device memory $(round(vram / 2^30; digits = 2)) GiB exceeds [limits] max_vram_gb = $(settings.max_vram_gb)",
             ))
@@ -720,26 +716,63 @@ end
 """
 $(TYPEDSIGNATURES)
 
+Scan work of a reference comparison at `δ` ([`scan_work`](@ref), guarded
+unless `reference` is a `NaiveSearch`), computed from a run of `alg` alone.
+"""
+function reference_work(s::QuantizedSeries, δ::Threshold, alg::AbstractSearch, ws,
+        reference::AbstractSearch)
+    τ = Vector{eltype(s.times)}(undef, length(s))
+    waiting_times!(τ, s, δ, alg; workspace = ws)
+    return Float64(scan_work(τ, s; guarded = !(reference isa NaiveSearch)))
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Compare `alg` with the reference kernel on the largest threshold of `todo`
 whose scan work lies within `[limits].max_reference_work`, before any
-partition is written. Returns the check record (with `early = true`), or
-`nothing` with a warning when no threshold is within the bound; a
+partition is written. Under `NaiveSearch` the unguarded work does not decrease
+with the threshold (a higher target moves a passage to the right or censors
+the index), so that threshold is found by bisection over the sorted
+thresholds in ``\\lceil \\log_2 |todo| \\rceil + 1`` runs of `alg`; under
+another reference kernel the work is not monotone and the thresholds are
+tried from the largest down. Returns the check record (with `early = true`),
+or `nothing` with a warning when no threshold is within the bound; a
 disagreement raises.
 """
 function early_reference_check(timer, s, todo, alg, ws, reference, ws_ref,
         settings::Settings)
-    for δ in sort(todo; rev = true)
-        r = @timeit timer "reference" compare_with_reference(s, δ, alg, ws, reference,
-            ws_ref; max_work = settings.max_reference_work)
-        r.skipped && continue
-        key = format_threshold(δ)
-        @info "reference check" delta=key kernel=kernel_name(reference) equal=r.equal seconds=round(
-            r.seconds; digits = 3) early=true
-        r.equal || reference_disagreement(key, alg, reference)
-        return check_record(key, reference, r; early = true)
+    sorted = sort(todo)
+    max_work = settings.max_reference_work
+    within(δ) = (@timeit timer "reference" reference_work(s, δ, alg, ws, reference)) <=
+                max_work
+    chosen = nothing
+    if reference isa NaiveSearch
+        lo, hi = 1, length(sorted)
+        while lo <= hi
+            mid = (lo + hi) >>> 1
+            if within(sorted[mid])
+                chosen = sorted[mid]
+                lo = mid + 1
+            else
+                hi = mid - 1
+            end
+        end
+    else
+        at = findlast(within, sorted)
+        at === nothing || (chosen = sorted[at])
     end
-    @warn "early reference check skipped: no pending threshold within [limits] max_reference_work"
-    return nothing
+    if chosen === nothing
+        @warn "early reference check skipped: no pending threshold within [limits] max_reference_work"
+        return nothing
+    end
+    r = @timeit timer "reference" compare_with_reference(s, chosen, alg, ws, reference,
+        ws_ref; max_work)
+    key = format_threshold(chosen)
+    @info "reference check" delta=key kernel=kernel_name(reference) equal=r.equal seconds=round(
+        r.seconds; digits = 3) early=true
+    r.equal || reference_disagreement(key, alg, reference)
+    return check_record(key, reference, r; early = true)
 end
 
 """
@@ -789,7 +822,8 @@ pairs compared in turn; by default the configured kernel alone. The reference
 kernel runs once per threshold, every kernel being compared with that result.
 
 Returns a report dictionary: `series`, `kernel` (the kernel names),
-`reference_kernel`, `all_equal` (no disagreement on any compared threshold),
+`reference_kernel`, `all_equal` (every kernel compared on at least one
+threshold, with no disagreement),
 `results` (one dictionary per kernel and threshold: `kernel`, `delta`,
 `equal`, `n_differences`, `work`, `skipped`, `seconds` of the reference
 kernel) and `kernels` (one dictionary per kernel: `name`, `equal`, `n_checked`
@@ -810,7 +844,7 @@ function validate(settings::Settings; deltas = nothing, kernels = nothing)
     return Dict{String, Any}("series" => ids.series_id,
         "kernel" => join(first.(named), ", "),
         "reference_kernel" => kernel_name(reference),
-        "all_equal" => all(k -> k["equal"], summaries),
+        "all_equal" => all(k -> k["equal"] && k["n_checked"] > 0, summaries),
         "results" => results, "kernels" => summaries)
 end
 

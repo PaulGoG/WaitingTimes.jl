@@ -42,7 +42,6 @@ WaitingTimes.TIME_UNITS
 WaitingTimes.CLASS_EXACT
 WaitingTimes.CLASS_GAP_CROSSING
 WaitingTimes.CLASS_RIGHT_CENSORED
-WaitingTimes.record!
 ```
 
 ## Kernels
@@ -74,7 +73,7 @@ WaitingTimes.duration
 
 ```@docs
 StreamingState
-update!
+WaitingTimes.update!
 pending
 DistributionAccumulator
 OnlineWaitingTimes
