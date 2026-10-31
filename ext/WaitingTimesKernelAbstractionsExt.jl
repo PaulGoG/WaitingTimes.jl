@@ -57,7 +57,7 @@ function WaitingTimes.waiting_times!(τ::AbstractVector{Tt}, s::QuantizedSeries{
         kernel = waiting_times_kernel!(alg.backend)
         kernel(ws.result, ws.values, ws.times, ws.suffix, d, N; ndrange = N)
         KernelAbstractions.synchronize(alg.backend)
-        copyto!(τ, Array(ws.result))
+        copyto!(τ, ws.result)
     end
     return τ
 end

@@ -7,11 +7,11 @@ comparable with `==` across kernels and backends.
 | Kernel | Cost per threshold | Parallelism | Role |
 |---|---|---|---|
 | [`NaiveSearch`](@ref) | ``O(\sum_n \tau_n)``, worst ``O(N^2)`` | over indices, chunked dynamic scheduling | the definition; permanent reference kernel |
-| [`GuardedSearch`](@ref) | same, censored indices skipped in ``O(1)`` | over indices | reference kernel with the suffix-maximum censoring proof |
+| [`GuardedSearch`](@ref) | same, censored indices skipped in ``O(1)`` | over indices | the naive scan under a suffix-maximum guard; admitted as `reference_kernel` where the naive scan is too slow |
 | [`SegmentTreeSearch`](@ref) | ``O(N \log N)``, insensitive to ``\delta`` | over indices | production kernel |
 | [`FenwickSweep`](@ref) | ``O(N \log V)``; any number of thresholds per sweep | none (sequential in ``n``) | dense grids, few cores, small memory |
 | [`StreamingSearch`](@ref) | ``O(N \log N)``, one pass, no lookahead | none | live pipelines; equals the reference kernel on every prefix |
-| [`DeviceSearch`](@ref) | ``O(\sum_n \tau_n)`` | one work-item per index on a KernelAbstractions backend | reference kernel on GPUs |
+| [`DeviceSearch`](@ref) | ``O(\sum_n \tau_n)`` | one work-item per index on a KernelAbstractions backend | the guarded scan on GPUs |
 
 ## Segment tree
 
@@ -41,7 +41,7 @@ other kernels.
 Pending indices wait in a min-heap keyed by their target ``q_n + d``. Each
 arriving sample resolves every pending index whose target it reaches and then
 joins the heap; the heap contents are the right-censored set so far. A
-[`StreamingState`](@ref) is fed with [`update!`](@ref) and a
+[`StreamingState`](@ref) is fed with [`update!`](@ref WaitingTimes.update!) and a
 [`DistributionAccumulator`](@ref) turns resolved waits into a distribution
 incrementally, for embedding in real-time detection pipelines.
 

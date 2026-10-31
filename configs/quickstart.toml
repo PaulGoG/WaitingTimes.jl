@@ -3,7 +3,7 @@
 [input]
 path = "../test/fixtures/fiatEURUSD.dat"   # relative to this file unless absolute
 format = "dat"                              # one of: "csv" | "dat" | "arrow" | "tick"
-dataset = "eur_usd-closing_rate"            # descriptor in configs/datasets/, or ""
+dataset = "eur_usd-closing_rate"            # descriptor datasets/<name>.toml beside this file, or ""
 value_column = "Data"                       # column name or 1-based index
 time_column = ""                            # column name or index; "" = sample index
 time_unit = "sample"                        # one of: "sample" | "nanosecond" | "microsecond" | "millisecond" | "second" | "minute" | "hour" | "day"

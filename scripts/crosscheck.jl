@@ -2,11 +2,10 @@
 # on the threshold grid of a configuration.
 #
 #   julia --threads=auto scripts/crosscheck.jl --config PATH [--every K]
-#         [--reference-every M] [--backend oneapi|cuda|amdgpu|metal|none]
-#         [--env DIR] [--out PATH.csv]
+#         [--backend oneapi|cuda|amdgpu|metal|none] [--env DIR] [--out PATH.csv]
 #
-# Every K-th threshold of the grid is taken (default every one), and of these
-# every M-th is checked (default every one). On a checked threshold every
+# Every K-th threshold of the grid is checked (default every one). On a
+# checked threshold every
 # kernel is compared with the reference kernel of the configuration
 # ([algorithm].reference_kernel) through `validate`, which reports the number of
 # differing indices and the reference kernel's work and time; a comparison whose work
@@ -16,21 +15,18 @@
 # per kernel and threshold to a CSV file; the summary is always printed, and any
 # disagreement ends the script with an error.
 function parse_commandline(argv)
-    options = Dict{String, Any}("config" => nothing, "every" => 1, "reference-every" => 1,
-        "backend" => "none", "env" => dirname(@__DIR__), "out" => nothing)
+    options = Dict{String, Any}("config" => nothing, "every" => 1, "backend" => "none",
+        "env" => dirname(@__DIR__), "out" => nothing)
     i = 1
     while i <= length(argv)
         arg = argv[i]
-        if arg in
-           ("--config", "--every", "--reference-every", "--backend", "--env", "--out") &&
-           i < length(argv)
+        if arg in ("--config", "--every", "--backend", "--env", "--out") && i < length(argv)
             key = arg[3:end]
-            options[key] = key in ("every", "reference-every") ? parse(Int, argv[i + 1]) :
-                           argv[i + 1]
+            options[key] = key == "every" ? parse(Int, argv[i + 1]) : argv[i + 1]
             i += 2
         else
-            error("usage: crosscheck.jl --config PATH [--every K] [--reference-every M] " *
-                  "[--backend B] [--env DIR] [--out PATH.csv]")
+            error("usage: crosscheck.jl --config PATH [--every K] [--backend B] " *
+                  "[--env DIR] [--out PATH.csv]")
         end
     end
     options["config"] === nothing && error("--config is required")
@@ -52,11 +48,10 @@ function main(options)
 
     settings = load_settings(abspath(options["config"]))
     series, ids = prepare(settings)
-    deltas = threshold_list(settings, series)[1:options["every"]:end][1:options["reference-every"]:end]
+    deltas = threshold_list(settings, series)[1:options["every"]:end]
     println(
         "series ", ids.series_id, ": ", length(series), " observations, ", length(deltas),
-        " thresholds checked (one in ", options["every"] * options["reference-every"],
-        " of the grid)")
+        " thresholds checked (one in ", options["every"], " of the grid)")
 
     kernels = Pair{String, AbstractSearch}["guarded" => GuardedSearch(),
         "segment_tree" => SegmentTreeSearch(), "fenwick" => FenwickSweep(),
@@ -103,6 +98,8 @@ function main(options)
             k["name"], k["n_checked"], k["n_skipped"], differing, k["n_differences"],
             k["seconds"])
     end
+    all(k -> k["n_checked"] > 0, report["kernels"]) ||
+        error("no threshold compared: the scan work of every threshold exceeds [limits] max_reference_work")
     report["all_equal"] || error("kernel disagreement detected")
     println("all kernels agree index by index on every checked threshold")
     return nothing

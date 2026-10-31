@@ -52,18 +52,6 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Append a step to `record` in place and return it. Transformations use the
-non-mutating [`with_step`](@ref).
-"""
-function record!(record::PreparationRecord, op::Symbol, parameters::Dict{String, Any},
-        summary::Dict{String, Any})
-    push!(record.steps, PreparationStep(op, parameters, summary))
-    return record
-end
-
-"""
-$(TYPEDSIGNATURES)
-
 Copy of `record` with the step `op` appended; `record` is unchanged.
 """
 function with_step(record::PreparationRecord, op::Symbol, parameters::AbstractDict,

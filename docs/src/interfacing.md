@@ -170,7 +170,7 @@ evaluation; memory stays below twice the samples within one horizon.
 `status(est)` reports the evicted and unreachable indices per threshold.
 
 The lower-level pieces remain available: a [`StreamingState`](@ref) at one
-threshold fed with [`update!`](@ref), and a
+threshold fed with [`update!`](@ref WaitingTimes.update!), and a
 [`DistributionAccumulator`](@ref) turned into a distribution by
 [`empirical_distribution`](@ref).
 
