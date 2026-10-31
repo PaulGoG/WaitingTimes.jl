@@ -39,7 +39,9 @@ payload origin from `config_snapshot.toml`. `masks/gaps.csv` declares every
 hole of the delivered record with its cause, in payload rows (`RowFirst`,
 `RowLast`, inclusive) and in mission time (`ContentStart`, `ContentEnd`,
 half-open); `holes.csv` is the same table as a feed, each hole with the
-instant it was declared. `descriptor.toml` is the run's identity.
+instant it was declared. `descriptor.toml` is the run's identity (schema
+`deepspacetelemetry-run/1`; `/2` since 3.0, when the point-wise masks left
+the run directory).
 
 | Collection | From the run |
 |---|---|
@@ -58,14 +60,18 @@ runs of one configuration agree on every product but the wall-clock column of
 A Julia consumer reads the run through the producer's adapter,
 `DeepSpaceTelemetry.RunAdapter` (public since 2.6.2), as
 `examples/telemetry_run.jl` does. `open_run` checks the producer's version
-and the lifecycle sentinel; `run_geometry` gives the sample rate, the payload
-origin and the clock mode; `list_batches` and `read_batch` give the delivered
-payload with its payload rows (`row_time` the instant of a row); and
-`declared_holes` gives the feed. `TelemetryCore.read_table` reads the tables
-of the run and states their column types. Since DeepSpaceTelemetry 2.9 the
-adapter and `TelemetryCore` form the subpackage `DeepSpaceTelemetryReader`
-(`reader/` of the repository), re-exported under the same qualified names; a
-consumer that only reads run directories adds it alone,
+(2.6.0 or later by default since 3.0) and the lifecycle sentinel;
+`run_geometry` gives the sample rate, the payload origin and the clock mode;
+`list_batches` and `read_batch` give the delivered payload with its payload
+rows (`row_time` the instant of a row); `declared_holes` gives the feed; and
+`delivered_rows` gives the payload rows on the ground at a mission instant.
+`TelemetryCore.read_table` reads the tables of the run and states their
+column types. Since 3.0 the producer is maintained rather than extended, and
+the file contract and the adapter are stable within 3.x. Since
+DeepSpaceTelemetry 2.9 the adapter and `TelemetryCore` form the subpackage
+`DeepSpaceTelemetryReader` (`reader/` of the repository), re-exported under
+the same qualified names; a consumer that only reads run directories adds it
+alone,
 `Pkg.add(url = ..., subdir = "reader")`, without the simulator's figure and
 HDF5 dependencies. A consumer in any other language works from the file
 contract.
@@ -77,14 +83,20 @@ the wire (`live_source`), a recording (`replay_source`: a session from its
 raw files, or a corpus from the processed tree one trading day at a time),
 and the raw files of a session another process is writing
 (`follow_source`). A followed source ends when the session's sidecar leaves
-`running`; a finished session is read whole. `OnlineWaitingTimes` consumes
+`running`; a finished session is read whole. Since MarketTickStreamer 2.0 the
+mode keywords are `Symbol`s (`replay_source(files; pace = :max)`,
+`compact_raw(cfg, files)` with the format from the configuration) and an
+operational refusal throws a subtype of `MarketTickStreamerError`; the file
+contract and the configuration are those of 1.x, and the package is in
+maintenance. `OnlineWaitingTimes` consumes
 the channel under the producer's snapshot convention (`snapshots`): the state
 at every multiple of a period on the exchange clock and once at close. The
 snapshots are a function of the sequence alone, so a replay reproduces those
 of the live session.
 
-The file contract, fixed by MarketTickStreamer 1.0.0, serves the batch
-pipeline. The processed day files `processed/<SYMBOL>/<YYYY-MM-DD>.csv|.arrow`
+The file contract, fixed by MarketTickStreamer 1.0.0 and kept by 2.0, serves
+the batch pipeline. The processed day files
+`processed/<SYMBOL>/<YYYY-MM-DD>.csv|.arrow`
 hold `time_ns`, `price` and the other trade columns, rows sorted by
 `time_ns` and exact duplicates removed. They are read with `format = "tick"`,
 every print a row, equal time stamps resolved by `tie_policy`. A series over

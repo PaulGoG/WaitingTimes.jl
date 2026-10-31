@@ -321,6 +321,11 @@ end
     @test s1["producer"] == "DeepSpaceTelemetry" && s1["producer_version"] == "2.6.2" &&
           s1["identity"] && s1["git_commit"] == dst["git_commit"] && !s1["git_dirty"] &&
           s1["producer_compat"] == "2.5.0" && s1["compat_checked"] && s1["compat_satisfied"]
+    s1b = summarise(merge(dst,
+        Dict("schema" => "deepspacetelemetry-run/2", "package_version" => "3.1.0")))
+    @test s1b["producer"] == "DeepSpaceTelemetry" && s1b["producer_version"] == "3.1.0" &&
+          s1b["schema"] == "deepspacetelemetry-run/2" && s1b["identity"] &&
+          s1b["compat_satisfied"]
     old = Dict{String, Any}(
         "schema" => "deepspacetelemetry-run/1", "package_version" => "2.6.0",
         "git_commit" => "", "git_dirty" => false)
@@ -332,8 +337,10 @@ end
             "package_version" => "1.0.0", "timestamp_unit" => "nanosecond"))
     s3 = summarise(mts)
     @test s3["producer"] == "MarketTickStreamer" && s3["git_commit"] == "" &&
-          !s3["identity"] &&
-          s3["compat_satisfied"]
+          !s3["identity"] && s3["producer_compat"] == "1.0.0" && s3["compat_satisfied"]
+    @test !summarise(Dict{String, Any}("session" => mts["session"],
+        "provenance" => merge(mts["provenance"],
+            Dict("package_version" => "0.3.0"))))["compat_satisfied"]
     generic = Dict{String, Any}("producer" => "Other", "producer_version" => "1.2.0",
         "git_tree_sha1" => "abc")
     s4 = summarise(generic)

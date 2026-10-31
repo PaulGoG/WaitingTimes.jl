@@ -243,16 +243,17 @@ and `identity`, which states whether `git_tree_sha1` is present.
 the producer's version against the oldest one whose file contract this
 release reads
 ([`MINIMUM_PRODUCER_VERSION`](@ref WaitingTimes.Provenance.MINIMUM_PRODUCER_VERSION):
-DeepSpaceTelemetry.jl 2.5.0, MarketTickStreamer.jl 0.3.0). A version below
+DeepSpaceTelemetry.jl 2.5.0, MarketTickStreamer.jl 1.0.0). A version below
 the minimum is recorded with a warning; a descriptor without `git_tree_sha1`
 is recorded as having no code identity, never rejected.
 
 DeepSpaceTelemetry.jl was the first producer to write one: from 2.5 on, a
 finished run directory holds `descriptor.toml` (schema
-`deepspacetelemetry-run/1`) with the run identifier, the producer's version,
-the identity of its code, the configuration hash, the clock mode, the seed,
-the payload geometry and the size and SHA-256 of every table of the run
-(`examples/telemetry_run.jl`). MarketTickStreamer.jl writes a session
+`deepspacetelemetry-run/1`, `/2` since 3.0, read alike) with the run
+identifier, the producer's version, the identity of its code, the
+configuration hash, the clock mode, the seed, the payload geometry and the
+size and SHA-256 of every table of the run (`examples/telemetry_run.jl`).
+MarketTickStreamer.jl writes a session
 sidecar, `<session>.meta.toml`, with the session, the producer's version,
 commit and dirty flag, the venue's timestamp unit, the hardware and the
 configuration snapshot (`examples/tick_stream.jl`); it records no tree hash.

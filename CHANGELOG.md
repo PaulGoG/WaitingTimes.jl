@@ -47,14 +47,21 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   itself.
 - The auxiliary environments state `julia = "1.12"`, so dependency updates no
   longer propose the `<0.0.1` bounds of pre-1.10 standard libraries.
-- The examples environment pins DeepSpaceTelemetry.jl 2.9.0 (MarketTickStreamer.jl
-  stays at 1.0.0). Since 2.8 the producer runs its components on one thread,
-  so the `--threads=3` advice of `examples/telemetry_run.jl` is gone from the
-  README, the example and CI; the example skips the figure stages of the
-  shipped scenario (`run_mission(cfg; figures = false)`, new in 2.7). Since
-  2.9 the reader (`TelemetryCore`, `RunAdapter`) is a subpackage,
-  `DeepSpaceTelemetryReader`, re-exported under the same qualified names; a
-  consumer that only reads run directories can add it alone.
+- The examples environment pins MarketTickStreamer.jl 2.0.3 and
+  DeepSpaceTelemetry.jl 3.1.0, with `[compat]` bounds `2` and `3`.
+  `examples/tick_stream.jl` passes the replay pace as a `Symbol` and compacts
+  through the configuration form of `compact_raw`, as MarketTickStreamer 2.0
+  asks; the file contract is that of 1.0.0. `examples/telemetry_run.jl`
+  places the shipped scenario under the output directory with
+  `run_mission(cfg; data_root)` and skips its figure stages
+  (`figures = false`). Since DeepSpaceTelemetry 2.8 the producer runs its
+  components on one thread, so the `--threads=3` advice is gone from the
+  README, the example and CI; since 2.9 the reader (`TelemetryCore`,
+  `RunAdapter`) is the subpackage `DeepSpaceTelemetryReader`, reached under
+  the same qualified names, which a consumer that only reads run directories
+  can add alone; since 3.0 the adapter admits runs of 2.6.0 and later.
+- `MINIMUM_PRODUCER_VERSION` admits MarketTickStreamer.jl from 1.0.0, the
+  release that fixed the file contract, instead of 0.3.0.
 - `generate` is resumable. `index.toml`, `summary.csv` and `catalog.csv` are
   rewritten atomically at every checkpoint and at the end of a session;
   `metadata.toml` is written at the first session; an interrupted run leaves
@@ -117,6 +124,9 @@ Keep a Changelog and the project adheres to Semantic Versioning.
 
 ### Fixed
 
+- `source_summary` recognises a DeepSpaceTelemetry.jl run descriptor by the
+  prefix of its schema, so the `deepspacetelemetry-run/2` descriptors written
+  since 3.0 are summarised as the `/1` ones are.
 - `CITATION.cff` quotes the article number `035007`, so that YAML keeps the
   leading zero.
 - Docstrings: the suffix maximum of `GuardedSearch` runs over `m ≥ n`, not

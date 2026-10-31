@@ -32,7 +32,7 @@
 # collection contract (provenance schema 3, source summary, gap kinds,
 # record structure, per-class partitions); a producer change that breaks it
 # fails here. With raw session files as arguments the ticks
-# come from `replay_source(files; pace = "max")`, with `--follow` from
+# come from `replay_source(files; pace = :max)`, with `--follow` from
 # `follow_source(dir; session)`, and only the online check runs.
 include(joinpath(@__DIR__, "activate.jl"))
 
@@ -154,7 +154,7 @@ source, sessions = if follow_at !== nothing
 elseif synthetic
     synthetic_tape(200_000)
 else
-    replay_source(ARGS; pace = "max"), nothing
+    replay_source(ARGS; pace = :max), nothing
 end
 est, trades, persisted, snaps = consume(source)
 isempty(trades) && error("the source delivered no price-forming print")
@@ -214,8 +214,7 @@ mktempdir() do dir
         ticks = length(trades), raw_files = [sink.path],
         started_utc = unix2datetime(first(trades).time_ns / 1e9),
         finished_utc = unix2datetime(last(trades).time_ns / 1e9))
-    days = compact_raw([sink.path], cfg.processed_dir;
-        format = cfg.processed_format, tz = cfg.exchange_tz)
+    days = compact_raw(cfg, [sink.path])       # format, calendar and limits from the configuration
     corpus = read_processed(cfg, SYMBOL)
     followed = collect(follow_source(cfg.raw_dir; session = sid))
     contract(
