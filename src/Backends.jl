@@ -108,10 +108,10 @@ function load_device_packages(prefer::Symbol)
 end
 
 """
-$(TYPEDSIGNATURES)
+    to_backend(data::AbstractArray, backend) -> AbstractArray
 
-Move an array to the backend; the KernelAbstractions extension adds the CPU
-method, the GPU extensions their device array types.
+Copy of `data` as an array of `backend`; the KernelAbstractions extension adds
+the CPU method (`Array`), the GPU extensions their device array types.
 """
 function to_backend end
 
@@ -137,22 +137,25 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Human-readable backend description carrying the chip model for provenance.
+Human-readable name of the backend `b` for provenance. The fallback is the type
+name; the extensions name the CPU with its model and a functional CUDA, AMDGPU
+or oneAPI device with its device name (Metal without one).
 """
 backend_name(b) = string(nameof(typeof(b)))
 
 """
-$(TYPEDSIGNATURES)
+    reclaim_device_memory!(backend)
 
-Release cached device memory pools; a no-op for the CPU and for backends
-without a reclaim API.
+Release the cached device memory pools of `backend` (CUDA); a no-op for the
+CPU and for backends without a reclaim API.
 """
 reclaim_device_memory!(_) = nothing
 
 """
-$(TYPEDSIGNATURES)
+    device_fingerprint(backend) -> String
 
-Device and runtime report for the hardware sidecar; empty for the CPU.
+Device and runtime report of `backend` for the hardware sidecar; empty for the
+CPU and for a device that is not functional.
 """
 device_fingerprint(_) = ""
 

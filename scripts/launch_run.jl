@@ -1,8 +1,8 @@
 # Launch scripts/run_pipeline.jl as a detached child process with the same
 # Julia binary and all threads. Standard output and standard error go to one
 # console log under data/logs/; beside it, run_<timestamp>.toml records the
-# process identifier, the command, the log, the start time (UTC) and the
-# configuration.
+# process identifier, the command, the log, the start time (UTC) and, with
+# --config, the configuration path.
 #
 #   julia scripts/launch_run.jl [--config PATH] [--output-dir DIR]
 include(joinpath(dirname(@__DIR__), "activate.jl"))

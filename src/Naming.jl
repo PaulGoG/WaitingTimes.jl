@@ -28,6 +28,8 @@ File name
 `<series>__<model>__<representation>__<binning>__delta=<delta>[__<key>=<value>...]__<id>.<ext>`.
 `delta` is a fixed-decimal string or a `start-stop` range string; `extras`
 are additional `key => value` pairs; `model` and `binning` may be `"none"`.
+Every field passes through `Provenance.slugify`: characters outside
+`A-Za-z0-9_+-.` become `_` and runs of `_` collapse.
 """
 function artefact_name(; series::AbstractString, model::AbstractString = "none",
         representation::AbstractString, binning::AbstractString = "none",
