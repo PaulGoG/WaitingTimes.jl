@@ -18,9 +18,8 @@ abstract type AbstractSearch end
 Direct evaluation of the definition: for each index scan forward until the
 first value at least `δ` above it. Cost ``O(\\sum_n \\tau_n)``, worst case
 ``O(N^2)``. It is the reference kernel every other kernel is checked against.
-Indices are processed
-in chunks of `chunk_size` under dynamic scheduling, because the cost per index
-is heavy-tailed.
+Indices are processed in chunks of `chunk_size` under dynamic scheduling,
+because the cost per index is heavy-tailed.
 """
 struct NaiveSearch <: AbstractSearch
     chunk_size::Int
@@ -91,7 +90,10 @@ workspace(::GuardedSearch, s::QuantizedSeries) = SearchWorkspace(suffix_maximum(
 """
     workspace_bytes(alg::AbstractSearch, s::QuantizedSeries)::Int
 
-Bytes of the workspace of `alg` on `s`, as `estimate_memory_bytes` counts them.
+Bytes of working memory of `alg` on `s` beyond the series and the result, as
+`estimate_memory_bytes` counts them: the workspace, the worst-case pending heap
+for [`StreamingSearch`](@ref) (whose workspace is `nothing`), the backend arrays
+for [`DeviceSearch`](@ref).
 """
 function workspace_bytes end
 workspace_bytes(::NaiveSearch, ::QuantizedSeries) = 0

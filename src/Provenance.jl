@@ -27,8 +27,8 @@ $(TYPEDSIGNATURES)
 
 Parsed configuration with its base file resolved: a top-level
 `base_config = "file.toml"` (relative to the overlay's directory) names a base
-whose tables are deep-merged beneath the overlay's, one level only. The key is
-stripped, so the result is self-contained.
+whose tables are deep-merged beneath the overlay's; the base may not name a
+base of its own. The key is stripped, so the result is self-contained.
 """
 function effective_config(config_path::AbstractString)
     config = TOML.parsefile(config_path)
@@ -515,7 +515,7 @@ end
 $(TYPEDSIGNATURES)
 
 Write the platform fingerprint text file: `versioninfo`, host totals and,
-when given, the device report of a GPU backend.
+when given, the device report of a GPU backend; returns `path`.
 """
 function write_hardware_fingerprint(path::AbstractString; device_report::AbstractString = "")
     open(path, "w") do io
@@ -554,8 +554,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Session identifier from the UTC wall clock and the first characters of the
-git state.
+Session identifier `<yyyymmddTHHMMSS>_<tag>` from the UTC wall clock and the
+slug of the first 12 characters of `git`; `generate` passes the commit of the
+package code, or its tree hash when no commit is known.
 """
 function session_id(git::AbstractString = "unknown")
     stamp = Dates.format(now(UTC), "yyyymmddTHHMMSS")

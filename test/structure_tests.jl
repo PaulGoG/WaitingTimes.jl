@@ -39,7 +39,7 @@ end
           h.gap_sources == ["masks/gaps.csv"]
     @test length(s.record.steps) == 1 && h.record.steps[end].op === :declare_gaps
 
-    # a detected gap absorbs the declared hole it overlaps (sample period 250)
+    # a declared gap absorbs the detected gap it overlaps (sample period 250)
     t = [0, 250, 1000, 1250]
     d = QuantizedSeries([1.0, 2.0, 3.0, 4.0], 0; times = t, cadence = 250)
     @test d.gaps == [(251, 1000)]

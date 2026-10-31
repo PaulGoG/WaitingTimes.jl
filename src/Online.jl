@@ -19,8 +19,8 @@ long-running pipelines two options bound it (see [`StreamingState`](@ref)).
 `upper_bound`, a real value, declares the largest attainable value: indices
 that cannot resolve are counted as censored on arrival, and the results are
 unchanged. `horizon`, in `time_unit`, evicts indices pending longer than it as
-censored; the distributions then carry the horizon and equal
-`empirical_distribution(τ, δ, s; horizon)` of the batch evaluation.
+censored; the distributions then carry the horizon and, on a series without
+gaps, equal `empirical_distribution(τ, δ, s; horizon)` of the batch evaluation.
 
 `late_policy` governs a sample whose time does not exceed the previous one
 (a late print on an interleaved tape): `:error` throws, `:skip` counts it in
@@ -28,10 +28,10 @@ censored; the distributions then carry the horizon and equal
 `:error` throws, `:skip` counts it in `n_above_bound` and treats it as a
 missing observation (on a sample-indexed stream it keeps its index).
 
-Feed with `push!(est, t, x)` with the time of every
-observation, or on a sample-indexed stream `push!(est, x)` with
-`push!(est, missing)` for a missing sample, which advances the index so that
-time passes through it; read with [`snapshot`](@ref) (the distributions so
+Feed with `push!(est, t, x)` with the time of every observation, or on a
+sample-indexed stream with `push!(est, x)` and `push!(est, missing)` for a
+missing sample, which advances the index so that time passes through it;
+read with [`snapshot`](@ref) (the distributions so
 far), [`pending`](@ref) and [`status`](@ref).
 
 $(TYPEDFIELDS)
@@ -131,7 +131,7 @@ function Base.push!(est::OnlineWaitingTimes{Tv, Tt}, t::Integer, x::Real) where 
 end
 
 """
-$(TYPEDSIGNATURES)
+    push!(est::OnlineWaitingTimes, x::Union{Real, Missing}) -> Int
 
 Feed the value `x` at the next sample index (`time_unit = :sample`). A
 `missing` value advances the index without an observation, so the elapsed
@@ -179,8 +179,9 @@ pending(est::OnlineWaitingTimes) = [pending(state) for state in est.states]
 $(TYPEDSIGNATURES)
 
 The distributions accumulated so far, one [`WaitingTimeDistribution`](@ref)
-per threshold in threshold order; each carries the accounting of its state
-(candidates, resolved, pending).
+per threshold in threshold order; each carries the accounting of its state:
+resolved indices as exact, pending, evicted and unreachable ones as
+right-censored.
 """
 function snapshot(est::OnlineWaitingTimes)
     return [empirical_distribution(acc, state; time_unit = est.time_unit)
@@ -191,7 +192,8 @@ end
 $(TYPEDSIGNATURES)
 
 Per-threshold status as a vector of named tuples `(delta, n_seen, resolved,
-pending, evicted, unreachable, mean_waiting_time)`: `evicted` counts indices
+pending, evicted, unreachable, mean_waiting_time)`: `delta` is the fixed-decimal
+string, `evicted` counts indices
 censored at the horizon, `unreachable` those whose target exceeds the upper
 bound.
 """

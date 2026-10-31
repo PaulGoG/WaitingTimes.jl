@@ -70,8 +70,9 @@ const UNIT_NANOSECONDS = Dict(:nanosecond => 1, :microsecond => 10^3, :milliseco
 """
 $(TYPEDSIGNATURES)
 
-Read a series from `path`. `format` is `:csv`, `:dat` (space-delimited with a
-header), `:arrow`, `:tick` (MarketTickStreamer compacted files: time column
+Read a series from `path`. `format` is `:csv`, `:dat` (space-delimited unless
+`delimiter` is given, runs of delimiters collapsed), `:arrow`, `:tick`
+(MarketTickStreamer processed day files: time column
 `time_ns` unless given, value column `price` when `value_column = ""`, integer
 nanosecond stamps, and `time_unit = :sample` taken as `:nanosecond`) or `:auto`
 (from the file extension: `.csv`, `.dat`, `.arrow`, `.feather`). Columns are
@@ -389,8 +390,9 @@ end
 $(TYPEDSIGNATURES)
 
 Deviation of every observation from the mean of the previous `window`
-observations (the trailing mean ``\\mathrm{RA}_k``); the first observation is
-set to zero. `denominator` selects the normalisation:
+observations, or of all previous ones while fewer exist (the trailing mean
+``\\mathrm{RA}_k``); the first observation is set to zero. `denominator`
+selects the normalisation:
 
 - `:mean`, the percentage fluctuation ``(x_k - \\mathrm{RA}_k) \\cdot 100 / \\mathrm{RA}_k``
   of the original analysis (Pană, Gogîță, Nicolin-Żaczek, Rom. J. Phys. 69,
@@ -569,8 +571,8 @@ $(TYPEDSIGNATURES)
 
 Remove the rows selected by `remove` (a mask over the rows of `rs`) and record
 the step `op` with `parameters` and `summary`, the latter extended by
-`n_removed`, `fraction_removed` and `positions`. With
-`splice = false` the value is set to `missing` and its time position remains:
+`n_removed`, `fraction_removed` and `positions`. With `splice = false` the
+value is set to `missing` and its time position remains:
 the measurement is discarded as invalid but the time passed, so the cut is a
 recorded gap; this is what the 2024 analysis did (its time column kept the
 original row indices) and what reproduces the published results. With
@@ -649,8 +651,7 @@ levels at once, so the removed share exceeds `fraction` by up to one level.
 tables were computed; the 0.04 % stated in Rom. J. Phys. 69, 111 (2024),
 §2.3 (doi:10.59277/RomJPhys.2024.69.111), is a misprint of the paper. With
 `splice = false` (the default, as in the 2024 code) this step reproduces the
-published Table 1 entries of the
-pruned series; see [`remove_rows`](@ref).
+published Table 1 entries of the pruned series; see [`remove_rows`](@ref).
 """
 function clip_extremes(rs::RawSeries; fraction::Real = 0.004, digits::Integer,
         splice::Bool = false)
@@ -937,8 +938,7 @@ Recorded resolution of the observed values: the smallest number of decimals
 decimal grid, as after most transformations). Quantising with `digits = d`
 reproduces every observed value, a coarser grid moves at least one, and a
 finer grid only enlarges the integers; `d` is therefore the natural choice of
-`digits` for a
-series used as recorded.
+`digits` for a series used as recorded.
 """
 function resolution_digits(rs::RawSeries; max_digits::Integer = MAX_DIGITS,
         tolerance::Real = GRID_TOLERANCE)
@@ -992,7 +992,7 @@ retained at ``d``, the ratio of the grid step to the increment scale
 distance `ks` between the elapsed distributions at ``d`` and ``d + 1``
 (`missing` when `δ` is not on the ``10^{-d}`` grid). A distance that stays
 below the analysis tolerance from some ``d`` on marks the grids at which the
-product no longer depends on the choice.
+distribution no longer depends on the choice. Returns a `DataFrame`.
 """
 function digits_sensitivity(rs::RawSeries; digits = 0:8, deltas = [0.0],
         kernel::AbstractSearch = SegmentTreeSearch())
@@ -1031,7 +1031,7 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Choice of `digits` by the rules of the configuration guide. A series whose
+Choice of `digits` for `digits = "auto"`. A series whose
 values lie on a decimal grid (as recorded, rounded, or differenced) takes its
 recorded resolution ([`resolution_digits`](@ref)), raised to `min_digits`
 (the decimals the threshold grid needs). Otherwise the choice is the smallest

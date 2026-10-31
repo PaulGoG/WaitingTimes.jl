@@ -405,7 +405,7 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
             end
         end
         @test partial == waiting_times(s, δ, NaiveSearch())
-        # accumulator-fed update and callback form
+        # accumulator form of update!, argument checks, overflow guard of a narrow state
         state2 = StreamingState(s, δ)
         acc2 = DistributionAccumulator{Int64}()
         total = sum(update!(acc2, state2, t[m], q[m]) for m in 1:length(s))

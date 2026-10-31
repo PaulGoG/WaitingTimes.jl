@@ -74,6 +74,8 @@ $(TYPEDSIGNATURES)
 
 Fresh state for threshold `δ` with value type `Tv` and time type `Tt`;
 `upper_bound` is on the integer grid, `horizon` in time units.
+`StreamingState(s, δ; upper_bound, horizon)` takes `Tv` and `Tt` from the
+series `s`.
 """
 function StreamingState{Tv, Tt}(
         δ::Threshold; upper_bound::Union{Nothing, Integer} = nothing,
@@ -104,8 +106,9 @@ end
 $(TYPEDSIGNATURES)
 
 Remove the pending indices older than the horizon at the time of the last
-sample and count them as evicted. Called by [`update!`](@ref) whenever the
-heap has doubled since the previous call, so the cost is amortised
+sample and count them as evicted. Called by [`pending`](@ref) and by
+[`update!`](@ref) once the heap has doubled since the previous compaction and
+holds at least `MIN_COMPACTION` entries, so the cost is amortised
 ``O(\\log h)`` per sample, ``h`` the heap length.
 """
 function compact!(state::StreamingState{Tv, Tt}) where {Tv, Tt}
@@ -223,6 +226,7 @@ Distribution of the waiting times accumulated so far, with the accounting of
 the streaming state: candidates are the samples seen but the last, resolved
 indices count as exact (gaps are not known to a stream), the rest (pending,
 evicted at the horizon, above the upper bound) are right-censored.
+`time_unit` labels the support (default `:sample`).
 """
 function empirical_distribution(
         acc::DistributionAccumulator{Tt}, state::StreamingState{Tv, Tt};

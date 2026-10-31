@@ -4,10 +4,9 @@
 """
     SeriesDescription
 
-Summary of a [`QuantizedSeries`](@ref) returned by [`describe`](@ref):
-observations, record length in sampling steps, first and last time, value
-statistics in data units, grid digits, sampling step, segments, and the number
-of gaps with the share of the record they cover, in total and by kind.
+Summary of a [`QuantizedSeries`](@ref) returned by [`describe`](@ref); values
+are in data units and gap shares are fractions of the span from the first to
+the last observation.
 
 $(TYPEDFIELDS)
 """

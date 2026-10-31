@@ -11,17 +11,15 @@ using Random: AbstractRNG, randexp
 
 export random_walk, iid_series, insert_missing, irregular_times
 
-# --- series ------------------------------------------------------------------
-
 """
 $(TYPEDSIGNATURES)
 
 Random walk of length `N`: increments `drift + sigma·ξ` with ξ standard
 normal, or symmetric Pareto with tail index `tail_alpha` when given; plus a
 linear `trend` per step, sinusoidal `periods` as `(period, amplitude)` pairs,
-additive Gaussian `noise`, and jumps of scale `jump_scale` with probability
-`jump_probability` per step. The walk starts from `level`; the first sample
-already carries one step.
+additive Gaussian `noise`, and Gaussian jumps of standard deviation
+`jump_scale`, kept in the walk, with probability `jump_probability` per step.
+The walk starts from `level`; the first sample already carries one step.
 """
 function random_walk(rng::AbstractRNG, N::Integer; drift::Real = 0.0, sigma::Real = 1.0,
         tail_alpha::Union{Nothing, Real} = nothing, trend::Real = 0.0,

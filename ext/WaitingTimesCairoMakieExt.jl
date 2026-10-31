@@ -72,7 +72,8 @@ end
     WaitingTimes.plot_series(s::QuantizedSeries; quantity_label = "", unit_label = "",
                              max_points = 5_000, size = (900, 600))
 
-Series against time, decimated to at most `max_points` samples, with the gaps
+Series against time, decimated with the stride `max(1, N ÷ max_points)` (fewer
+than `2 max_points` samples), with the gaps
 shaded; when gaps exist a legend on top names the series and states the gap
 count and their share of the record. The value axis is in data units.
 """

@@ -290,7 +290,7 @@ against its gap list. Returns `(class, lower, upper)` with `class` one of
 `CLASS_EXACT`, `CLASS_GAP_CROSSING`, `CLASS_RIGHT_CENSORED` and the bounds on
 the true waiting time: for an exact wait both equal `τ[n]`; for a gap-crossing
 wait the lower bound is the elapsed time to the last observation before the
-first gap and the upper bound is `τ[n]`; for a right-censored index the lower
+first gap after `t_n`, the upper bound `τ[n]`; for a right-censored index the lower
 bound is the elapsed time to the last observation before the first gap (or to
 the end of the record) and the upper bound is `typemax`. Index `N` is never a
 candidate and is reported as right-censored with both bounds zero.

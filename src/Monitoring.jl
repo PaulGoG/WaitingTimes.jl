@@ -42,7 +42,8 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Progress bar over `n` steps, enabled only when `stdout` is a terminal.
+Progress bar over `n` steps labelled `desc`, enabled only when `stdout` is a
+terminal.
 """
 function run_progress(n::Integer; desc::AbstractString = "thresholds")
     return Progress(n; desc = desc * ": ", dt = 0.5, enabled = stdout isa Base.TTY)

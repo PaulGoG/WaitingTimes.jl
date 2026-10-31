@@ -5,9 +5,9 @@ Given a series ``\\{A_n\\}`` observed at strictly increasing integer times
 ``\\{t_n\\}`` and a threshold ``\\delta \\ge 0``, the waiting time of index ``n`` is
 ``\\tau_n = t_m - t_n`` with ``m = \\min\\{m > n : A_m \\ge A_n + \\delta\\}``, the
 elapsed time to the first observed value at least ``\\delta`` above ``A_n``.
-Values and thresholds live on a decimal integer grid (`digits`), so every
-search kernel computes bit-identical results and the naive scan is the
-permanent reference kernel.
+Values and thresholds live on a decimal integer grid (`digits`), so the search
+kernels compute bit-identical results; each is checked against the naive
+scan, the permanent reference kernel.
 """
 module WaitingTimes
 
@@ -17,7 +17,7 @@ using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
 using OhMyThreads: tforeach
 using Statistics: Statistics
 
-"root directory of the package"
+"package directory, the parent of `src/`; the root hashed for the code identity"
 const PACKAGE_ROOT = normpath(joinpath(@__DIR__, ".."))
 
 include("Quantization.jl")
