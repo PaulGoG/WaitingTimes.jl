@@ -12,6 +12,68 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   `git_dirty = true` while its directory was pristine; 3.1.1 fixes the
   identity hash. The producers page states that the flag of such descriptors
   is spurious and that their `git_tree_sha1` and `git_commit` are correct.
+- Provenance schema 4. `metadata.toml` and the partition metadata carry
+  `waitingtimes-provenance/4`; the `[series]` table carries `n_observed`
+  only; `catalog.csv` is no longer written (it repeated `index.toml`);
+  kernels are recorded as `[algorithm].search` spells them (`segment_tree`,
+  not `segmenttreesearch`) in `index.toml`, `summary.csv`, the session
+  records and the reference-check records; the collection README names the
+  files in one paragraph. The read side reads schemas 2, 3 and 4; a
+  schema-3 collection written by 0.4.0 is a test fixture.
+- Every series and collection identifier changes: the removed
+  `gap_threshold` key leaves the hashed series identity, and tick series
+  hash their resolved time column, time unit and epoch unit. Collections of
+  0.4.0 load as before; regenerate them to extend them.
+- `[gaps].detect = "threshold"` with `[gaps].threshold` is gone: it
+  duplicated `detect = "cadence"` with `[gaps].cadence`. `Settings` loses
+  `gap_threshold` and `config_path`; `quantized_series` loses `threshold`.
+- For `format = "tick"` the parser resolves the defaults (`time_column =
+  "time_ns"`, `time_unit = "nanosecond"`, `epoch_unit = "nanosecond"`) and
+  rejects any other `epoch_unit`, so `Settings` and the identities record
+  what the reader uses; `read_series` rejects a non-nanosecond `epoch_unit`
+  for tick files instead of overriding it.
+- `centered_moving_average` is `detrend_moving_average` (operation,
+  function, slug tag `detrend<window>`): it returns the residual.
+- `prepare` returns a `PreparedSeries` (the series with its identifiers,
+  slugs, identities, descriptor, source record, the preprocessed raw series
+  and the original clock) instead of a tuple; `validate` returns a
+  `ValidationReport` (`series`, `reference_kernel`, `all_equal`, `results`
+  of `ComparisonResult`, `kernels` of `KernelSummary`) instead of a
+  dictionary.
+- `Threshold` has no type parameter: `Threshold(d, digits)` with
+  `d::Int64`; a kernel converts through `check_threshold`.
+- `source_summary` returns a `SourceSummary` named tuple for a descriptor,
+  as it did for a collection.
+- `Collection.n_observations` is `n_observed`, and so is the column of
+  `list_collections`.
+- The vector form of `class_counts` is `class_totals`; `class_counts(c, δ)`
+  is the collection method.
+- `Backends`: the extensions define `probe(::Val{name})` methods, and
+  `:auto` tries `GPU_PRIORITY` (`:cuda`, `:amdgpu`, `:oneapi`, `:metal`) in
+  that order whatever the load order. `register_backend!`, `BACKEND_PROBES`
+  and `to_backend` are gone; uploads use `KernelAbstractions.allocate` and
+  `copyto!`.
+- `terminal_overview` is provided by the UnicodePlots extension
+  (`using UnicodePlots`); UnicodePlots leaves the dependencies, a third of
+  the load time. The scripts have their own environment
+  (`scripts/Project.toml`, instantiated by `scripts/activate.jl`).
+- `Storage` exports the read side only; the writers stay public, qualified.
+  `MaxTree`, `FenwickWorkspace` and `first_at_least` leave the public names.
+- The file-name grammar `Naming` moves to WaitingTimeFits; nothing in the
+  package named a file with it.
+
+### Removed
+
+- `catalog.csv`; `[gaps].threshold`; `Settings.config_path`;
+  `Backends.register_backend!`, `Backends.BACKEND_PROBES`,
+  `Backends.to_backend`; `WaitingTimes.Naming`.
+
+### Internal
+
+- `load_settings` is nine per-section parsers; `generate` is
+  `memory_budget`, `write_partition!` and `finish_session!` around the
+  threshold loop; the streaming state converts the threshold to the value
+  type once per update and rejects a wider threshold at construction.
 
 ## [0.4.0] - 2026-11-02
 

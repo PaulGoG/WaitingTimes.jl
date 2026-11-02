@@ -10,6 +10,15 @@ WaitingTimes.Config.PreprocessingOp
 WaitingTimes.Config.validate_step
 WaitingTimes.Config.warn_ignored_keys
 WaitingTimes.Config.decimals
+WaitingTimes.Config.parse_input
+WaitingTimes.Config.parse_preprocessing
+WaitingTimes.Config.parse_gaps
+WaitingTimes.Config.parse_quantization
+WaitingTimes.Config.parse_thresholds
+WaitingTimes.Config.parse_algorithm
+WaitingTimes.Config.parse_limits
+WaitingTimes.Config.parse_output
+WaitingTimes.Config.parse_run
 ```
 
 ## Preprocessing
@@ -60,7 +69,6 @@ WaitingTimes.Storage.SOURCE_FILE
 WaitingTimes.Storage.write_distribution
 WaitingTimes.Storage.read_distribution
 WaitingTimes.Storage.write_summary
-WaitingTimes.Storage.write_catalog
 WaitingTimes.Storage.write_index
 WaitingTimes.Storage.read_index
 WaitingTimes.Storage.write_waiting_times
@@ -73,6 +81,8 @@ WaitingTimes.Storage.write_censoring
 WaitingTimes.Storage.censoring_path
 WaitingTimes.Storage.distribution_table
 WaitingTimes.Storage.READABLE_SCHEMAS
+WaitingTimes.Storage.SERIES_KEYS
+WaitingTimes.Storage.find_partition
 WaitingTimes.Storage.preprocessing_steps
 ```
 
@@ -93,6 +103,11 @@ WaitingTimes.Orchestrator.compare_with_reference
 WaitingTimes.Orchestrator.reference_thresholds
 WaitingTimes.Orchestrator.early_reference_check
 WaitingTimes.Orchestrator.check_record
+WaitingTimes.Orchestrator.memory_budget
+WaitingTimes.Orchestrator.write_partition!
+WaitingTimes.Orchestrator.finish_session!
+WaitingTimes.Orchestrator.index_entry
+WaitingTimes.Orchestrator.kernel_name
 ```
 
 ## Backends
@@ -111,6 +126,9 @@ WaitingTimes.Synthetic
 ## Kernels and streaming
 
 ```@docs
+WaitingTimes.MaxTree
+WaitingTimes.FenwickWorkspace
+WaitingTimes.first_at_least
 WaitingTimes.merge_gaps
 WaitingTimes.compact!
 WaitingTimes.DeviceWorkspace

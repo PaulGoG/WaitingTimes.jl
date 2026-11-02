@@ -59,10 +59,28 @@ bounds the heap by twice the samples within one horizon, at a cost within
 `DeviceSearch` is the guarded scan as a KernelAbstractions kernel, with one
 work-item per index and the host-computed suffix maxima for the censoring
 test. A package extension provides it: `using KernelAbstractions` enables it on
-the CPU backend, and loading CUDA, oneAPI, AMDGPU or Metal registers that GPU
-backend, which [`device_search`](@ref) selects. Device access is serialised
-and the series arrays are uploaded once per series. The CPU backend runs in
-the default test suite; opt-in device tests live in `test/device/`.
+the CPU backend, and loading CUDA, AMDGPU, oneAPI or Metal defines the probe
+of that GPU backend; [`device_search`](@ref) selects a named backend, and
+`:auto` tries them in that order whatever the load order. Device access is
+serialised and the series arrays are uploaded once per series. The CPU
+backend runs in the default test suite; opt-in device tests live in
+`test/device/`.
+
+## Kernel interface
+
+A kernel is a subtype of [`AbstractSearch`](@ref) with three methods:
+`waiting_times!(τ, s, δ, alg; workspace)` ([`waiting_times!`](@ref)) fills
+`τ` with the waiting times of every index, `workspace(alg, s)`
+([`WaitingTimes.workspace`](@ref)) builds the precomputation reused across
+thresholds, and `workspace_bytes(alg, s)`
+([`WaitingTimes.workspace_bytes`](@ref)) states the working memory beyond
+the series and the result, against which the memory limits are checked.
+[`WaitingTimes.check_threshold`](@ref)`(s, δ)` verifies that ``q_n + d``
+cannot exceed the value type of the series and returns ``d`` converted to
+that type, in which the kernel then works. [`WaitingTimes.scan_work`](@ref)
+bounds the cost of a comparison with the reference kernel, and
+[`WaitingTimes.SearchWorkspace`](@ref), the suffix maxima, is the host
+workspace of the scan kernels.
 
 ## Default kernel and reference checks
 

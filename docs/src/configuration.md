@@ -34,9 +34,8 @@ steps = [                         # applied in order; see Preprocessing steps be
 
 [gaps]
 declared = ""                     # TOML of declared gaps (intervals and/or [[gaps]] tables); "" = none
-detect = "cadence"                # "none" | "cadence" | "threshold"
+detect = "cadence"                # "none" | "cadence"
 cadence = 1                       # >= 1; largest spacing between consecutive observations that is not a gap, in time units
-threshold = 0                     # > 0 in time units when detect = "threshold"
 mode = "elapsed"                  # "elapsed" | "exact"
 
 [quantization]
@@ -76,6 +75,11 @@ seed = 12345                      # seed of the random choice of reference-check
 log_level = "info"                # "debug" | "info" | "warn"
 checkpoint_seconds = 10.0         # seconds between resume checkpoints; 0 = after every chunk
 ```
+
+For `format = "tick"`, the processed day files of MarketTickStreamer.jl, the
+defaults are `time_column = "time_ns"`, `time_unit = "nanosecond"` and
+`epoch_unit = "nanosecond"`; `epoch_unit` admits no other value for tick
+files.
 
 ## Time axis
 
@@ -179,7 +183,7 @@ when the configuration is loaded.
 | `log_returns` | | `100 log(x_k / x_{k-1})` |
 | `log_levels` | `reference = "first"` | `100 log(x_k / x_ref)`, the level in per cent of the first observed value or of a positive number; values must be positive, missing observations stay missing |
 | `differences` | | `x_k - x_{k-1}` |
-| `centered_moving_average` | `window` (odd) | subtract the centred moving average |
+| `detrend_moving_average` | `window` (odd) | subtract the centred moving average and keep the residual |
 | `clip_quantile` | `q`, `splice = false` | prune the observations with magnitude above the `q` quantile of the magnitudes (`q = 0.9996`: the extreme 0.04 % of both signs) |
 | `clip_extremes` | `fraction = 0.004`, `digits`, `splice = false` | the pruning loop of the 2024 code: remove whole magnitude levels from the top until at most `1 - fraction` of the rows remain |
 | `clip_sigma` | `k = 3`, `center = "mean"`, `scale = "std"`, `splice = false` | prune the observations farther than `k` scale units from the centre; `"median"` with `"mad"` is the robust pair |

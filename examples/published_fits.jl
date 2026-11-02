@@ -40,8 +40,10 @@ rows = DataFrame(
 
 for (label, config, δ_sf, α_sf, d_sf, δ_pt, α_pt, d_pt) in TABLE
     settings = load_settings(joinpath(CONFIGS, config))
-    series, ids = prepare(settings)
-    println("== ", label, " (", ids.series_slug, ", ", length(series), " observations)")
+    prepared = prepare(settings)
+    series = prepared.series
+    println(
+        "== ", label, " (", prepared.series_slug, ", ", length(series), " observations)")
     τ, pmf, cdf, d = distribution_at(series, δ_sf)
     seconds = @elapsed sf = fit_scale_free(τ, cdf)
     push!(rows,

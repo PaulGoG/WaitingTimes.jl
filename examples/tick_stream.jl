@@ -29,7 +29,7 @@
 # (`follow_source`). It declares the closures as gaps of kind "session" and
 # generates one collection on the elapsed axis (exchange time in
 # nanoseconds) and one on the index axis (trade count). It then asserts the
-# collection contract (provenance schema 3, source summary, gap kinds,
+# collection contract (provenance schema 4, source summary, gap kinds,
 # record structure, per-class partitions); a producer change that breaks it
 # fails here. With raw session files as arguments the ticks
 # come from `replay_source(files; pace = :max)`, with `--follow` from
@@ -248,7 +248,7 @@ mktempdir() do dir
                             axis,
                         "source_descriptor" => sidecar),
                     "gaps" => Dict("declared" => joinpath(dir, "closures.toml"),
-                        "detect" => "threshold", "threshold" => 60_000_000_000),
+                        "detect" => "cadence", "cadence" => 60_000_000_000),
                     "quantization" => Dict("digits" => DIGITS),
                     "thresholds" => Dict("mode" => "explicit", "values" => DELTAS),
                     "output" =>
@@ -262,7 +262,7 @@ mktempdir() do dir
 
     # the collection contract
     for c in (ce, ci)
-        contract(c.metadata["schema"] == "waitingtimes-provenance/3", "schema 3")
+        contract(c.metadata["schema"] == "waitingtimes-provenance/4", "schema 4")
         summary = WaitingTimes.source_summary(c)
         contract(summary !== nothing && summary.producer == "MarketTickStreamer",
             "source summary names MarketTickStreamer")
@@ -280,7 +280,7 @@ mktempdir() do dir
             "[producer] identity")
         contract(isfile(joinpath(c.dir, c.metadata["environment"]["manifest_file"])),
             "manifest snapshot")
-        contract(sum(WaitingTimes.segment_lengths(c)) == c.n_observations, "segments cover the series")
+        contract(sum(WaitingTimes.segment_lengths(c)) == c.n_observed, "segments cover the series")
         for δ in DELTAS
             d = distribution(c, δ)
             cc = WaitingTimes.class_counts(c, δ)
@@ -296,7 +296,7 @@ mktempdir() do dir
     original = CSV.read(joinpath(ci.dir, "gaps_original.csv"), DataFrame)
     contract(original.kind == gaps_e.kind && original.start == gaps_e.start,
         "the original clock keeps the session gaps")
-    contract(WaitingTimes.record_length(ci) == ci.n_observations, "trade count is the index")
+    contract(WaitingTimes.record_length(ci) == ci.n_observed, "trade count is the index")
     summary = WaitingTimes.source_summary(ce)
     println("source: ", summary.producer, " ", summary.producer_version, ", session ",
         source_descriptor(ce)["session"]["id"], ", code identity ",

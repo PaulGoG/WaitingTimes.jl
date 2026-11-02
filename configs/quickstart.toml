@@ -15,7 +15,7 @@ steps = []                                  # ordered tables with an op key; see
 
 [gaps]
 declared = ""                               # TOML of declared gaps (intervals and/or [[gaps]] tables); "" = none
-detect = "cadence"                          # one of: "none" | "cadence" | "threshold"
+detect = "cadence"                          # one of: "none" | "cadence"
 cadence = 1                                 # >= 1; largest spacing between consecutive observations that is not a gap, in time units
 mode = "elapsed"                            # one of: "elapsed" | "exact"
 
@@ -48,4 +48,4 @@ overwrite = false                           # rewrite existing partitions, backi
 [run]
 seed = 12345                                # seed of the random choice of reference-check thresholds
 log_level = "info"                          # one of: "debug" | "info" | "warn"
-checkpoint_seconds = 10.0                   # seconds between resume checkpoints (index, summary, catalogue); 0 = after every chunk
+checkpoint_seconds = 10.0                   # seconds between resume checkpoints (index, summary); 0 = after every chunk

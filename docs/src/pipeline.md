@@ -23,7 +23,7 @@ collection, writes one partition per threshold, runs reference checks, and
 records the session. With the Fenwick sweep the thresholds of a session are
 served in one pass per batch, the batch as large as `[limits].max_ram_gb`
 leaves room for. The collection directory (provenance schema
-`waitingtimes-provenance/3`) is
+`waitingtimes-provenance/4`) is
 
 ```
 data/<collection id>/
@@ -45,7 +45,6 @@ data/<collection id>/
 ├── waiting_times/              optional dense waiting-time vectors with classes and bounds
 ├── index.toml                  partitions with checksums and per-threshold statistics
 ├── summary.csv                 one row per threshold
-├── catalog.csv                 every distribution partition with its descriptor columns
 └── run.log
 ```
 
@@ -63,8 +62,8 @@ grid of 1000 thresholds writes some 25 to 40 GB.
 
 Rerunning with a wider threshold grid adds partitions and appends a session;
 existing partitions are skipped unless `[output].overwrite = true`, in which
-case they are backed up as `<name>#k.<ext>` first. `index.toml`, `summary.csv`
-and `catalog.csv` are rewritten at every checkpoint (`[run].checkpoint_seconds`,
+case they are backed up as `<name>#k.<ext>` first. `index.toml` and
+`summary.csv` are rewritten at every checkpoint (`[run].checkpoint_seconds`,
 10 s by default) and at the end of the session, so an
 interrupted run resumes from the partitions already written. With reference
 checks enabled the kernel is compared with the reference kernel on the
@@ -75,7 +74,11 @@ largest pending threshold before any partition is written.
 [`validate`](@ref) compares the configured kernel, or a given list of kernels
 (`kernels`), with the reference kernel on chosen
 thresholds and reports equality, the number of differing indices and the
-reference kernel's cost. `scripts/validate.jl` exits non-zero on any disagreement.
+reference kernel's cost. It returns a [`ValidationReport`](@ref) with one
+[`ComparisonResult`](@ref WaitingTimes.Orchestrator.ComparisonResult) per
+kernel and threshold and one
+[`KernelSummary`](@ref WaitingTimes.Orchestrator.KernelSummary) per kernel.
+`scripts/validate.jl` exits non-zero on any disagreement.
 
 ## Scripts
 
@@ -88,7 +91,7 @@ julia --threads=auto scripts/crosscheck.jl --config configs/quickstart.toml
 julia scripts/lineage.jl data/<collection id>
 ```
 
-Every script activates the package environment itself. `launch_run.jl`
+Every script activates the scripts environment itself (`scripts/activate.jl`). `launch_run.jl`
 starts the pipeline as a detached process with a console log under
 `data/logs/`. `run_pipeline.jl` loads KernelAbstractions and the GPU package
 named by `[algorithm].backend` when the configuration uses the device kernel
