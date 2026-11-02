@@ -34,7 +34,9 @@
 # authoritative key of the producer's code is `git_tree_sha1` with
 # `git_dirty = false`; `git_commit` is filled when the producer was pinned by
 # a full commit hash, as here (DeepSpaceTelemetry 2.6.1 and later; in an older
-# run the keys are missing, which means unknown).
+# run the keys are missing, which means unknown). A copy of 2.6.1 to 3.1.0
+# installed by Pkg stamps `git_dirty = true` spuriously when run with its
+# default data root; 3.1.1 fixes the identity hash.
 #
 # The delivered payload of the synthetic scenario is a flag series, so a
 # second series is built by masking a random walk with the same availability;

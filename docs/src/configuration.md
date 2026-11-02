@@ -265,4 +265,6 @@ The authoritative key of the producer's code is `git_tree_sha1` with
 producer ran from a checkout or was pinned by a full commit hash.
 DeepSpaceTelemetry has recorded both since 2.6.1, also for a copy installed
 by Pkg; in a descriptor written by an earlier version a missing key means
-unknown, and an installed copy leaves `git_commit` empty.
+unknown, and an installed copy leaves `git_commit` empty. An installed copy
+of 2.6.1 to 3.1.0 run with its default data root stamps the flag true
+spuriously ([Producers](@ref)).

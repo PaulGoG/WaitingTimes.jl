@@ -51,6 +51,15 @@ the run directory).
 | `time_axis = "index"` | the payload row, counted from the first delivered row |
 | source | `descriptor.toml`; the producer's code is `git_tree_sha1` with `git_dirty`, and `git_commit` when the run was made from a copy pinned by a full commit hash (2.6.1 and later) |
 
+A copy of 2.6.1 to 3.1.0 installed by Pkg and run with its default data root
+stamped `git_dirty = true` while its directory was pristine, because the
+identity hash left out a tracked placeholder under that root; 3.1.1 fixes
+the hash. The flag of such descriptors is spurious; their `git_tree_sha1` and
+`git_commit` are correct and remain the keys of the producer's code. The fix
+lives in the reader subpackage, which the producer bounds by `3.1`: an
+environment that keeps the 3.1.0 reader beside 3.1.1 stamps the flag until
+the reader is resolved again.
+
 Holes before the first and after the last delivered sample lie outside the
 record of the series and are reported, not declared. The tick clock of the
 producer (`simulation.mode = "tick"`) runs a scenario deterministically: two
