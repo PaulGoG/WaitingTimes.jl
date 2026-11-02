@@ -4,7 +4,7 @@
 using WaitingTimes.Provenance: artefact_id, backup_existing!, canonical_toml, content_hash,
                                dict_to_record, effective_config, record_to_dict, slugify,
                                toml_ready, write_toml
-using WaitingTimes.Preprocessing: RawSeries, apply_steps, centered_moving_average,
+using WaitingTimes.Preprocessing: RawSeries, apply_steps, detrend_moving_average,
                                   clip_extremes, clip_quantile, clip_sigma, collapse_ties,
                                   differences,
                                   exclude_intervals, log_levels, log_returns,
@@ -26,6 +26,7 @@ using Logging: Warn
 using Statistics: std
 import Distributions
 using CairoMakie: CairoMakie
+using UnicodePlots: UnicodePlots
 
 const CONFIGS = joinpath(dirname(@__DIR__), "configs")
 
@@ -112,10 +113,22 @@ end
             D("search" => "quantum"))))
         @test load_settings(write_config(D("algorithm" => D("search" => "device")))).search ===
               :device
+        # the threshold variant of detect no longer exists
         @test_throws ArgumentError load_settings(write_config(D("gaps" =>
             D("detect" => "threshold"))))
         @test_throws ArgumentError load_settings(write_config(D("input" =>
             D("time_column" => "Time"))))
+        ticks = joinpath(dir, "ticks.csv")
+        write(ticks,
+            "symbol,time_ns,price,size\nX,1000000000,10.0,1\nX,1000000000,10.5,2\nX,2500000000,11.0,1\n")
+        tick = load_settings(write_config(D("input" =>
+            D("path" => ticks, "format" => "tick", "value_column" => "price",
+                "tie_policy" => "last"))))
+        @test tick.time_column == "time_ns" && tick.time_unit === :nanosecond &&
+              tick.epoch_unit === :nanosecond
+        @test_throws ArgumentError load_settings(write_config(D("input" =>
+            D("path" => ticks, "format" => "tick", "value_column" => "price",
+                "epoch_unit" => "second"))))
         @test_throws ArgumentError load_settings(write_config(D("preprocessing" =>
             D("steps" => Any[D("op" => "teleport")]))))
         @test_throws ArgumentError load_settings(write_config(D("preprocessing" =>
@@ -130,7 +143,7 @@ end
         @test length(load_settings(write_config(D("preprocessing" =>
             D("steps" => Any[D("op" => "log_levels", "reference" => 100.0)])))).steps) == 1
         @test_throws ArgumentError load_settings(write_config(D("preprocessing" =>
-            D("steps" => Any[D("op" => "centered_moving_average", "window" => 4)]))))
+            D("steps" => Any[D("op" => "detrend_moving_average", "window" => 4)]))))
         @test_throws ArgumentError load_settings(write_config(D("preprocessing" =>
             D("steps" => Any[D("op" => "round", "digits" => 16)]))))
         @test length(load_settings(write_config(D("preprocessing" =>
@@ -143,7 +156,7 @@ end
         auto = load_settings(write_config(D("quantization" => D("digits" => "auto"))))
         @test auto.digits === nothing && auto.auto_max_digits == 8 &&
               WaitingTimes.Config.threshold_decimals(auto) == 4
-        s_auto, _ = prepare(auto)
+        s_auto = prepare(auto).series
         @test s_auto.digits == 4
         chosen = only(filter(step -> step.op === :suggest_digits, s_auto.record.steps))
         @test chosen.summary["rule"] == "sensitivity" && chosen.summary["digits"] == 4
@@ -232,9 +245,9 @@ end
     rd = round_values(raw_from([1.26, missing, 2.35]); digits = 1)
     @test isequal(rd.values, [1.3, missing, 2.4])
     @test_throws ArgumentError round_values(rd; digits = 16)
-    cma = centered_moving_average(raw_from([1.0, 2.0, 3.0, 4.0, 5.0]); window = 3)
+    cma = detrend_moving_average(raw_from([1.0, 2.0, 3.0, 4.0, 5.0]); window = 3)
     @test cma.values[3] == 0.0 && cma.values[1] ≈ 1 - 1.5
-    @test_throws ArgumentError centered_moving_average(rs; window = 2)
+    @test_throws ArgumentError detrend_moving_average(rs; window = 2)
     # pruning keeps the slot by default (the 2024 semantics); splice deletes it
     cq2 = clip_quantile(raw_from([1.0, 2.0, 3.0, 100.0]); q = 0.75)
     @test isequal(cq2.values, [1.0, 2.0, 3.0, missing])
@@ -333,7 +346,7 @@ end
     qs2 = quantized_series(raw_from([1.0, missing, 2.0]), 0; detect = :none)
     @test isempty(qs2.gaps) && qs2.times == [1, 3]
     qs3 = quantized_series(raw_from([1.0, 2.0, 3.0]; times = [1, 5, 9], unit = :second), 0;
-        detect = :threshold, threshold = 2, declared = [(6, 8)])
+        detect = :cadence, cadence = 2, declared = [(6, 8)])
     @test qs3.gaps == [(2, 5), (6, 9)]
     @test_throws ArgumentError quantized_series(rs, 0; detect = :undefined)
     # recorded resolution
@@ -416,6 +429,9 @@ end
         rs_tick = read_series(tick; format = :tick, value_column = "price", tie_policy = :last)
         @test rs_tick.time_unit === :nanosecond && rs_tick.values == [10.5, 11.0]
         @test_throws ArgumentError read_series(tick; format = :tick, value_column = "price")
+        @test_throws ArgumentError read_series(
+            tick; format = :tick, value_column = "price",
+            tie_policy = :last, epoch_unit = :second)
         by_index = read_series(
             joinpath(dirname(@__DIR__), "test", "fixtures", "fiatEURUSD.dat");
             value_column = 2)
@@ -454,9 +470,10 @@ end
         settings = load_settings(joinpath(CONFIGS, "quickstart.toml"); output_dir = dir)
         @test settings.output_root == dir
         @test make_kernel(settings) isa SegmentTreeSearch
-        series, ids = prepare(settings)
+        prepared = prepare(settings)
+        series = prepared.series
         @test length(series) == 11572 &&
-              startswith(ids.series_id, "series-eur_usd-closing_rate-")
+              startswith(prepared.series_id, "series-eur_usd-closing_rate-")
         @test estimate_memory_bytes(series, make_kernel(settings)) > 0
         handle = generate(settings)
         @test isdir(handle.dir) && startswith(handle.id, "collection-eur_usd-closing_rate-")
@@ -464,7 +481,7 @@ end
         @test length(handle.reference_checks) == 2 &&
               all(c -> c["equal"] && c["work"] > 0, handle.reference_checks)
         for name in ("config.toml", "metadata.toml", "hardware.txt", "index.toml", "summary.csv",
-            "catalog.csv", "series.csv", "gaps.csv", "series.toml", "run.log")
+            "series.csv", "gaps.csv", "series.toml", "run.log")
             @test isfile(joinpath(handle.dir, name))
         end
         @test isfile(joinpath(handle.dir, "distributions", "delta=0.0005.csv"))
@@ -473,7 +490,7 @@ end
         @test meta["dataset"]["descriptor"]["slug"] == "eur_usd-closing_rate"
         session = TOML.parsefile(joinpath(handle.dir, "sessions", handle.session * ".toml"))
         @test isfile(joinpath(handle.dir, "sessions", handle.session * ".config.toml"))
-        @test session["kernel"] == "segmenttreesearch" &&
+        @test session["kernel"] == "segment_tree" &&
               length(session["deltas_computed"]) == 10
         @test haskey(session["timings"], "search") &&
               session["hardware"]["threads"] == Threads.nthreads()
@@ -523,12 +540,12 @@ end
               occursin("delta=", read(joinpath(handle.dir, "README.md"), String))
         c = load_collection(handle.dir)
         @test c.id == handle.id && c.digits == 4 && c.time_unit === :sample &&
-              c.mode === :elapsed && c.n_observations == 11572 && isempty(c.steps)
+              c.mode === :elapsed && c.n_observed == 11572 && isempty(c.steps)
         @test length(thresholds(c)) == 12 && first(thresholds(c)) == Threshold(5, 4)
         d = distribution(c, "0.0005")
         @test d == distribution(c, 0.0005) == distribution(c, Threshold(5, 4))
         @test WaitingTimes.support(d) == parse.(Int, legacy["time"]) &&
-              d.n_candidates == 11571 && d.delta == Threshold{Int64}(5, 4)
+              d.n_candidates == 11571 && d.delta == Threshold(5, 4)
         @test_throws ArgumentError distribution(c, "0.0007")
         @test_throws ArgumentError distribution(c, Threshold(5, 3))
         st = summary_table(c)
@@ -550,10 +567,12 @@ end
                   read(joinpath(FIXTURES, "legacy", "WTS_ftEURUSD_clsng_raw_deltais0.0005.dat"), String)
         end
         report = validate(settings; deltas = [0.001, 0.005])
-        @test report["all_equal"] && length(report["results"]) == 2
-        @test all(r -> r["n_differences"] == 0, report["results"])
+        @test report.all_equal && length(report.results) == 2
+        @test all(r -> r.n_differences == 0, report.results)
+        @test report.reference_kernel == "naive" &&
+              [k.name for k in report.kernels] == ["segment_tree"]
         report2 = validate(settings)
-        @test report2["all_equal"] && length(report2["results"]) == 2
+        @test report2.all_equal && length(report2.results) == 2
     end
 end
 
@@ -590,8 +609,8 @@ end
         cfg = write_config("sourced.toml", base)
         settings = load_settings(cfg)
         @test settings.source_descriptor == descriptor
-        _, ids = prepare(settings)
-        @test ids.dataset_identity["source_sha256"] ==
+        prepared = prepare(settings)
+        @test prepared.dataset_identity["source_sha256"] ==
               WaitingTimes.Provenance.file_sha256(descriptor)
         handle = run_pipeline(cfg)
         @test handle.id != plain.id && handle.series_id != plain.series_id
@@ -774,9 +793,9 @@ end
             settings = load_settings(quickstart_variant(dir, "validate"))
             report = validate(settings; deltas = [Threshold(5, 4), Threshold(20, 4)],
                 kernels = ["naive" => NaiveSearch(), "tree" => SegmentTreeSearch()])
-            @test length(report["kernels"]) == 2
-            @test all(k -> k["equal"] && k["n_checked"] == 2, report["kernels"])
-            @test report["all_equal"] && length(report["results"]) == 4
+            @test length(report.kernels) == 2
+            @test all(k -> k.equal && k.n_checked == 2, report.kernels)
+            @test report.all_equal && length(report.results) == 4
         end
     end
 

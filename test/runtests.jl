@@ -262,7 +262,7 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
             τ = waiting_times(s, δ)
             @test τ == waiting_times(plain, δ)
             class, lower, upper = classify(τ, s)
-            acc = class_counts(class)
+            acc = class_totals(class)
             @test acc.n_candidates == length(s) - 1
             @test acc.n_exact + acc.n_gap_crossing + acc.n_right_censored ==
                   acc.n_candidates
@@ -284,7 +284,7 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
             WT.CLASS_RIGHT_CENSORED, WT.CLASS_RIGHT_CENSORED]
         @test lower == [1, 1, 0, 1, 0]           # index 2: last observation before the gap is t = 3
         @test upper == [1, 5, 4, typemax(Int64), 0]
-        @test class_counts(class) ==
+        @test class_totals(class) ==
               (n_candidates = 4, n_exact = 1, n_gap_crossing = 2, n_right_censored = 1)
         d_elapsed = empirical_distribution(τ, threshold(3, s), s)
         d_exact = empirical_distribution(τ, threshold(3, s), s; mode = :exact)
@@ -412,6 +412,8 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         @test total == state.n_resolved == WT.nsamples(acc2)
         @test_throws ArgumentError WT.update!(state2, t[end], q[end])
         @test_throws ArgumentError push!(acc2, 0)
+        @test_throws ArgumentError StreamingState{Int32, Int64}(Threshold(
+            Int64(typemax(Int32)) + 1, 0))
         narrow = StreamingState{Int32, Int64}(Threshold(5, 0))
         @test_throws OverflowError WT.update!(narrow, 1, typemax(Int32))
         @test isempty(WT.update!(narrow, 1, Int32(1)))
@@ -436,7 +438,7 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
             @test WT.counts(d_online) == WT.counts(d_batch)
             @test WT.cumulative(d_online) ≈ WT.cumulative(d_batch)
             @test d_online.n_right_censored == d_batch.n_right_censored
-            @test d_online.delta == Threshold{Int64}(thr.d, 2)
+            @test d_online.delta == Threshold(thr.d, 2)
         end
         @test resolved == sum(WT.nsamples(d) for d in snaps)
         # pending includes the latest sample, which is never a candidate
@@ -568,6 +570,13 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         @test :KernelAbstractions in WaitingTimes.Backends.load_device_packages(:none)
         @test_throws ArgumentError WaitingTimes.Backends.load_device_packages(:tpu)
         @test_throws ArgumentError device_search(:cuda)
+        @test WT.Backends.probe(Val(:cpu)) isa KernelAbstractions.CPU
+        @test WT.Backends.probe(Val(:cuda)) === nothing
+        @test WT.Backends.get_best_backend(; prefer = :none) isa KernelAbstractions.CPU
+        @test WT.Backends.get_best_backend(; prefer = :auto) isa KernelAbstractions.CPU
+        @test_throws ArgumentError WT.Backends.get_best_backend(; prefer = :cuda)
+        @test_throws ArgumentError WT.Backends.get_best_backend(; prefer = :tpu)
+        @test WT.Backends.GPU_PRIORITY == (:cuda, :amdgpu, :oneapi, :metal)
         s = QuantizedSeries([1.0, 3.0, 2.0, 5.0], 0)
         @test waiting_times(s, 2, DeviceSearch()) == [1, 2, 1, 0]
         @test_throws DimensionMismatch waiting_times!(zeros(Int, 2), s, Threshold(1, 0), DeviceSearch())

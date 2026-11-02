@@ -20,6 +20,9 @@ const CONTRACT_CLASS = let E = WT.CLASS_EXACT, G = WT.CLASS_GAP_CROSSING,
     Dict("1" => [E, E, E, E, E, E, G, G, E, E, E, E, E, E, E, E, C, C],
         "3" => [E, G, E, G, G, E, G, G, E, E, C, E, E, C, E, C, C, C])
 end
+# Its support, counts and (candidates, exact, gap-crossing, right-censored) per threshold.
+const CONTRACT_EXPECTED = Dict("1" => ([1, 2, 3, 4], [7, 4, 4, 1], (17, 14, 2, 1)),
+    "3" => ([1, 2, 3, 6, 8, 9], [4, 2, 1, 1, 2, 3], (17, 8, 5, 4)))
 
 "the series of `fixtures/schema2` as `dir/contract.csv` (`n`, `x`; `x` empty if missing)"
 function contract_csv(dir::AbstractString)
@@ -70,7 +73,7 @@ session_record(h) = TOML.parsefile(joinpath(h.dir, "sessions", h.session * ".tom
         c = load_collection(joinpath(FIXTURES, "schema2"))
         @test c.metadata["schema"] == "waitingtimes-provenance/2"
         @test c.time_axis === :elapsed && c.mode === :elapsed && c.digits == 0 &&
-              c.time_unit === :sample && c.n_observations == 18 && c.n_gaps == 1
+              c.time_unit === :sample && c.n_observed == 18 && c.n_gaps == 1
         @test thresholds(c) == [Threshold(1, 0), Threshold(3, 0)]
         @test WT.Storage.read_gap_file(joinpath(c.dir, "gaps.csv")) ==
               [(start = 9, stop = 11, kind = "unknown", source = "")]
@@ -87,10 +90,7 @@ session_record(h) = TOML.parsefile(joinpath(h.dir, "sessions", h.session * ".tom
         @test WT.record_length(c) == WT.record_length(s) == 20
         @test WT.segment_lengths(c) == WT.segment_lengths(s) == [8, 10]
         @test WT.source_summary(c) === nothing && source_descriptor(c) === nothing
-        # support, counts and (candidates, exact, gap-crossing, right-censored)
-        expected = Dict("1" => ([1, 2, 3, 4], [7, 4, 4, 1], (17, 14, 2, 1)),
-            "3" => ([1, 2, 3, 6, 8, 9], [4, 2, 1, 1, 2, 3], (17, 8, 5, 4)))
-        for (δ, (sup, cnt, accounting)) in expected
+        for (δ, (sup, cnt, accounting)) in CONTRACT_EXPECTED
             d = distribution(c, δ)
             k = parse(Int, δ)
             reference = empirical_distribution(waiting_times(s, k, NaiveSearch()),
@@ -102,6 +102,32 @@ session_record(h) = TOML.parsefile(joinpath(h.dir, "sessions", h.session * ".tom
             @test d == reference
             @test WT.probabilities(d) ≈ cnt ./ sum(cnt)
             @test WT.cumulative(d) ≈ cumsum(cnt) ./ sum(cnt)
+        end
+    end
+
+    @testset "Schema-3 collection" begin
+        c = load_collection(joinpath(FIXTURES, "schema3"))
+        @test c.metadata["schema"] == "waitingtimes-provenance/3"
+        @test c.time_axis === :elapsed && c.mode === :elapsed && c.digits == 0 &&
+              c.time_unit === :sample && c.n_observed == 18 && c.n_gaps == 1
+        @test thresholds(c) == [Threshold(1, 0), Threshold(3, 0)]
+        @test c.index[1]["kernel"] == "segmenttreesearch"   # as 0.4.0 wrote it
+        @test isfile(joinpath(c.dir, "catalog.csv"))        # written by 0.4.0, ignored now
+        s = load_series(c)
+        @test s.times == CONTRACT_TIMES && s.values == CONTRACT_VALUES
+        @test s.gaps == [(9, 11)] && s.gap_kinds == ["detected"]
+        @test WT.segment_lengths(c) == [8, 10] && WT.record_length(c) == 20
+        @test nrow(summary_table(c)) == 2
+        for (δ, (sup, cnt, accounting)) in CONTRACT_EXPECTED
+            d = distribution(c, δ)
+            @test WT.support(d) == sup && WT.counts(d) == cnt
+            @test (d.n_candidates, d.n_exact, d.n_gap_crossing, d.n_right_censored) ==
+                  accounting
+            cc = WT.class_counts(c, δ)
+            @test cc !== nothing && sum(cc.exact) == d.n_exact &&
+                  sum(cc.gap_crossing) == d.n_gap_crossing
+            ch = WT.censoring_histogram(c, δ)
+            @test ch !== nothing && sum(ch.count) == d.n_right_censored
         end
     end
 
@@ -142,7 +168,7 @@ session_record(h) = TOML.parsefile(joinpath(h.dir, "sessions", h.session * ".tom
                 limits = Dict{String, Any}("max_reference_work" => 1)))
             @test h.computed == ["1", "3"]
             check = only(session_record(h)["reference_checks"])
-            @test check["delta"] == "3" && check["kernel"] == "naivesearch" &&
+            @test check["delta"] == "3" && check["kernel"] == "naive" &&
                   check["skipped"] === true && check["work"] == 64 &&
                   !haskey(check, "equal")
             @test only(h.reference_checks)["skipped"] === true
@@ -152,7 +178,7 @@ session_record(h) = TOML.parsefile(joinpath(h.dir, "sessions", h.session * ".tom
     @testset "Reference kernels" begin
         mktempdir() do dir
             csv = contract_csv(dir)
-            for (kernel, name) in (("guarded", "guardedsearch"), ("device", "devicesearch"))
+            for (kernel, name) in (("guarded", "guarded"), ("device", "device"))
                 h = run_pipeline(contract_config(dir, csv, kernel;
                     algorithm = Dict{String, Any}("reference_kernel" => kernel,
                         "backend" => "none", "reference_checks" => 2)))
