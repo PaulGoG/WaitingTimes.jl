@@ -1,8 +1,8 @@
 """
 Collection storage: per-threshold distribution partitions (CSV or Arrow with
 schema metadata), optional dense waiting-time files, the prepared series,
-the regenerated `index.toml`, `summary.csv` and `catalog.csv`, the
-collection `README.md`, and the read side: [`Collection`](@ref),
+the regenerated `index.toml` and `summary.csv`, the collection `README.md`,
+and the read side: [`Collection`](@ref),
 [`load_collection`](@ref), [`distribution`](@ref), [`source_descriptor`](@ref),
 [`export_legacy`](@ref).
 """
@@ -21,14 +21,14 @@ using ..WaitingTimes: WaitingTimes, QuantizedSeries, Threshold, WaitingTimeDistr
 using ..Provenance: Provenance, dict_to_record, file_sha256, read_toml, toml_ready,
                     write_toml
 
-export distribution_table, partition_path, write_distribution, read_distribution,
+export Collection, load_collection, list_collections, distribution, thresholds,
+       summary_table, load_series, export_legacy, source_descriptor, censoring_histogram,
+       load_distributions, read_index
+public distribution_table, partition_path, write_distribution, read_distribution,
        write_waiting_times, read_waiting_times, write_series_files, read_series_files,
-       write_index, read_index, write_summary, write_catalog, write_collection_readme,
-       load_distributions, Collection, load_collection, list_collections, distribution,
-       thresholds, summary_table, load_series, export_legacy, source_descriptor,
-       SOURCE_FILE,
-       MANIFEST_FILE,
-       censoring_path, write_censoring, write_gap_file, read_gap_file, censoring_histogram
+       write_index, write_summary, write_collection_readme, SOURCE_FILE, MANIFEST_FILE,
+       censoring_path, write_censoring, write_gap_file, read_gap_file, find_partition,
+       READABLE_SCHEMAS, SERIES_KEYS
 
 function file_extension(format::Symbol)
     format === :arrow ? "arrow" :
@@ -291,24 +291,6 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Write `catalog.csv`: every distribution partition of the collection with its
-descriptor columns, identifier, checksum and session, through a temporary
-file moved into place; returns the path, or `nothing` without rows.
-"""
-function write_catalog(dir::AbstractString, rows::AbstractVector)
-    isempty(rows) && return nothing
-    keys_ = unique(reduce(vcat, [collect(keys(r)) for r in rows]))
-    table = DataFrame([Symbol(k) => [get(r, k, missing) for r in rows] for k in keys_])
-    path = joinpath(dir, "catalog.csv")
-    tmp = path * ".tmp"
-    CSV.write(tmp, table)
-    mv(tmp, path; force = true)
-    return path
-end
-
-"""
-$(TYPEDSIGNATURES)
-
 Long table of every partition of the collection (`delta` as a fixed-decimal
 string, then `tau`, `count`, `pmf`, `cdf`, `ccdf`), optionally restricted to
 the given `deltas` strings.
@@ -357,7 +339,7 @@ struct Collection
     "time axis of the series: `:elapsed` (the clock of the input) or `:index` (row ordinal)"
     time_axis::Symbol
     "number of observations of the prepared series"
-    n_observations::Int
+    n_observed::Int
     "number of recorded gaps"
     n_gaps::Int
     "preprocessing steps of the series, in order"
@@ -384,10 +366,11 @@ const SOURCE_FILE = "source.toml"
 const MANIFEST_FILE = "manifest_snapshot.toml"
 
 "provenance schemas the read side understands"
-const READABLE_SCHEMAS = ("waitingtimes-provenance/2", "waitingtimes-provenance/3")
+const READABLE_SCHEMAS = ("waitingtimes-provenance/2", "waitingtimes-provenance/3",
+    "waitingtimes-provenance/4")
 
-"keys of the `[series]` section a schema-3 collection must carry"
-const SERIES_KEYS_3 = ("time_axis", "time_unit", "time_unit_original", "record_length",
+"keys of the `[series]` section a collection of schema 3 or later must carry"
+const SERIES_KEYS = ("time_axis", "time_unit", "time_unit_original", "record_length",
     "n_observed", "n_segments", "sampling_step", "gap_kinds", "value_type")
 
 """
@@ -395,9 +378,9 @@ $(TYPEDSIGNATURES)
 
 Open the collection at `dir` (a directory holding `metadata.toml`). The
 metadata are validated: the provenance schema must be one this version reads
-(`waitingtimes-provenance/2` or `/3`), and a schema-3 collection must state
-its time axis (`elapsed` or `index`), time units and record structure.
-Collections of schema 2 are read with time axis `:elapsed`.
+(`waitingtimes-provenance/2`, `/3` or `/4`), and a collection of schema 3 or
+later must state its time axis (`elapsed` or `index`), time units and record
+structure. Collections of schema 2 are read with time axis `:elapsed`.
 """
 function load_collection(dir::AbstractString)
     meta_path = joinpath(dir, "metadata.toml")
@@ -408,8 +391,8 @@ function load_collection(dir::AbstractString)
         "$meta_path has provenance schema $(repr(schema)); this version reads $(join(READABLE_SCHEMAS, ", "))",
     ))
     series = meta["series"]
-    if schema == "waitingtimes-provenance/3"
-        missing_keys = filter(k -> !haskey(series, k), SERIES_KEYS_3)
+    if schema != "waitingtimes-provenance/2"
+        missing_keys = filter(k -> !haskey(series, k), SERIES_KEYS)
         isempty(missing_keys) || throw(ArgumentError(
             "$meta_path: [series] lacks $(join(missing_keys, ", "))",
         ))
@@ -422,9 +405,12 @@ function load_collection(dir::AbstractString)
     entries = read_index(dir)
     sort!(entries; by = e -> parse_threshold(e["delta"], digits).d)
     steps = preprocessing_steps(series)
+    # schema 2 wrote n_observations only
+    n_observed = Int(haskey(series, "n_observed") ? series["n_observed"] :
+                     series["n_observations"])
     return Collection(String(abspath(dir)), String(meta["artefact"]["id"]),
         String(series["slug"]), Symbol(meta["identity"]["mode"]), digits,
-        Symbol(series["time_unit"]), time_axis, Int(series["n_observations"]),
+        Symbol(series["time_unit"]), time_axis, n_observed,
         Int(series["n_gaps"]), steps, entries, meta)
 end
 
@@ -435,7 +421,7 @@ Thresholds of the collection, sorted.
 """
 thresholds(c::Collection) = [parse_threshold(e["delta"], c.digits) for e in c.index]
 
-function partition_entry(c::Collection, δ::Threshold)
+function find_partition(c::Collection, δ::Threshold)
     δ.digits == c.digits ||
         throw(ArgumentError("threshold has $(δ.digits) digits, the collection has $(c.digits)"))
     key = format_threshold(δ)
@@ -452,11 +438,11 @@ value or a fixed-decimal string), read from its partition with the
 accounting recorded in the index.
 """
 function distribution(c::Collection, δ::Threshold)
-    entry = partition_entry(c, δ)
+    entry = find_partition(c, δ)
     table = read_table(joinpath(c.dir, entry["file"]))
     support = Vector{Int64}(table.tau)
     counts = Vector{Int}(table.count)
-    return WaitingTimeDistribution{Int64}(Threshold{Int64}(δ.d, δ.digits), c.time_unit,
+    return WaitingTimeDistribution{Int64}(δ, c.time_unit,
         Symbol(entry["mode"]), support, counts, Vector{Float64}(table.pmf),
         Vector{Float64}(table.cdf), Int(entry["n_candidates"]), Int(entry["n_exact"]),
         Int(entry["n_gap_crossing"]), Int(entry["n_right_censored"]))
@@ -480,7 +466,7 @@ distribution in `:elapsed` mode). `nothing` for a collection written before
 the counts were recorded (provenance schema 2).
 """
 function WaitingTimes.class_counts(c::Collection, δ)
-    entry = partition_entry(c, as_threshold(c, δ))
+    entry = find_partition(c, as_threshold(c, δ))
     table = read_table(joinpath(c.dir, entry["file"]))
     hasproperty(table, :count_exact) || return nothing
     return (support = Vector{Int64}(table.tau), exact = Vector{Int}(table.count_exact),
@@ -497,7 +483,7 @@ order. `nothing` for a collection written before the histograms were recorded
 (provenance schema 2).
 """
 function censoring_histogram(c::Collection, δ)
-    entry = partition_entry(c, as_threshold(c, δ))
+    entry = find_partition(c, as_threshold(c, δ))
     file = get(entry, "censoring_file", "")
     isempty(file) && return nothing
     table = read_table(joinpath(c.dir, file))
@@ -525,18 +511,19 @@ Normalised identity of the source of the collection's input (see
 [`source_summary`](@ref WaitingTimes.Provenance.source_summary)): `producer`,
 `producer_version`, `git_tree_sha1` (authoritative when `git_dirty` is false),
 `git_dirty`, `git_commit`, `identity`, `producer_compat`, `compat_checked`,
-`compat_satisfied` and `schema`, as a named tuple; `nothing` without a source
-descriptor. For a collection written before the summary was recorded it is
-computed from the stored descriptor.
+`compat_satisfied` and `schema`, as a
+[`SourceSummary`](@ref WaitingTimes.Provenance.SourceSummary) named tuple;
+`nothing` without a source descriptor. For a collection written before the
+summary was recorded it is computed from the stored descriptor.
 """
 function Provenance.source_summary(c::Collection)
     source = get(c.metadata, "source", nothing)
     source === nothing && return nothing
-    summary = haskey(source, "producer") ? source :
-              Provenance.source_summary(source["descriptor"])
-    keys_ = (:producer, :producer_version, :git_tree_sha1, :git_dirty, :git_commit,
-        :identity, :producer_compat, :compat_checked, :compat_satisfied, :schema)
-    return NamedTuple{keys_}(Tuple(summary[String(k)] for k in keys_))
+    if haskey(source, "producer")
+        return Provenance.SourceSummary(Tuple(source[String(k)]
+        for k in Provenance.SOURCE_SUMMARY_KEYS))
+    end
+    return Provenance.source_summary(source["descriptor"])
 end
 
 """
@@ -619,13 +606,13 @@ end
 $(TYPEDSIGNATURES)
 
 Every collection directly under `root` as a `DataFrame` with the columns `id`,
-`series`, `mode`, `n_thresholds`, `delta_min`, `delta_max`, `n_observations`,
+`series`, `mode`, `n_thresholds`, `delta_min`, `delta_max`, `n_observed`,
 `n_gaps`, `sessions`, `created` and `dir`; empty when `root` does not exist.
 """
 function list_collections(root::AbstractString)
     rows = DataFrame(
         id = String[], series = String[], mode = String[], n_thresholds = Int[],
-        delta_min = String[], delta_max = String[], n_observations = Int[], n_gaps = Int[],
+        delta_min = String[], delta_max = String[], n_observed = Int[], n_gaps = Int[],
         sessions = Int[], created = String[], dir = String[])
     isdir(root) || return rows
     for name in sort(readdir(root))
@@ -635,7 +622,7 @@ function list_collections(root::AbstractString)
         push!(rows,
             (c.id, c.slug, String(c.mode), length(c.index),
                 isempty(c.index) ? "" : c.index[1]["delta"],
-                isempty(c.index) ? "" : c.index[end]["delta"], c.n_observations, c.n_gaps,
+                isempty(c.index) ? "" : c.index[end]["delta"], c.n_observed, c.n_gaps,
                 length(get(c.metadata, "sessions", Any[])),
                 string(get(c.metadata["artefact"], "created", "")), c.dir))
     end
@@ -675,7 +662,7 @@ end
 function Base.show(io::IO, ::MIME"text/plain", c::Collection)
     println(io, "Collection ", c.id)
     println(io, "  directory   ", c.dir)
-    println(io, "  series      ", c.slug, " (", c.n_observations, " observations, ",
+    println(io, "  series      ", c.slug, " (", c.n_observed, " observations, ",
         c.n_gaps, " gaps, digits = ", c.digits, ", unit = :", c.time_unit, ")")
     c.time_axis === :index &&
         println(io, "  time axis   index (row ordinal of the input; its clock in ",
@@ -696,13 +683,13 @@ end
 "producer, version and run or session of a source descriptor, as far as it states them"
 function source_label(descriptor::AbstractDict)
     summary = Provenance.source_summary(descriptor)
-    label = isempty(summary["producer"]) ?
-            (isempty(summary["schema"]) ? "descriptor without schema" : summary["schema"]) :
-            strip(summary["producer"] * " " * summary["producer_version"])
+    label = isempty(summary.producer) ?
+            (isempty(summary.schema) ? "descriptor without schema" : summary.schema) :
+            strip(summary.producer * " " * summary.producer_version)
     run = string(get(descriptor, "run_id", ""))
     session = get(descriptor, "session", nothing)
     isempty(run) && session isa AbstractDict && (run = string(get(session, "id", "")))
-    identity = summary["identity"] ? "" : ", no code identity"
+    identity = summary.identity ? "" : ", no code identity"
     return (isempty(run) ? label : label * ", run " * run) * identity
 end
 
@@ -714,9 +701,8 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Write `README.md` into the collection directory: what the collection is,
-the files and their columns, and how to load them; regenerated after every
-session.
+Write `README.md` into the collection directory: what the collection is, its
+files in one paragraph, and how to load it; regenerated after every session.
 """
 function write_collection_readme(dir::AbstractString, meta::AbstractDict,
         entries::AbstractVector, format::Symbol)
@@ -725,13 +711,14 @@ function write_collection_readme(dir::AbstractString, meta::AbstractDict,
     ext = file_extension(format)
     deltas = [e["delta"] for e in entries]
     unit = String(series["time_unit"])
+    axis = String(get(series, "time_axis", "elapsed"))
     open(joinpath(dir, "README.md"), "w") do io
         println(io, "# ", meta["artefact"]["id"], "\n")
         println(io, "Waiting-time distributions of the series `", series["slug"],
             "` (dataset `", meta["dataset"]["slug"], "`), one per threshold δ, in `",
-            meta["identity"]["mode"], "` mode. Computed by WaitingTimes.jl.\n")
-        axis = String(get(series, "time_axis", "elapsed"))
-        println(io, "- Series: ", series["n_observations"], " observations, ",
+            meta["identity"]["mode"], "` mode, written by WaitingTimes.jl (provenance schema `",
+            meta["schema"], "`).\n")
+        println(io, "- Series: ", series["n_observed"], " observations, ",
             series["n_gaps"], " recorded gaps, values on a grid of ", series["digits"],
             " decimals, time in ", unit, "s",
             axis == "index" ?
@@ -752,33 +739,16 @@ function write_collection_readme(dir::AbstractString, meta::AbstractDict,
                 "; the descriptor is copied verbatim to `", SOURCE_FILE, "`.")
         println(io, "- Sessions: ", length(get(meta, "sessions", Any[])), ".\n")
         println(io, "## Files\n")
-        println(io, "| File | Content |")
-        println(io, "|---|---|")
-        println(io, "| `distributions/delta=<δ>.", ext,
-            "` | one table per threshold: `tau` (waiting time in ", unit,
-            "s), `count`, `pmf` (probability mass), `cdf`, `ccdf` (survival), `count_exact` and `count_gap_crossing` (`count` split by class) |")
-        println(io, "| `censoring/delta=<δ>.", ext,
-            "` | histogram of the lower bounds of the right-censored indices: `lower`, `count` |")
-        println(io,
-            "| `summary.csv` | one row per threshold: candidates, exact, gap-crossing and right-censored indices, number of waiting times, minimum, maximum, mean and median waiting time, kernel, session |")
-        println(io, "| `series.", ext,
-            "`, `series.toml` | the prepared series (`values`, `times`, the input row `row` and the original clock `time_original`) and its description and preparation record |")
-        println(io,
-            "| `gaps.csv`, `segments.csv` | the gaps `[start, stop)` with `kind` and `source`; the runs of observations between them (`start`, `stop`, `length`, `kind_before`, `kind_after`) |")
-        axis == "index" && println(io,
-            "| `gaps_original.csv` | the gaps of the original clock, with kinds |")
-        println(io,
-            "| `waiting_times/delta=<δ>.", ext,
-            "` | optional: every index's waiting time with class and bounds (`store_waiting_times = true`) |")
-        println(io,
-            "| `index.toml`, `catalog.csv` | the partitions with their checksums and per-threshold statistics; one catalogue row per partition with its descriptor columns |")
-        println(io,
-            "| `metadata.toml`, `config.toml`, `sessions/` | provenance: identity, dataset descriptor, source summary, code identity of WaitingTimes (`[producer]`), environment, per-session records, configuration snapshots, hardware |")
-        println(io, "| `", MANIFEST_FILE,
-            "` | the resolved manifest of the latest session (every session's under `sessions/`) |")
-        haskey(meta, "source") && println(io, "| `", SOURCE_FILE,
-            "` | the source descriptor of the input, byte for byte as the producer wrote it |")
-        println(io, "| `run.log`, `hardware.txt` | log of the runs and platform report |\n")
+        println(io, "One partition per threshold under `distributions/delta=<δ>.", ext,
+            "` (`tau` in ", unit, "s, `count`, `pmf`, `cdf`, `ccdf`, `count_exact`, ",
+            "`count_gap_crossing`) with its censoring histogram (`lower`, `count`) under ",
+            "`censoring/`; the prepared series (`series.", ext, "`, `series.toml`) with its ",
+            "gaps and segments (`gaps.csv`, `segments.csv`); `index.toml` and `summary.csv` ",
+            "with the per-threshold statistics; the provenance in `metadata.toml`, ",
+            "`config.toml`, `", MANIFEST_FILE, "`, `hardware.txt` and `sessions/`",
+            haskey(meta, "source") ?
+            "; the source descriptor verbatim in `" * SOURCE_FILE * "`" : "",
+            ". The Pipeline page of the WaitingTimes.jl documentation describes every file and column.\n")
         println(io, "## Loading\n")
         println(io, "```julia")
         println(io, "using WaitingTimes")

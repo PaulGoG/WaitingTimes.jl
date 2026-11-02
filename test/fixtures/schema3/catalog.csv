@@ -1,0 +1,3 @@
+kind,delta,id,series,session,file,mode,sha256,n_right_censored,n_waiting
+distribution,1,collection-contract-x-971fff58,contract-x,20261102T160405_2802a185b2f2,distributions/delta=1.csv,elapsed,664e5849d1fe4991b60e4c729726c29b9a939cde59ba736ec2505bc2c418d5f1,1,16
+distribution,3,collection-contract-x-971fff58,contract-x,20261102T160405_2802a185b2f2,distributions/delta=3.csv,elapsed,5023198bc4ead37480065aed5d6f7a4a1c70b11de608d0dca0a28b5914801255,4,13

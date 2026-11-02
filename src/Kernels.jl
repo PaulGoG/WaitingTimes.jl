@@ -102,18 +102,15 @@ workspace_bytes(::GuardedSearch, s::QuantizedSeries{Tv}) where {Tv} = length(s) 
 """
 $(TYPEDSIGNATURES)
 
-Threshold of `s` from a real value or decimal string on the grid of `s`, with
-the integer type of the values.
+Threshold of `s` from a real value or decimal string on the grid of `s`.
 """
-function threshold(δ::Union{Real, AbstractString}, s::QuantizedSeries{Tv}) where {Tv}
-    Threshold{Tv}(threshold(δ, s.digits).d, s.digits)
-end
+threshold(δ::Union{Real, AbstractString}, s::QuantizedSeries) = threshold(δ, s.digits)
 
 """
 $(TYPEDSIGNATURES)
 
 Verify that `δ` lives on the grid of `s` and that `q_n + d` cannot overflow the
-value type; return `d` as that type.
+value type; return `d` as the value type of `s`.
 """
 function check_threshold(s::QuantizedSeries{Tv}, δ::Threshold) where {Tv}
     δ.digits == s.digits || throw(ArgumentError(

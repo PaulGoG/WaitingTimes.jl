@@ -1,0 +1,113 @@
+schema = "waitingtimes-provenance/3"
+
+[artefact]
+created = 2026-11-02T16:04:05.357Z
+id = "collection-contract-x-971fff58"
+kind = "collection"
+parents = ["series-contract-x-8f2457fc"]
+
+[dataset]
+id = "dataset-contract-x-395f0445"
+slug = "contract-x"
+
+    [dataset.descriptor]
+
+    [dataset.identity]
+    sha256 = "42fb1eb8458ead505ba44e276c47bef64859631786c668179f1f14e65c60ae8f"
+    time_column = ""
+    value_column = "x"
+
+[environment]
+julia = "1.13.3"
+manifest_file = "manifest_snapshot.toml"
+manifest_sha256 = "6dcb7676f9e28751a13b15be34417ff7ca924070b539b0e1c9ac704b5b7c34a4"
+session = "20261102T160405_2802a185b2f2"
+
+[identity]
+mode = "elapsed"
+series = "series-contract-x-8f2457fc"
+
+[producer]
+git_commit = ""
+git_dirty = false
+git_tree_sha1 = "2802a185b2f2bfaa9c6ee1d98811742f521b78ea"
+identity_source = "directory"
+name = "WaitingTimes"
+repo_rev = ""
+repo_url = ""
+session = "20261102T160405_2802a185b2f2"
+version = "0.4.0"
+
+[series]
+digits = 0
+id = "series-contract-x-8f2457fc"
+n_gaps = 1
+n_observations = 18
+n_observed = 18
+n_segments = 2
+record_length = 20
+sampling_step = 1
+slug = "contract-x"
+time_axis = "elapsed"
+time_unit = "sample"
+time_unit_original = "sample"
+value_type = "Int32"
+
+    [series.gap_kinds]
+    detected = 1
+
+    [series.identity]
+    dataset = "dataset-contract-x-395f0445"
+    declared_gaps_sha256 = ""
+    digits = 0
+    epoch_unit = "second"
+    gap_cadence = 1
+    gap_detect = "cadence"
+    gap_threshold = 0
+    missing_policy = "drop"
+    steps = []
+    tie_policy = "error"
+    time_unit = "sample"
+
+    [series.record]
+    source = "/tmp/claude-1000/-home-paulgog-coding-workspace-distribution-waiting-times-generator/15c3ae17-aefa-48dd-b043-984f83cde9d7/scratchpad/wt-0.4.0/contract.csv"
+    source_sha256 = "42fb1eb8458ead505ba44e276c47bef64859631786c668179f1f14e65c60ae8f"
+
+        [[series.record.steps]]
+        op = "read_series"
+
+            [series.record.steps.parameters]
+            epoch_unit = "second"
+            format = "csv"
+            missing_policy = "drop"
+            tie_policy = "error"
+            time_column = ""
+            time_unit = "sample"
+            value_column = "x"
+
+            [series.record.steps.summary]
+            n_missing = 2
+            n_rows = 20
+        [[series.record.steps]]
+        op = "quantize"
+
+            [series.record.steps.parameters]
+            cadence = 1
+            digits = 0
+            narrow = true
+
+            [series.record.steps.summary]
+            n_gaps = 1
+            n_missing = 2
+            n_observed = 18
+            n_rows = 20
+            value_type = "Int32"
+
+[[sessions]]
+created = 2026-11-02T16:04:05.334Z
+git = "unknown"
+id = "20261102T160405_2802a185b2f2"
+kernel = "segmenttreesearch"
+n_computed = 2
+n_reference_checks = 1
+n_skipped = 0

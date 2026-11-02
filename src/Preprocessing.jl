@@ -12,7 +12,6 @@ using DataFrames: DataFrame
 using Dates: DateTime, DateFormat, Dates, unix2datetime
 using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
 using Statistics: mean, median, quantile, std
-using UnicodePlots: UnicodePlots
 using ..WaitingTimes: MAX_DIGITS, GRID_TOLERANCE, AbstractSearch, PreparationRecord,
                       QuantizedSeries, SegmentTreeSearch, TIME_UNITS, Threshold,
                       check_digits,
@@ -24,7 +23,7 @@ using ..Config: PREPROCESSING_OPS
 
 export RawSeries, read_series, select_range, exclude_intervals, round_values,
        trailing_mean_fluctuations, log_returns, log_levels, differences,
-       centered_moving_average,
+       detrend_moving_average,
        clip_quantile, clip_sigma, clip_extremes, collapse_ties, sampling_summary,
        value_summary,
        resolution_digits, increment_scale, digits_sensitivity, suggest_digits,
@@ -78,9 +77,10 @@ nanosecond stamps, and `time_unit = :sample` taken as `:nanosecond`) or `:auto`
 (from the file extension: `.csv`, `.dat`, `.arrow`, `.feather`). Columns are
 selected by 1-based index or name. Time stamps are parsed with `time_format`
 when it is given; otherwise they are integers in `epoch_unit` or ISO 8601
-date-times with up to nine fractional digits. They are converted to
-`time_unit` since the UNIX epoch, must be exact multiples of the unit, and
-must not decrease. Values that are absent or unparsable become `missing` under
+date-times with up to nine fractional digits. `epoch_unit` defaults to
+`:second`, and to `:nanosecond` for tick files, where no other value is
+accepted. Time stamps are converted to `time_unit` since the UNIX epoch, must
+be exact multiples of the unit, and must not decrease. Values that are absent or unparsable become `missing` under
 `missing_policy = :drop` or raise under `:error`. Equal time stamps are
 resolved by `tie_policy` (`:error`, `:first`, `:last`, `:mean`).
 """
@@ -88,15 +88,20 @@ function read_series(path::AbstractString; format::Symbol = :auto,
         value_column::Union{Integer, AbstractString},
         time_column::Union{Nothing, Integer, AbstractString} = nothing,
         time_unit::Symbol = :sample, time_format::AbstractString = "",
-        epoch_unit::Symbol = :second, delimiter::AbstractString = "", header::Bool = true,
-        missing_policy::Symbol = :drop, tie_policy::Symbol = :error)
+        epoch_unit::Union{Nothing, Symbol} = nothing, delimiter::AbstractString = "",
+        header::Bool = true, missing_policy::Symbol = :drop, tie_policy::Symbol = :error)
     isfile(path) || throw(ArgumentError("input file not found: $path"))
     format === :auto && (format = infer_format(path))
     if format === :tick
         time_column === nothing && (time_column = "time_ns")
         value_column == "" && (value_column = "price")
-        epoch_unit = :nanosecond
         time_unit === :sample && (time_unit = :nanosecond)
+        epoch_unit === nothing && (epoch_unit = :nanosecond)
+        epoch_unit === :nanosecond || throw(ArgumentError(
+            "epoch_unit must be :nanosecond for tick files, got :$epoch_unit",
+        ))
+    else
+        epoch_unit === nothing && (epoch_unit = :second)
     end
     table = read_table(path, format; delimiter, header, time_column)
     values = parse_values(column(table, value_column, "value_column"), missing_policy)
@@ -546,9 +551,9 @@ end
 $(TYPEDSIGNATURES)
 
 Detrend by subtracting the centred moving average of the observed values over
-an odd `window` (truncated at the ends).
+an odd `window` (truncated at the ends); the result is the residual.
 """
-function centered_moving_average(rs::RawSeries; window::Integer)
+function detrend_moving_average(rs::RawSeries; window::Integer)
     window >= 1 && isodd(window) ||
         throw(ArgumentError("window must be odd and positive, got $window"))
     idx, x = observed(rs)
@@ -562,7 +567,7 @@ function centered_moving_average(rs::RawSeries; window::Integer)
         total = prefix[hi] - (lo > 1 ? prefix[lo - 1] : 0.0)
         values[idx[k]] = x[k] - total / (hi - lo + 1)
     end
-    return with_values(rs, values, :centered_moving_average, Dict("window" => Int(window)),
+    return with_values(rs, values, :detrend_moving_average, Dict("window" => Int(window)),
         Dict("n_rows" => length(values)))
 end
 
@@ -738,8 +743,8 @@ const STEP_TRANSFORMS = Dict{String, Function}(
     "log_returns" => (rs, p) -> log_returns(rs),
     "log_levels" => (rs, p) -> log_levels(rs; reference = symbol_or_number(p["reference"])),
     "differences" => (rs, p) -> differences(rs),
-    "centered_moving_average" =>
-        (rs, p) -> centered_moving_average(rs; window = p["window"]),
+    "detrend_moving_average" =>
+        (rs, p) -> detrend_moving_average(rs; window = p["window"]),
     "clip_quantile" => (rs, p) -> clip_quantile(rs; q = p["q"], splice = p["splice"]),
     "clip_extremes" =>
         (rs, p) -> clip_extremes(rs; fraction = p["fraction"],
@@ -818,21 +823,20 @@ end
 $(TYPEDSIGNATURES)
 
 Quantise a prepared series: values to the `digits` grid, missing rows kept as
-elapsed time, gaps detected by `detect` (`:none`, `:cadence` with `cadence`,
-`:threshold` with `threshold`) and merged with `declared` intervals (pairs, or
-named tuples with `kind` and `source` as returned by
-[`read_gap_intervals`](@ref)). With `narrow = true` the values are stored as
-`Int32` when they fit ([`narrow_integer`](@ref WaitingTimes.narrow_integer)).
+elapsed time, gaps detected by `detect` (`:none`, or `:cadence` with `cadence`)
+and merged with `declared` intervals (pairs, or named tuples with `kind` and
+`source` as returned by [`read_gap_intervals`](@ref)). With `narrow = true` the
+values are stored as `Int32` when they fit
+([`narrow_integer`](@ref WaitingTimes.narrow_integer)).
 """
 function quantized_series(rs::RawSeries, digits::Integer; detect::Symbol = :cadence,
-        cadence::Integer = 1, threshold::Integer = 0,
-        declared::AbstractVector = Tuple{Int64, Int64}[], narrow::Bool = true)
-    detect in (:none, :cadence, :threshold) ||
-        throw(ArgumentError("detect must be :none, :cadence or :threshold, got :$detect"))
-    cadence_used = detect === :none ? nothing :
-                   detect === :cadence ? cadence : threshold
+        cadence::Integer = 1, declared::AbstractVector = Tuple{Int64, Int64}[],
+        narrow::Bool = true)
+    detect in (:none, :cadence) ||
+        throw(ArgumentError("detect must be :none or :cadence, got :$detect"))
+    cadence_used = detect === :none ? nothing : cadence
     cadence_used === nothing || cadence_used >= 1 ||
-        throw(ArgumentError("gap detection needs a positive cadence or threshold"))
+        throw(ArgumentError("gap detection needs a positive cadence"))
     s = QuantizedSeries(rs.values, digits; times = rs.times, cadence = cadence_used,
         time_unit = rs.time_unit, epoch = rs.epoch, record = rs.record, narrow = narrow)
     isempty(declared) && return s
@@ -1069,7 +1073,7 @@ function suggest_digits(rs::RawSeries; min_digits::Integer = 0, tolerance::Real 
         increment_scale = scale, ks = ks)
     d = max(Int(min_digits), dispersion)
     d > max_digits && return result(Int(max_digits), :max_digits, nothing)
-    δ0(k) = Threshold{Int64}(0, k)
+    δ0(k) = Threshold(0, k)
     current = trial_distribution(trial_series(rs, d), δ0(d), kernel)
     ks = NaN
     while d <= max_digits
@@ -1083,23 +1087,12 @@ function suggest_digits(rs::RawSeries; min_digits::Integer = 0, tolerance::Real 
 end
 
 """
-$(TYPEDSIGNATURES)
+    terminal_overview([io::IO], rs::RawSeries; width = 80, points = 2000)
 
-Print an in-terminal overview: a decimated line plot of the observed values
-against time and a histogram of the values.
+Print an in-terminal overview of `rs`: a decimated line plot of the observed
+values against time and a histogram of the values; provided by the UnicodePlots
+extension (`using UnicodePlots`).
 """
-function terminal_overview(io::IO, rs::RawSeries; width::Integer = 80, points::Integer = 2000)
-    idx, x = observed(rs)
-    isempty(x) && return println(io, "no observed values")
-    axis = rs.times === nothing ? collect(Int64, 1:length(rs)) : rs.times
-    stride = max(1, length(idx) ÷ points)
-    sel = 1:stride:length(idx)
-    println(io,
-        UnicodePlots.lineplot(Float64.(axis[idx[sel]]), x[sel]; width = width,
-            xlabel = "time [$(rs.time_unit)]", ylabel = "value", canvas = UnicodePlots.BrailleCanvas))
-    println(io, UnicodePlots.histogram(x; width = width, nbins = 40))
-    return nothing
-end
-terminal_overview(rs::RawSeries; kwargs...) = terminal_overview(stdout, rs; kwargs...)
+function terminal_overview end
 
 end # module

@@ -48,7 +48,7 @@ $(TYPEDFIELDS)
 """
 mutable struct StreamingState{Tv <: Integer, Tt <: Integer}
     "threshold on the grid"
-    const delta::Threshold{Tv}
+    const delta::Threshold
     "largest attainable value on the grid, `nothing` when undeclared"
     const upper_bound::Union{Nothing, Tv}
     "longest wait kept pending, in time units; `nothing` for none"
@@ -82,9 +82,12 @@ function StreamingState{Tv, Tt}(
         horizon::Union{Nothing, Integer} = nothing) where {Tv <: Integer, Tt <: Integer}
     horizon === nothing || horizon >= 1 ||
         throw(ArgumentError("horizon must be at least 1, got $horizon"))
+    δ.d <= typemax(Tv) || throw(ArgumentError(
+        "threshold $(format_threshold(δ)) exceeds the value type $Tv",
+    ))
     ub = upper_bound === nothing ? nothing : Tv(upper_bound)
     H = horizon === nothing ? nothing : Tt(horizon)
-    return StreamingState{Tv, Tt}(Threshold{Tv}(δ.d, δ.digits), ub, H,
+    return StreamingState{Tv, Tt}(δ, ub, H,
         BinaryMinHeap{Tuple{Tv, Int, Tt}}(), 0, zero(Tt), 0, 0, 0, MIN_COMPACTION)
 end
 function StreamingState(s::QuantizedSeries{Tv, Tt}, δ::Threshold; kwargs...) where {Tv, Tt}
@@ -137,7 +140,7 @@ function update!(f, state::StreamingState{Tv, Tt}, t::Tt, q::Tv) where {Tv, Tt}
         throw(ArgumentError(
             "times must strictly increase; got $t after $(state.last_time)",
         ))
-    d = state.delta.d
+    d = Tv(state.delta.d)   # fits by construction
     q <= typemax(Tv) - d || throw(OverflowError(
         "value $q plus threshold $(format_threshold(state.delta)) overflows $Tv",
     ))
@@ -239,7 +242,7 @@ function empirical_distribution(
     n_candidates = max(state.n_seen - 1, 0)
     n_pending = n_candidates - state.n_resolved
     return WaitingTimeDistribution{Tt}(
-        Threshold{Int64}(state.delta.d, state.delta.digits), time_unit, :elapsed, support,
+        state.delta, time_unit, :elapsed, support,
         counts, pmf, cdf, n_candidates, state.n_resolved, 0, n_pending,
         state.horizon === nothing ? nothing : Int64(state.horizon))
 end

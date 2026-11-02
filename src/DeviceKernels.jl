@@ -10,7 +10,7 @@ The guarded scan as a KernelAbstractions kernel: one work-item per index scans
 forward from its position until the target is reached, after an O(1)
 censoring test on the host-computed suffix maxima. Provided by the
 KernelAbstractions extension (`using KernelAbstractions`) on its CPU backend
-and on every GPU backend registered by the CUDA, oneAPI, AMDGPU or Metal
+and on every GPU backend probed through the CUDA, AMDGPU, oneAPI or Metal
 extension. Results equal [`NaiveSearch`](@ref) bit for bit. Work is that of
 the guarded scan ([`scan_work`](@ref) with `guarded = true`); as a reference
 kernel it is bounded by `[limits].max_reference_work` before a check is

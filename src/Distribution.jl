@@ -16,7 +16,7 @@ $(TYPEDFIELDS)
 """
 struct WaitingTimeDistribution{Tt <: Integer}
     "threshold"
-    delta::Threshold{Int64}
+    delta::Threshold
     "time unit of the support"
     time_unit::Symbol
     "`:elapsed` or `:exact`"
@@ -87,7 +87,7 @@ function empirical_distribution(
                 (class[n] = CLASS_RIGHT_CENSORED)
         end
     end
-    acc = class_counts(class)
+    acc = class_totals(class)
     keep = mode === :elapsed ? (CLASS_EXACT, CLASS_GAP_CROSSING) : (CLASS_EXACT,)
     N = length(τ)
     sample = Tt[]
@@ -100,7 +100,7 @@ function empirical_distribution(
     K = length(sample)
     pmf = K == 0 ? Float64[] : counts ./ K
     cdf = K == 0 ? Float64[] : cumsum(counts) ./ K
-    return WaitingTimeDistribution{Tt}(Threshold{Int64}(δ.d, δ.digits), s.time_unit, mode,
+    return WaitingTimeDistribution{Tt}(δ, s.time_unit, mode,
         support, counts, pmf, cdf, acc.n_candidates, acc.n_exact, acc.n_gap_crossing,
         acc.n_right_censored, horizon === nothing ? nothing : Int64(horizon))
 end

@@ -5,7 +5,7 @@
 # --config PATH      TOML configuration (default configs/quickstart.toml); relative
 #                    paths inside it resolve against its own directory
 # --output-dir DIR   output root overriding [output].root
-include(joinpath(dirname(@__DIR__), "activate.jl"))
+include(joinpath(@__DIR__, "activate.jl"))
 
 using WaitingTimes
 

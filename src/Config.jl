@@ -22,8 +22,6 @@ through [`load_settings`](@ref).
 $(TYPEDFIELDS)
 """
 Base.@kwdef struct Settings
-    "absolute path of the configuration file"
-    config_path::String
     "directory of the configuration file; relative paths resolve against it"
     config_dir::String
     # input
@@ -37,15 +35,15 @@ Base.@kwdef struct Settings
     source_descriptor::String
     "value column, by 1-based index or name"
     value_column::Union{Int, String}
-    "time column, by index or name; `nothing` for the sample index"
+    "time column, by index or name; `nothing` for the sample index; for `format = \"tick\"` the default is `\"time_ns\"`"
     time_column::Union{Nothing, Int, String}
-    "time unit of the series, one of `TIME_UNITS`"
+    "time unit of the series, one of `TIME_UNITS`; for `format = \"tick\"` the default is `:nanosecond`"
     time_unit::Symbol
     "time axis of the collection: `:elapsed` (the clock of the input) or `:index` (row ordinal)"
     time_axis::Symbol
     "`Dates` format of textual time stamps, or empty for ISO 8601 / numeric"
     time_format::String
-    "unit of numeric time stamps in the file"
+    "unit of numeric time stamps in the file; for `format = \"tick\"` the default is `:nanosecond`, the only value admitted"
     epoch_unit::Symbol
     "field delimiter, or empty for the format's default"
     delimiter::String
@@ -61,12 +59,10 @@ Base.@kwdef struct Settings
     # gaps
     "path of a TOML file declaring gap intervals, or empty"
     declared_gaps::String
-    "`:none`, `:cadence` or `:threshold`"
+    "`:none` or `:cadence`"
     gap_detect::Symbol
     "cadence for `:cadence` detection"
     gap_cadence::Int
-    "threshold in time units for `:threshold` detection"
-    gap_threshold::Int
     "distribution mode, `:elapsed` or `:exact`"
     mode::Symbol
     # quantization
@@ -124,7 +120,7 @@ Base.@kwdef struct Settings
     "`:debug`, `:info` or `:warn`"
     log_level::Symbol
     "seconds between resume checkpoints of a session (index, summary and catalogue rewritten); 0 after every chunk"
-    checkpoint_seconds::Float64 = 10.0
+    checkpoint_seconds::Float64
     "effective configuration as parsed"
     raw::Dict{String, Any}
 end
@@ -137,7 +133,7 @@ const KNOWN_KEYS = Dict(
         "value_column", "time_column", "time_unit", "time_axis",
         "time_format", "epoch_unit", "delimiter", "header", "missing_policy", "tie_policy"],
     "preprocessing" => ["steps"],
-    "gaps" => ["declared", "detect", "cadence", "threshold", "mode"],
+    "gaps" => ["declared", "detect", "cadence", "mode"],
     "quantization" => ["digits", "auto_max_digits", "auto_tolerance", "auto_step_ratio"],
     "thresholds" => ["mode", "min", "max", "step", "points_per_decade", "values"],
     "algorithm" =>
@@ -202,9 +198,9 @@ const PREPROCESSING_OPS = Dict{String, PreprocessingOp}(
                 function (step, where_)
                     as_int(require(step, where_, "window"), where_, "window"; min = 1)
                     denominator = as_symbol(
-                        fetch(step, where_, "denominator", "mean"), where_,
+                        get(step, "denominator", "mean"), where_,
                         "denominator", (:mean, :scale, :none))
-                    offset = fetch(step, where_, "offset", "none")
+                    offset = get(step, "offset", "none")
                     if offset isa AbstractString
                         as_symbol(offset, where_, "offset", (:none, :auto))
                     else
@@ -212,7 +208,7 @@ const PREPROCESSING_OPS = Dict{String, PreprocessingOp}(
                     end
                     (offset == "none" || denominator === :mean) ||
                         throw(ArgumentError("[$where_] offset applies to denominator = \"mean\" only"))
-                    as_symbol(fetch(step, where_, "on_nonpositive", "error"), where_,
+                    as_symbol(get(step, "on_nonpositive", "error"), where_,
                         "on_nonpositive", (:error, :missing))
                     return nothing
                 end,
@@ -228,7 +224,7 @@ const PREPROCESSING_OPS = Dict{String, PreprocessingOp}(
     "log_levels" => PreprocessingOp(["reference"],
         Dict{String, Any}("reference" => "first"),
         function (step, where_)
-            reference = fetch(step, where_, "reference", "first")
+            reference = get(step, "reference", "first")
             if reference isa AbstractString
                 as_symbol(reference, where_, "reference", (:first,))
             else
@@ -241,14 +237,14 @@ const PREPROCESSING_OPS = Dict{String, PreprocessingOp}(
         step -> "loglevels"),
     "differences" => PreprocessingOp(String[], Dict{String, Any}(),
         (step, where_) -> nothing, step -> "diff"),
-    "centered_moving_average" => PreprocessingOp(["window"],
+    "detrend_moving_average" => PreprocessingOp(["window"],
         Dict{String, Any}(),
         function (step, where_)
             w = as_int(require(step, where_, "window"), where_, "window"; min = 1)
             isodd(w) || throw(ArgumentError("[$where_] window must be odd, got $w"))
             return nothing
         end,
-        step -> "cma" * string(step["window"])),
+        step -> "detrend" * string(step["window"])),
     "clip_quantile" => PreprocessingOp(["q", "splice"],
         Dict{String, Any}("splice" => false),
         function (step, where_)
@@ -263,11 +259,11 @@ const PREPROCESSING_OPS = Dict{String, PreprocessingOp}(
                 "k" => 3, "center" => "mean", "scale" => "std", "splice" => false)
             PreprocessingOp(["k", "center", "scale", "splice"], defaults,
                 function (step, where_)
-                    k_ = as_float(fetch(step, where_, "k", 3.0), where_, "k")
+                    k_ = as_float(get(step, "k", 3.0), where_, "k")
                     k_ > 0 || throw(ArgumentError("[$where_] k must be positive, got $k_"))
-                    as_symbol(fetch(step, where_, "center", "mean"), where_, "center",
+                    as_symbol(get(step, "center", "mean"), where_, "center",
                         (:mean, :median))
-                    as_symbol(fetch(step, where_, "scale", "std"), where_, "scale", (
+                    as_symbol(get(step, "scale", "std"), where_, "scale", (
                         :std, :mad))
                     haskey(step, "splice") && as_bool(step["splice"], where_, "splice")
                     return nothing
@@ -278,7 +274,7 @@ const PREPROCESSING_OPS = Dict{String, PreprocessingOp}(
         let defaults = Dict{String, Any}("fraction" => 0.004, "splice" => false)
             PreprocessingOp(["fraction", "digits", "splice"], defaults,
                 function (step, where_)
-                    f = as_float(fetch(step, where_, "fraction", 0.004), where_, "fraction")
+                    f = as_float(get(step, "fraction", 0.004), where_, "fraction")
                     0 < f < 1 ||
                         throw(ArgumentError("[$where_] fraction must lie in (0, 1), got $f"))
                     as_int(require(step, where_, "digits"), where_, "digits";
@@ -335,11 +331,6 @@ function warn_unknown_keys(table::AbstractDict, section::AbstractString)
 end
 
 section(config, name) = get(config, name, Dict{String, Any}())
-
-function fetch(table, section, key, default)
-    haskey(table, key) || return default
-    return table[key]
-end
 
 function require(table, section, key)
     haskey(table, key) ||
@@ -401,11 +392,11 @@ Relative paths in the file resolve against its directory; `output_dir`
 overrides `[output].root`.
 """
 function load_settings(path::AbstractString; output_dir::Union{Nothing, AbstractString} = nothing)
-    config_path = abspath(path)
-    isfile(config_path) ||
-        throw(ArgumentError("configuration file not found: $config_path"))
-    config_dir = dirname(config_path)
-    raw = effective_config(config_path)
+    config_file = abspath(path)
+    isfile(config_file) ||
+        throw(ArgumentError("configuration file not found: $config_file"))
+    config_dir = dirname(config_file)
+    raw = effective_config(config_file)
     warn_unknown_keys(raw, "")
     for name in keys(KNOWN_KEYS)
         isempty(name) && continue
@@ -413,20 +404,44 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
             warn_unknown_keys(raw[name], name)
     end
 
+    input = parse_input(raw, config_dir)
+    preprocessing = parse_preprocessing(raw)
+    gaps = parse_gaps(raw, config_dir)
+    quantization = parse_quantization(raw)
+    thresholds = parse_thresholds(raw, quantization.digits, quantization.auto_max_digits)
+    algorithm = parse_algorithm(raw)
+    limits = parse_limits(raw)
+    output = parse_output(raw, config_dir, output_dir)
+    run = parse_run(raw)
+
+    warn_ignored_keys(section(raw, "algorithm"), section(raw, "gaps"),
+        section(raw, "thresholds"); search = algorithm.search,
+        reference_kernel = algorithm.reference_kernel, gap_detect = gaps.gap_detect,
+        threshold_mode = thresholds.threshold_mode)
+
+    return Settings(; config_dir, input..., preprocessing..., gaps..., quantization...,
+        thresholds..., algorithm..., limits..., output..., run..., raw)
+end
+
+"`[input]` section of a configuration, validated"
+function parse_input(raw, config_dir)
     inp = section(raw, "input")
-    input_path = resolve_path(as_string(require(inp, "input", "path"), "input", "path"), config_dir)
+    input_path = resolve_path(
+        as_string(require(inp, "input", "path"), "input", "path"), config_dir)
     isfile(input_path) || throw(ArgumentError("[input] path does not exist: $input_path"))
-    input_format = as_symbol(fetch(inp, "input", "format", "csv"), "input", "format",
+    input_format = as_symbol(get(inp, "format", "csv"), "input", "format",
         (:csv, :dat, :arrow, :tick))
-    source_raw = as_string(
-        fetch(inp, "input", "source_descriptor", ""), "input", "source_descriptor")
+    tick = input_format === :tick
+    dataset = as_string(get(inp, "dataset", ""), "input", "dataset")
+    source_raw = as_string(get(inp, "source_descriptor", ""), "input", "source_descriptor")
     source_descriptor = isempty(source_raw) ? "" : resolve_path(source_raw, config_dir)
     isempty(source_descriptor) || validate_source_descriptor(source_descriptor)
-    time_column_raw = fetch(inp, "input", "time_column", "")
+    value_column = as_column(require(inp, "input", "value_column"), "input", "value_column")
+    time_column_raw = get(inp, "time_column", tick ? "time_ns" : "")
     time_column = time_column_raw == "" ? nothing :
                   as_column(time_column_raw, "input", "time_column")
-    time_unit = as_symbol(fetch(inp, "input", "time_unit", "sample"), "input", "time_unit",
-        TIME_UNITS)
+    time_unit = as_symbol(get(inp, "time_unit", tick ? "nanosecond" : "sample"), "input",
+        "time_unit", TIME_UNITS)
     time_column === nothing && time_unit !== :sample &&
         throw(ArgumentError(
             "[input] time_unit = :$time_unit requires a time_column",
@@ -435,12 +450,30 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
         throw(ArgumentError(
             "[input] a time_column requires a time_unit other than \"sample\"",
         ))
-    time_axis = as_symbol(
-        fetch(inp, "input", "time_axis", "elapsed"), "input", "time_axis",
+    time_axis = as_symbol(get(inp, "time_axis", "elapsed"), "input", "time_axis",
         (:elapsed, :index))
+    time_format = as_string(get(inp, "time_format", ""), "input", "time_format")
+    epoch_unit = as_symbol(get(inp, "epoch_unit", tick ? "nanosecond" : "second"), "input",
+        "epoch_unit", TIME_UNITS[2:end])
+    tick && epoch_unit !== :nanosecond &&
+        throw(ArgumentError(
+            "[input] epoch_unit must be \"nanosecond\" for format = \"tick\", got \"$epoch_unit\"",
+        ))
+    delimiter = as_string(get(inp, "delimiter", ""), "input", "delimiter")
+    header = as_bool(get(inp, "header", true), "input", "header")
+    missing_policy = as_symbol(get(inp, "missing_policy", "drop"), "input",
+        "missing_policy", (:drop, :error))
+    tie_policy = as_symbol(get(inp, "tie_policy", "error"), "input", "tie_policy",
+        (:error, :first, :last, :mean))
+    return (; input_path, input_format, dataset, source_descriptor, value_column,
+        time_column, time_unit, time_axis, time_format, epoch_unit, delimiter, header,
+        missing_policy, tie_policy)
+end
 
+"`[preprocessing]` section of a configuration, validated"
+function parse_preprocessing(raw)
     pre = section(raw, "preprocessing")
-    steps_raw = fetch(pre, "preprocessing", "steps", Any[])
+    steps_raw = get(pre, "steps", Any[])
     steps_raw isa AbstractVector ||
         throw(ArgumentError("[preprocessing] steps must be an array of tables"))
     steps = Vector{Dict{String, Any}}()
@@ -451,21 +484,25 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
         validate_step(step, op, k)
         push!(steps, Dict{String, Any}(step))
     end
+    return (; steps)
+end
 
+"`[gaps]` section of a configuration, validated"
+function parse_gaps(raw, config_dir)
     gaps = section(raw, "gaps")
-    declared = as_string(fetch(gaps, "gaps", "declared", ""), "gaps", "declared")
+    declared = as_string(get(gaps, "declared", ""), "gaps", "declared")
     declared_gaps = isempty(declared) ? "" : resolve_path(declared, config_dir)
     isempty(declared_gaps) || isfile(declared_gaps) ||
         throw(ArgumentError("[gaps] declared file does not exist: $declared_gaps"))
-    gap_detect = as_symbol(fetch(gaps, "gaps", "detect", "cadence"), "gaps", "detect",
-        (:none, :cadence, :threshold))
-    gap_cadence = as_int(fetch(gaps, "gaps", "cadence", 1), "gaps", "cadence"; min = 1)
-    gap_threshold = as_int(fetch(gaps, "gaps", "threshold", 0), "gaps", "threshold"; min = 0)
-    gap_detect === :threshold && gap_threshold == 0 &&
-        throw(ArgumentError("[gaps] detect = \"threshold\" requires threshold > 0"))
-    mode = as_symbol(fetch(gaps, "gaps", "mode", "elapsed"), "gaps", "mode", (
-        :elapsed, :exact))
+    gap_detect = as_symbol(get(gaps, "detect", "cadence"), "gaps", "detect",
+        (:none, :cadence))
+    gap_cadence = as_int(get(gaps, "cadence", 1), "gaps", "cadence"; min = 1)
+    mode = as_symbol(get(gaps, "mode", "elapsed"), "gaps", "mode", (:elapsed, :exact))
+    return (; declared_gaps, gap_detect, gap_cadence, mode)
+end
 
+"`[quantization]` section of a configuration, validated"
+function parse_quantization(raw)
     quant = section(raw, "quantization")
     digits_raw = require(quant, "quantization", "digits")
     digits = if digits_raw isa AbstractString
@@ -477,28 +514,30 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
         check_digits(as_int(
             digits_raw, "quantization", "digits"; min = 0, max = MAX_DIGITS))
     end
-    auto_max_digits = as_int(fetch(quant, "quantization", "auto_max_digits", 8),
+    auto_max_digits = as_int(get(quant, "auto_max_digits", 8),
         "quantization", "auto_max_digits"; min = 0, max = 14)
-    auto_tolerance = as_float(fetch(quant, "quantization", "auto_tolerance", 1e-3),
+    auto_tolerance = as_float(get(quant, "auto_tolerance", 1e-3),
         "quantization", "auto_tolerance"; min = 0.0, max = 1.0)
     0 < auto_tolerance < 1 ||
         throw(ArgumentError("[quantization] auto_tolerance must lie in (0, 1)"))
-    auto_step_ratio = as_float(fetch(quant, "quantization", "auto_step_ratio", 0.1),
+    auto_step_ratio = as_float(get(quant, "auto_step_ratio", 0.1),
         "quantization", "auto_step_ratio"; min = 0.0, max = 1.0)
     auto_step_ratio > 0 ||
         throw(ArgumentError("[quantization] auto_step_ratio must lie in (0, 1]"))
+    return (; digits, auto_max_digits, auto_tolerance, auto_step_ratio)
+end
 
+"`[thresholds]` section of a configuration, validated against the grid of `digits`"
+function parse_thresholds(raw, digits, auto_max_digits)
     thr = section(raw, "thresholds")
-    threshold_mode = as_symbol(
-        fetch(thr, "thresholds", "mode", "linear"), "thresholds", "mode",
+    threshold_mode = as_symbol(get(thr, "mode", "linear"), "thresholds", "mode",
         (:linear, :log, :explicit))
-    threshold_min = as_float(fetch(thr, "thresholds", "min", 0.0), "thresholds", "min"; min = 0.0)
-    threshold_max = as_float(fetch(thr, "thresholds", "max", 0.0), "thresholds", "max"; min = 0.0)
-    threshold_step = as_float(fetch(thr, "thresholds", "step", 0.0), "thresholds", "step"; min = 0.0)
+    threshold_min = as_float(get(thr, "min", 0.0), "thresholds", "min"; min = 0.0)
+    threshold_max = as_float(get(thr, "max", 0.0), "thresholds", "max"; min = 0.0)
+    threshold_step = as_float(get(thr, "step", 0.0), "thresholds", "step"; min = 0.0)
     points_per_decade = as_int(
-        fetch(thr, "thresholds", "points_per_decade", 10), "thresholds",
-        "points_per_decade"; min = 1)
-    values_raw = fetch(thr, "thresholds", "values", Any[])
+        get(thr, "points_per_decade", 10), "thresholds", "points_per_decade"; min = 1)
+    values_raw = get(thr, "values", Any[])
     values_raw isa AbstractVector ||
         throw(ArgumentError("[thresholds] values must be an array of numbers"))
     threshold_values = [as_float(v, "thresholds", "values"; min = 0.0) for v in values_raw]
@@ -526,69 +565,60 @@ function load_settings(path::AbstractString; output_dir::Union{Nothing, Abstract
                 throw(ArgumentError("[thresholds] $v is not on the 10^-$digits grid"))
         end
     end
+    return (; threshold_mode, threshold_min, threshold_max, threshold_step,
+        points_per_decade, threshold_values)
+end
 
+"`[algorithm]` section of a configuration, validated"
+function parse_algorithm(raw)
     alg = section(raw, "algorithm")
-    search = as_symbol(
-        fetch(alg, "algorithm", "search", "segment_tree"), "algorithm", "search",
+    search = as_symbol(get(alg, "search", "segment_tree"), "algorithm", "search",
         (:naive, :guarded, :segment_tree, :fenwick_sweep, :streaming, :device))
-    backend = as_symbol(fetch(alg, "algorithm", "backend", "none"), "algorithm", "backend",
+    backend = as_symbol(get(alg, "backend", "none"), "algorithm", "backend",
         (:none, :auto, :cuda, :oneapi, :amdgpu, :metal))
-    chunk_size = as_int(fetch(alg, "algorithm", "chunk_size", 4096), "algorithm", "chunk_size"; min = 1)
-    reference_checks = as_int(fetch(alg, "algorithm", "reference_checks", 2),
+    chunk_size = as_int(get(alg, "chunk_size", 4096), "algorithm", "chunk_size"; min = 1)
+    reference_checks = as_int(get(alg, "reference_checks", 2),
         "algorithm", "reference_checks"; min = 0)
-    reference_kernel = as_symbol(fetch(alg, "algorithm", "reference_kernel", "naive"),
-        "algorithm", "reference_kernel",
-        (:naive, :guarded, :device))
+    reference_kernel = as_symbol(get(alg, "reference_kernel", "naive"),
+        "algorithm", "reference_kernel", (:naive, :guarded, :device))
+    return (; search, backend, chunk_size, reference_checks, reference_kernel)
+end
 
+"`[limits]` section of a configuration, validated"
+function parse_limits(raw)
     lim = section(raw, "limits")
-    max_ram_gb = as_float(fetch(lim, "limits", "max_ram_gb", 16.0), "limits", "max_ram_gb"; min = 0.0)
-    max_vram_gb = as_float(fetch(lim, "limits", "max_vram_gb", 8.0), "limits", "max_vram_gb"; min = 0.0)
+    max_ram_gb = as_float(get(lim, "max_ram_gb", 16.0), "limits", "max_ram_gb"; min = 0.0)
+    max_vram_gb = as_float(get(lim, "max_vram_gb", 8.0), "limits", "max_vram_gb"; min = 0.0)
     max_reference_work = as_float(
-        fetch(lim, "limits", "max_reference_work", 1e12), "limits", "max_reference_work"; min = 0.0)
+        get(lim, "max_reference_work", 1e12), "limits", "max_reference_work"; min = 0.0)
+    return (; max_ram_gb, max_vram_gb, max_reference_work)
+end
 
+"`[output]` section of a configuration, validated; `output_dir` overrides `root`"
+function parse_output(raw, config_dir, output_dir)
     out = section(raw, "output")
-    root = output_dir === nothing ?
-           resolve_path(as_string(fetch(out, "output", "root", "data"), "output", "root"), config_dir) :
-           abspath(output_dir)
-    output_format = as_symbol(fetch(out, "output", "format", "arrow"), "output", "format", (
-        :csv, :arrow))
+    output_root = if output_dir === nothing
+        resolve_path(as_string(get(out, "root", "data"), "output", "root"), config_dir)
+    else
+        abspath(output_dir)
+    end
+    output_format = as_symbol(get(out, "format", "arrow"), "output", "format",
+        (:csv, :arrow))
     store_waiting_times = as_bool(
-        fetch(out, "output", "store_waiting_times", false), "output", "store_waiting_times")
-    overwrite = as_bool(fetch(out, "output", "overwrite", false), "output", "overwrite")
+        get(out, "store_waiting_times", false), "output", "store_waiting_times")
+    overwrite = as_bool(get(out, "overwrite", false), "output", "overwrite")
+    return (; output_root, output_format, store_waiting_times, overwrite)
+end
 
+"`[run]` section of a configuration, validated"
+function parse_run(raw)
     run = section(raw, "run")
-    seed = as_int(fetch(run, "run", "seed", 12345), "run", "seed")
-    log_level = as_symbol(fetch(run, "run", "log_level", "info"), "run", "log_level", (
-        :debug, :info, :warn))
-    checkpoint_seconds = as_float(fetch(run, "run", "checkpoint_seconds", 10.0), "run",
+    seed = as_int(get(run, "seed", 12345), "run", "seed")
+    log_level = as_symbol(get(run, "log_level", "info"), "run", "log_level",
+        (:debug, :info, :warn))
+    checkpoint_seconds = as_float(get(run, "checkpoint_seconds", 10.0), "run",
         "checkpoint_seconds"; min = 0.0)
-
-    warn_ignored_keys(alg, gaps, thr; search, reference_kernel, gap_detect, threshold_mode)
-
-    return Settings(;
-        config_path, config_dir, input_path, input_format,
-        dataset = as_string(fetch(inp, "input", "dataset", ""), "input", "dataset"),
-        source_descriptor,
-        value_column = as_column(require(inp, "input", "value_column"), "input", "value_column"),
-        time_column, time_unit, time_axis,
-        time_format = as_string(fetch(inp, "input", "time_format", ""), "input", "time_format"),
-        epoch_unit = as_symbol(
-            fetch(inp, "input", "epoch_unit", "second"), "input", "epoch_unit",
-            TIME_UNITS[2:end]),
-        delimiter = as_string(fetch(inp, "input", "delimiter", ""), "input", "delimiter"),
-        header = as_bool(fetch(inp, "input", "header", true), "input", "header"),
-        missing_policy = as_symbol(fetch(inp, "input", "missing_policy", "drop"), "input",
-            "missing_policy", (:drop, :error)),
-        tie_policy = as_symbol(
-            fetch(inp, "input", "tie_policy", "error"), "input", "tie_policy",
-            (:error, :first, :last, :mean)),
-        steps, declared_gaps, gap_detect, gap_cadence, gap_threshold, mode, digits,
-        auto_max_digits, auto_tolerance, auto_step_ratio, threshold_mode, threshold_min,
-        threshold_max, threshold_step, points_per_decade,
-        threshold_values, search, backend, chunk_size, reference_checks, reference_kernel,
-        max_ram_gb, max_vram_gb, max_reference_work,
-        output_root = root, output_format, store_waiting_times, overwrite,
-        seed, log_level, checkpoint_seconds, raw)
+    return (; seed, log_level, checkpoint_seconds)
 end
 
 "a source descriptor must exist and parse as a TOML table"
@@ -611,10 +641,8 @@ function warn_ignored_keys(alg::AbstractDict, gaps::AbstractDict, thr::AbstractD
     haskey(alg, "backend") && alg["backend"] != "none" && search !== :device &&
         reference_kernel !== :device &&
         @warn "[algorithm] backend is ignored under search = \"$search\" and reference_kernel = \"$reference_kernel\""
-    haskey(gaps, "cadence") && gap_detect === :threshold &&
-        @warn "[gaps] cadence is ignored under detect = \"threshold\""
-    haskey(gaps, "threshold") && gap_detect === :cadence &&
-        @warn "[gaps] threshold is ignored under detect = \"cadence\""
+    haskey(gaps, "cadence") && gap_detect === :none &&
+        @warn "[gaps] cadence is ignored under detect = \"none\""
     for (key, used_in) in ("step" => :linear, "points_per_decade" => :log, "values" =>
         :explicit)
         haskey(thr, key) && threshold_mode !== used_in &&

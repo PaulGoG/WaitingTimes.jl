@@ -35,27 +35,26 @@ function on_grid(value::Real, digits::Integer; tolerance::Real = GRID_TOLERANCE)
 end
 
 """
-    Threshold{T<:Integer}
+    Threshold
 
 Threshold ``\\delta`` on the decimal grid: the integer `d` equals
 ``\\delta \\cdot 10^{\\mathrm{digits}}``. Thresholds are stored and compared as
 integers and rendered with exactly `digits` decimals; a floating-point δ never
-enters a file name or an identifier.
+enters a file name or an identifier. A kernel converts `d` to the value type
+of its series through `check_threshold`.
 
 $(TYPEDFIELDS)
 """
-struct Threshold{T <: Integer}
+struct Threshold
     "threshold scaled to the grid, non-negative"
-    d::T
+    d::Int64
     "decimal digits of the grid"
     digits::Int
-    function Threshold{T}(d::Integer, digits::Integer) where {T <: Integer}
+    function Threshold(d::Integer, digits::Integer)
         d >= 0 || throw(ArgumentError("thresholds are non-negative, got d = $d"))
-        return new{T}(T(d), check_digits(digits))
+        return new(Int64(d), check_digits(digits))
     end
 end
-
-Threshold(d::T, digits::Integer) where {T <: Integer} = Threshold{T}(d, digits)
 
 """
 $(TYPEDSIGNATURES)

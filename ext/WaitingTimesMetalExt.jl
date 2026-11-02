@@ -1,13 +1,9 @@
 module WaitingTimesMetalExt
 
-using Metal: Metal, MetalBackend, MtlArray
+using Metal: Metal, MetalBackend
 using WaitingTimes.Backends: Backends
 
-function __init__()
-    Backends.register_backend!(:metal, () -> Metal.functional() ? MetalBackend() : nothing)
-end
-
-Backends.to_backend(data::AbstractArray, ::MetalBackend) = MtlArray(data)
+Backends.probe(::Val{:metal}) = Metal.functional() ? MetalBackend() : nothing
 Backends.backend_name(::MetalBackend) = "Apple Metal GPU"
 function Backends.device_fingerprint(::MetalBackend)
     Metal.functional() ? sprint(io -> Metal.versioninfo(io)) : ""

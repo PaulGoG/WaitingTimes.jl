@@ -12,12 +12,13 @@ using LinearAlgebra: BLAS
 using SHA: SHA1_CTX, digest!, sha1, sha256, update!
 using TOML: TOML
 using ..WaitingTimes: PACKAGE_ROOT, PreparationRecord, PreparationStep
+using ..Backends: cpu_model
 
 export effective_config, canonical_toml, content_hash, artefact_id, file_sha256, slugify,
        git_state, hardware_fingerprint, write_hardware_fingerprint, backup_existing!,
        session_id, read_toml, write_toml, toml_ready, record_to_dict, dict_to_record,
        tree_hash, active_manifest, manifest_entry, source_identity, package_identity,
-       source_summary, MINIMUM_PRODUCER_VERSION
+       source_summary, SourceSummary, SOURCE_SUMMARY_KEYS, MINIMUM_PRODUCER_VERSION
 
 "top-level key naming the base file an overlay configuration is merged onto"
 const BASE_CONFIG_KEY = "base_config"
@@ -447,13 +448,22 @@ const MINIMUM_PRODUCER_VERSION = Dict("DeepSpaceTelemetry" => v"2.5.0",
 "a recorded commit, with the placeholders some producers write for none mapped to empty"
 commit_or_empty(x) = (c = string(something(x, "")); c in ("unknown", "nothing") ? "" : c)
 
+"keys of a source summary, in order"
+const SOURCE_SUMMARY_KEYS = (:producer, :producer_version, :git_tree_sha1, :git_dirty,
+    :git_commit, :identity, :producer_compat, :compat_checked, :compat_satisfied, :schema)
+
+"normalised identity of a source descriptor, the named tuple [`source_summary`](@ref) returns"
+const SourceSummary = NamedTuple{SOURCE_SUMMARY_KEYS,
+    Tuple{String, String, String, Bool, String, Bool, String, Bool, Bool, String}}
+
 """
 $(TYPEDSIGNATURES)
 
-Normalised identity of a source descriptor, whatever its producer: `producer`
-(package name, empty when not stated), `producer_version`, `git_tree_sha1`
-(the authoritative code identity, empty when the producer does not record it,
-as DeepSpaceTelemetry before 2.6.1 and MarketTickStreamer), `git_dirty`,
+Normalised identity of a source descriptor, whatever its producer, as a
+[`SourceSummary`](@ref) named tuple with the fields `producer` (package name,
+empty when not stated), `producer_version`, `git_tree_sha1` (the authoritative
+code identity, empty when the producer does not record it, as
+DeepSpaceTelemetry before 2.6.1 and MarketTickStreamer), `git_dirty`,
 `git_commit` (empty unless the producer ran from a checkout or was pinned by a
 full commit hash), `identity` (whether `git_tree_sha1` is present),
 `producer_compat` (the minimum version of [`MINIMUM_PRODUCER_VERSION`](@ref)
@@ -481,13 +491,11 @@ function source_summary(descriptor::AbstractDict)
     bound = get(MINIMUM_PRODUCER_VERSION, producer, nothing)
     parsed = tryparse(VersionNumber, version)
     satisfied = bound !== nothing && parsed !== nothing && parsed >= bound
-    return Dict{String, Any}("producer" => producer, "producer_version" => version,
-        "git_tree_sha1" => tree, "git_dirty" => get(keys_from, "git_dirty", false) === true,
-        "git_commit" => commit_or_empty(get(keys_from, "git_commit", "")),
-        "identity" => !isempty(tree),
-        "producer_compat" => bound === nothing ? "" : string(bound),
-        "compat_checked" => bound !== nothing, "compat_satisfied" => satisfied,
-        "schema" => schema)
+    dirty = get(keys_from, "git_dirty", false) === true
+    commit = commit_or_empty(get(keys_from, "git_commit", ""))
+    compat = bound === nothing ? "" : string(bound)
+    return SourceSummary((producer, version, tree, dirty, commit, !isempty(tree), compat,
+        bound !== nothing, satisfied, schema))
 end
 
 """
@@ -497,11 +505,9 @@ Platform fingerprint as a dictionary: host name, CPU model, logical cores,
 Julia threads, total memory, Julia version, operating system, BLAS threads.
 """
 function hardware_fingerprint()
-    info = Sys.cpu_info()
-    cpu = isempty(info) ? "" : strip(info[1].model)
     return Dict{String, Any}(
         "hostname" => gethostname(),
-        "cpu" => cpu,
+        "cpu" => cpu_model(),
         "logical_cores" => Sys.CPU_THREADS,
         "threads" => Threads.nthreads(),
         "memory_bytes" => Int(Sys.total_memory()),

@@ -11,12 +11,13 @@
 # differing indices and the reference kernel's work and time; a comparison whose work
 # exceeds [limits].max_reference_work is skipped. With --backend the device
 # kernel also runs on that GPU; the environment must then contain the GPU
-# package, which --env selects (test/device holds oneAPI). --out writes one row
+# package. --env selects the environment, the scripts environment by default;
+# test/device holds oneAPI. --out writes one row
 # per kernel and threshold to a CSV file; the summary is always printed, and any
 # disagreement ends the script with an error.
 function parse_commandline(argv)
     options = Dict{String, Any}("config" => nothing, "every" => 1, "backend" => "none",
-        "env" => dirname(@__DIR__), "out" => nothing)
+        "env" => @__DIR__, "out" => nothing)
     i = 1
     while i <= length(argv)
         arg = argv[i]
@@ -47,10 +48,11 @@ function main(options)
     loaded = WaitingTimes.Backends.load_device_packages(Symbol(backend))
 
     settings = load_settings(abspath(options["config"]))
-    series, ids = prepare(settings)
+    prepared = prepare(settings)
+    series = prepared.series
     deltas = threshold_list(settings, series)[1:options["every"]:end]
     println(
-        "series ", ids.series_id, ": ", length(series), " observations, ", length(deltas),
+        "series ", prepared.series_id, ": ", length(series), " observations, ", length(deltas),
         " thresholds checked (one in ", options["every"], " of the grid)")
 
     kernels = Pair{String, AbstractSearch}["guarded" => GuardedSearch(),
@@ -67,40 +69,40 @@ function main(options)
     end
 
     report = validate(settings; deltas = deltas, kernels = kernels)
-    reference = report["reference_kernel"]
+    reference = report.reference_kernel
     println("reference kernel: ", reference)
 
     if options["out"] !== nothing
         open(options["out"], "w") do out
             println(out, "dataset,delta,base,kernel,n,n_differ,equal,skipped,work,seconds")
-            for r in report["results"]
+            for r in report.results
                 println(out,
                     join(
-                        (ids.series_slug, r["delta"], reference,
-                            r["kernel"], length(series),
-                            r["n_differences"], r["equal"], r["skipped"], r["work"],
-                            r["seconds"]),
+                        (prepared.series_slug, r.delta, reference,
+                            r.kernel, length(series),
+                            r.n_differences, r.equal, r.skipped, r.work,
+                            r.seconds),
                         ","))
             end
         end
     end
-    for r in report["results"]
-        r["skipped"] || r["equal"] ||
+    for r in report.results
+        r.skipped || r.equal ||
             @printf("  DIFFERENCE %-12s against %s at δ = %s: %d indices\n",
-                r["kernel"], reference, r["delta"], r["n_differences"])
+                r.kernel, reference, r.delta, r.n_differences)
     end
 
     println("summary (", length(deltas), " thresholds):")
-    for k in report["kernels"]
-        differing = count(r -> r["kernel"] == k["name"] && !r["skipped"] && !r["equal"],
-            report["results"])
+    for k in report.kernels
+        differing = count(r -> r.kernel == k.name && !r.skipped && !r.equal,
+            report.results)
         @printf("  %-12s checked %5d  skipped %5d  thresholds with differences %3d  differing indices %6d  reference %8.2f s\n",
-            k["name"], k["n_checked"], k["n_skipped"], differing, k["n_differences"],
-            k["seconds"])
+            k.name, k.n_checked, k.n_skipped, differing, k.n_differences,
+            k.seconds)
     end
-    all(k -> k["n_checked"] > 0, report["kernels"]) ||
+    all(k -> k.n_checked > 0, report.kernels) ||
         error("no threshold compared: the scan work of every threshold exceeds [limits] max_reference_work")
-    report["all_equal"] || error("kernel disagreement detected")
+    report.all_equal || error("kernel disagreement detected")
     println("all kernels agree index by index on every checked threshold")
     return nothing
 end

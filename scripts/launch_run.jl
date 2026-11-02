@@ -5,7 +5,7 @@
 # --config, the configuration path.
 #
 #   julia scripts/launch_run.jl [--config PATH] [--output-dir DIR]
-include(joinpath(dirname(@__DIR__), "activate.jl"))
+include(joinpath(@__DIR__, "activate.jl"))
 
 using Dates
 using TOML

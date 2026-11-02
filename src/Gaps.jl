@@ -340,7 +340,7 @@ $(TYPEDSIGNATURES)
 Counts of the classes over the candidate indices `1:N-1`, as the named tuple
 `(n_candidates, n_exact, n_gap_crossing, n_right_censored)`.
 """
-function class_counts(class::AbstractVector{UInt8})
+function class_totals(class::AbstractVector{UInt8})
     N = length(class)
     n_exact = n_gap = n_cens = 0
     @inbounds for n in 1:(N - 1)
@@ -352,3 +352,11 @@ function class_counts(class::AbstractVector{UInt8})
     return (n_candidates = N - 1, n_exact = n_exact, n_gap_crossing = n_gap,
         n_right_censored = n_cens)
 end
+
+"""
+    class_counts(c::Collection, δ)
+
+Per-class counts of the partition at `δ` of a collection; the method is
+defined with the read side of collections ([`Collection`](@ref)).
+"""
+function class_counts end

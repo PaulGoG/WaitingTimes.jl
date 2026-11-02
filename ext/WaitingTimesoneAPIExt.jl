@@ -1,14 +1,9 @@
 module WaitingTimesoneAPIExt
 
-using oneAPI: oneAPI, oneAPIBackend, oneArray
+using oneAPI: oneAPI, oneAPIBackend
 using WaitingTimes.Backends: Backends
 
-function __init__()
-    Backends.register_backend!(:oneapi, () -> oneAPI.functional() ? oneAPIBackend() :
-                                              nothing)
-end
-
-Backends.to_backend(data::AbstractArray, ::oneAPIBackend) = oneArray(data)
+Backends.probe(::Val{:oneapi}) = oneAPI.functional() ? oneAPIBackend() : nothing
 function Backends.backend_name(::oneAPIBackend)
     oneAPI.functional() || return "Intel oneAPI GPU"
     return "Intel oneAPI GPU ($(strip(oneAPI.oneL0.properties(oneAPI.device()).name)))"
