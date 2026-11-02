@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
+## [Unreleased]
+
+### Changed
+
+- The examples environment pins DeepSpaceTelemetry 3.1.1. A copy of 2.6.1
+  to 3.1.0 installed by Pkg and run with its default data root stamped
+  `git_dirty = true` while its directory was pristine; 3.1.1 fixes the
+  identity hash. The producers page states that the flag of such descriptors
+  is spurious and that their `git_tree_sha1` and `git_commit` are correct.
+
 ## [0.4.0] - 2026-11-02
 
 ### Added
