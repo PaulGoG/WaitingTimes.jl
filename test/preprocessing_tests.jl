@@ -9,7 +9,7 @@
         "trailing30abs" => D("op" => "trailing_mean_fluctuations", "window" => 30,
             "denominator" => "none"),
         "round2" => D("op" => "round", "digits" => 2),
-        "cma5" => D("op" => "centered_moving_average", "window" => 5),
+        "detrend5" => D("op" => "detrend_moving_average", "window" => 5),
         "clip0.01" => D("op" => "clip_quantile", "q" => 0.01),
         "sigma3" => D("op" => "clip_sigma"),
         "sigma2.5" => D("op" => "clip_sigma", "k" => 2.5),
@@ -47,8 +47,8 @@
         (rs, D("op" => "log_returns"), P.log_returns(rs)),
         (rs, D("op" => "log_levels"), P.log_levels(rs)),
         (rs, D("op" => "differences"), P.differences(rs)),
-        (rs, D("op" => "centered_moving_average", "window" => 5),
-            P.centered_moving_average(rs; window = 5)),
+        (rs, D("op" => "detrend_moving_average", "window" => 5),
+            P.detrend_moving_average(rs; window = 5)),
         (rs, D("op" => "clip_quantile", "q" => 0.02), P.clip_quantile(rs; q = 0.02)),
         (rs, D("op" => "clip_extremes", "digits" => 2), P.clip_extremes(rs; digits = 2)),
         (rs, D("op" => "clip_sigma"), P.clip_sigma(rs)),
@@ -81,7 +81,7 @@
         @test_logs (:warn, r"backend") match_mode = :any load_settings(config(
             linear * "[algorithm]\nbackend = \"cuda\"\n"))
         @test_logs (:warn, r"cadence") match_mode = :any load_settings(config(
-            linear * "[gaps]\ndetect = \"threshold\"\nthreshold = 2\ncadence = 1\n"))
+            linear * "[gaps]\ndetect = \"none\"\ncadence = 1\n"))
         @test_logs (:warn, r"step") match_mode = :any load_settings(config(
             "[thresholds]\nmode = \"explicit\"\nvalues = [0.05, 0.1]\nstep = 0.05\n"))
         settings = @test_logs (:warn, r"unknown configuration key") match_mode = :any load_settings(config(

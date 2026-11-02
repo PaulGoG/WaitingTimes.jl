@@ -209,7 +209,7 @@ end
         CSV.write(csv, DataFrame(t = 1:n, x = x))
         h = run_pipeline(axis_config(dir, csv, "elapsed"))
         c = load_collection(h.dir)
-        @test c.metadata["schema"] == "waitingtimes-provenance/3"
+        @test c.metadata["schema"] == "waitingtimes-provenance/4"
         for δ in ("0", "1", "2")
             d = distribution(c, δ)
             cc = WaitingTimes.class_counts(c, δ)
@@ -255,13 +255,13 @@ end
         CSV.write(csv, DataFrame(t = t, x = x))
         cfg = TOML.parsefile(axis_config(dir, csv, "elapsed"))
         cfg["quantization"]["digits"] = 2
-        cfg["gaps"]["detect"] = "threshold"
-        cfg["gaps"]["threshold"] = 10
+        cfg["gaps"]["detect"] = "cadence"
+        cfg["gaps"]["cadence"] = 10
         cfg["preprocessing"] = Dict("steps" => [Dict("op" => "round", "digits" => 2)])
         path = joinpath(dir, "rt.toml")
         open(io -> TOML.print(io, cfg), path, "w")
         settings = load_settings(path)
-        s, _ = prepare(settings)
+        s = prepare(settings).series
         c = load_collection(run_pipeline(path).dir)
         loaded = load_series(c)
         @test loaded.values == s.values && eltype(loaded.values) == eltype(s.values)
@@ -318,34 +318,34 @@ end
         "git_commit" => "4352f565558d485c8d6cdd624e9ec6f40936aa24", "git_dirty" => false,
         "identity_source" => "manifest")
     s1 = summarise(dst)
-    @test s1["producer"] == "DeepSpaceTelemetry" && s1["producer_version"] == "2.6.2" &&
-          s1["identity"] && s1["git_commit"] == dst["git_commit"] && !s1["git_dirty"] &&
-          s1["producer_compat"] == "2.5.0" && s1["compat_checked"] && s1["compat_satisfied"]
+    @test s1.producer == "DeepSpaceTelemetry" && s1.producer_version == "2.6.2" &&
+          s1.identity && s1.git_commit == dst["git_commit"] && !s1.git_dirty &&
+          s1.producer_compat == "2.5.0" && s1.compat_checked && s1.compat_satisfied
     s1b = summarise(merge(dst,
         Dict("schema" => "deepspacetelemetry-run/2", "package_version" => "3.1.0")))
-    @test s1b["producer"] == "DeepSpaceTelemetry" && s1b["producer_version"] == "3.1.0" &&
-          s1b["schema"] == "deepspacetelemetry-run/2" && s1b["identity"] &&
-          s1b["compat_satisfied"]
+    @test s1b.producer == "DeepSpaceTelemetry" && s1b.producer_version == "3.1.0" &&
+          s1b.schema == "deepspacetelemetry-run/2" && s1b.identity &&
+          s1b.compat_satisfied
     old = Dict{String, Any}(
         "schema" => "deepspacetelemetry-run/1", "package_version" => "2.6.0",
         "git_commit" => "", "git_dirty" => false)
     s2 = summarise(old)
-    @test !s2["identity"] && s2["git_tree_sha1"] == "" && s2["compat_satisfied"]
-    @test !summarise(merge(old, Dict("package_version" => "2.4.0")))["compat_satisfied"]
+    @test !s2.identity && s2.git_tree_sha1 == "" && s2.compat_satisfied
+    @test !summarise(merge(old, Dict("package_version" => "2.4.0"))).compat_satisfied
     mts = Dict{String, Any}("session" => Dict("id" => "s1", "status" => "completed"),
         "provenance" => Dict("git_commit" => "unknown", "git_dirty" => false,
             "package_version" => "1.0.0", "timestamp_unit" => "nanosecond"))
     s3 = summarise(mts)
-    @test s3["producer"] == "MarketTickStreamer" && s3["git_commit"] == "" &&
-          !s3["identity"] && s3["producer_compat"] == "1.0.0" && s3["compat_satisfied"]
+    @test s3.producer == "MarketTickStreamer" && s3.git_commit == "" &&
+          !s3.identity && s3.producer_compat == "1.0.0" && s3.compat_satisfied
     @test !summarise(Dict{String, Any}("session" => mts["session"],
         "provenance" => merge(mts["provenance"],
-            Dict("package_version" => "0.3.0"))))["compat_satisfied"]
+            Dict("package_version" => "0.3.0")))).compat_satisfied
     generic = Dict{String, Any}("producer" => "Other", "producer_version" => "1.2.0",
         "git_tree_sha1" => "abc")
     s4 = summarise(generic)
-    @test s4["producer"] == "Other" && s4["identity"] && !s4["compat_checked"] &&
-          !s4["compat_satisfied"] && s4["producer_compat"] == ""
+    @test s4.producer == "Other" && s4.identity && !s4.compat_checked &&
+          !s4.compat_satisfied && s4.producer_compat == ""
 
     mktempdir() do dir
         csv = joinpath(dir, "id.csv")
