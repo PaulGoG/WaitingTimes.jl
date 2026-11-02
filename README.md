@@ -254,7 +254,6 @@ WaitingTimes.jl/
 │   ├── Synthetic.jl              # synthetic series for tests and benchmarks
 │   ├── Provenance.jl             # config overlays, canonical hashing, identifiers, fingerprints
 │   ├── Config.jl                 # TOML schema, validated Settings, threshold grids
-│   ├── Naming.jl                 # self-describing file-name grammar and parser
 │   ├── Preprocessing.jl          # ingestion (csv/dat/arrow/tick), transforms, diagnostics
 │   ├── Monitoring.jl             # terminal and file logging, TTY-gated progress
 │   ├── Storage.jl                # per-threshold partitions, index, summary, catalog

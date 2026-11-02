@@ -4,7 +4,6 @@
 using WaitingTimes.Provenance: artefact_id, backup_existing!, canonical_toml, content_hash,
                                dict_to_record, effective_config, record_to_dict, slugify,
                                toml_ready, write_toml
-using WaitingTimes.Naming: artefact_name, parse_artefact_name
 using WaitingTimes.Preprocessing: RawSeries, apply_steps, centered_moving_average,
                                   clip_extremes, clip_quantile, clip_sigma, collapse_ties,
                                   differences,
@@ -171,25 +170,6 @@ end
         @test_throws ArgumentError load_settings(joinpath(dir, "absent.toml"))
     end
     @test "input" in KNOWN_KEYS[""]
-end
-
-@testset "Naming" begin
-    name = artefact_name(; series = "geisenheim-wind_speed+clip0.996", model = "SF",
-        representation = "ccdf", binning = "log5", delta = "1.0", id = "f3a91c2e", ext = "pdf",
-        extras = ["panel" => "A"])
-    @test name ==
-          "geisenheim-wind_speed+clip0.996__SF__ccdf__log5__delta=1.0__panel=A__f3a91c2e.pdf"
-    parsed = parse_artefact_name(joinpath("some", "dir", name))
-    @test parsed.series == "geisenheim-wind_speed+clip0.996" && parsed.model == "SF"
-    @test parsed.representation == "ccdf" && parsed.binning == "log5" &&
-          parsed.delta == "1.0"
-    @test parsed.extras == Dict("panel" => "A") && parsed.id == "f3a91c2e" &&
-          parsed.ext == "pdf"
-    @test_throws ArgumentError parse_artefact_name("a__b.pdf")
-    @test_throws ArgumentError parse_artefact_name("a__b__c__d__e__f")
-    @test_throws ArgumentError artefact_name(;
-        series = "s", representation = "pdf", delta = "1",
-        id = "x", ext = "pdf", extras = ["delta" => "2"])
 end
 
 @testset "Preprocessing" begin

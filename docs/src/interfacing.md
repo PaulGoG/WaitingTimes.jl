@@ -90,7 +90,7 @@ Downstream tools may rely on the exported names and on those declared
 | series tools | `classify`, `gap_table`, `observed_mask`, `describe` |
 | accessors of a distribution | `support`, `counts`, `probabilities`, `cumulative`, `survival`, `nsamples`, `ks_distance` |
 | figures (CairoMakie extension) | `figure_theme`, `decade_ticks`, `save_figure`, `plot_series`, `plot_distribution`, `plot_values` |
-| provenance and naming | `Provenance.artefact_id`, `content_hash`, `canonical_toml`, `git_state`, `hardware_fingerprint`, `backup_existing!`, `Naming.artefact_name` |
+| provenance | `Provenance.artefact_id`, `content_hash`, `canonical_toml`, `git_state`, `hardware_fingerprint`, `backup_existing!` |
 
 The field layout of [`WaitingTimeDistribution`](@ref) (twelve fields,
 `horizon` last) and its twelve- and eleven-argument constructors, the latter

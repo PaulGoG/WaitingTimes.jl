@@ -42,12 +42,6 @@ WaitingTimes.Provenance.identity_record
 WaitingTimes.Provenance.merge_config
 ```
 
-## Naming
-
-```@docs
-WaitingTimes.Naming
-```
-
 ## Monitoring
 
 ```@docs

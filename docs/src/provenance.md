@@ -84,18 +84,6 @@ exactly; together with the manifest snapshot it makes a collection
 attributable to code and environment. Producers of source descriptors are
 keyed the same way; DeepSpaceTelemetry.jl records these fields since 2.6.1.
 
-## File names
-
-[`WaitingTimes.Naming.artefact_name`](@ref) builds names of the form
-
-```
-<series>__<model>__<representation>__<binning>__delta=<fixed>[__<key>=<value>...]__<id>.<ext>
-```
-
-for figures and result tables of later stages, and
-[`WaitingTimes.Naming.parse_artefact_name`](@ref) parses them back, so a
-batch of files can be inspected and selected from names alone.
-
 ## Lineage
 
 `scripts/lineage.jl <path>` prints the collection, its series with every
