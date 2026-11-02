@@ -1,13 +1,9 @@
 module WaitingTimesCUDAExt
 
-using CUDA: CUDA, CUDABackend, CuArray
+using CUDA: CUDA, CUDABackend
 using WaitingTimes.Backends: Backends
 
-function __init__()
-    Backends.register_backend!(:cuda, () -> CUDA.functional() ? CUDABackend() : nothing)
-end
-
-Backends.to_backend(data::AbstractArray, ::CUDABackend) = CuArray(data)
+Backends.probe(::Val{:cuda}) = CUDA.functional() ? CUDABackend() : nothing
 function Backends.backend_name(::CUDABackend)
     CUDA.functional() || return "NVIDIA CUDA GPU"
     return "NVIDIA CUDA GPU ($(CUDA.name(CUDA.device())))"

@@ -1,68 +1,69 @@
 """
-Compute-backend registry: probes registered by the package extensions (the
-KernelAbstractions extension registers the CPU backend, the CUDA, oneAPI, AMDGPU
-and Metal extensions their GPU backends) and the selection of a backend.
+Compute backends: the probes the package extensions define (the
+KernelAbstractions extension for the CPU, the CUDA, AMDGPU, oneAPI and Metal
+extensions for their GPUs) and the selection of a backend.
 """
 module Backends
 
 using DocStringExtensions: TYPEDSIGNATURES
 
-export get_best_backend, to_backend, backend_name
-public register_backend!, reclaim_device_memory!, cpu_model, device_fingerprint,
-       BACKEND_PROBES, host_backend, load_device_packages, GPU_PACKAGES
+export get_best_backend, backend_name
+public probe, GPU_PRIORITY, cpu_backend, reclaim_device_memory!, cpu_model,
+       device_fingerprint, host_backend, load_device_packages, GPU_PACKAGES
+
+"GPU backends tried by `:auto`, in order of preference"
+const GPU_PRIORITY = (:cuda, :amdgpu, :oneapi, :metal)
 
 """
-Registry of backend probes: `name => probe`, each probe returning a
-functional KernelAbstractions backend or `nothing`.
-"""
-const BACKEND_PROBES = Vector{Pair{Symbol, Function}}()
+    probe(::Val{name}) -> backend or nothing
 
+Functional KernelAbstractions backend of the vendor `name` (`:cuda`,
+`:amdgpu`, `:oneapi`, `:metal`) or the CPU (`:cpu`); `nothing` when the
+package is not loaded or its device is not functional. The package extensions
+define the methods; without them every name probes to `nothing`.
 """
-$(TYPEDSIGNATURES)
+probe(::Val) = nothing
 
-Register `probe` under `name` unless the name is taken; called from the
-extensions' `__init__`.
-"""
-function register_backend!(name::Symbol, probe::Function)
-    any(p -> first(p) === name, BACKEND_PROBES) || push!(BACKEND_PROBES, name => probe)
-    return nothing
-end
-
-"CPU backend of the `:cpu` probe, registered by the KernelAbstractions extension"
+"CPU backend of the KernelAbstractions extension"
 function cpu_backend()
-    for (name, probe) in BACKEND_PROBES
-        name === :cpu && return probe()
-    end
-    throw(ArgumentError(
+    backend = probe(Val(:cpu))
+    backend === nothing && throw(ArgumentError(
         "the device kernel needs KernelAbstractions loaded in the session (using KernelAbstractions)",
     ))
+    return backend
 end
 
 """
 $(TYPEDSIGNATURES)
 
-Backend selected by `prefer`: `:none` is the CPU backend registered by the
-KernelAbstractions extension under `:cpu`, `:auto` the first functional GPU
-with that CPU backend as fallback, and a named backend (`:cuda`, `:oneapi`,
-`:amdgpu`, `:metal`) is returned only when its package is loaded and its device
-is functional; otherwise an `ArgumentError` is thrown, so a run never silently
-proceeds on a backend other than the requested one. The CPU backend needs
-KernelAbstractions loaded in the session; without it `:none` and a fallback
-of `:auto` throw an `ArgumentError`.
+Backend selected by `prefer`: `:none` is the CPU backend of the
+KernelAbstractions extension; `:auto` is the first functional GPU in the order
+of [`GPU_PRIORITY`](@ref), whatever the order in which the GPU packages were
+loaded, with the CPU backend as fallback; a named backend (`:cuda`, `:amdgpu`,
+`:oneapi`, `:metal`) is returned only when its package is loaded and its
+device is functional, otherwise an `ArgumentError` is thrown, so a run never
+silently proceeds on a backend other than the requested one. Without
+KernelAbstractions loaded, `:none` and the fallback of `:auto` throw an
+`ArgumentError`.
 """
 function get_best_backend(; prefer::Symbol = :auto)
     prefer === :none && return cpu_backend()
-    for (name, probe) in BACKEND_PROBES
-        name === :cpu && continue
-        (prefer === :auto || prefer === name) || continue
-        backend = probe()
-        backend !== nothing && return backend
+    if prefer === :auto
+        for name in GPU_PRIORITY
+            backend = probe(Val(name))
+            backend === nothing || return backend
+        end
+        return cpu_backend()
     end
-    prefer === :auto && return cpu_backend()
-    throw(ArgumentError(
-        "GPU backend :$prefer is not available (package not loaded or device not " *
-        "functional); registered probes: $(first.(BACKEND_PROBES))",
+    prefer in GPU_PRIORITY || throw(ArgumentError(
+        "unknown backend :$prefer; one of :none, :auto, " *
+        join((":$k" for k in GPU_PRIORITY), ", "),
     ))
+    backend = probe(Val(prefer))
+    backend === nothing && throw(ArgumentError(
+        "GPU backend :$prefer is not available (package not loaded or device not functional)",
+    ))
+    return backend
 end
 
 "GPU package loaded for each named backend of `[algorithm].backend`"
@@ -76,8 +77,8 @@ Load KernelAbstractions when it is installed in the active environment, then the
 GPU packages selected by `prefer`: every installed package of
 [`GPU_PACKAGES`](@ref) for `:auto`, the package of a named backend (with a
 warning when it is not installed), nothing more for `:none`. Loading them
-activates the package extensions that register the backends. Returns the names
-of the packages loaded; any other `prefer` throws an `ArgumentError`.
+activates the package extensions that define the probes. Returns the names of
+the packages loaded; any other `prefer` throws an `ArgumentError`.
 """
 function load_device_packages(prefer::Symbol)
     prefer === :auto || prefer === :none || haskey(GPU_PACKAGES, prefer) ||
@@ -106,14 +107,6 @@ function load_device_packages(prefer::Symbol)
     end
     return loaded
 end
-
-"""
-    to_backend(data::AbstractArray, backend) -> AbstractArray
-
-Copy of `data` as an array of `backend`; the KernelAbstractions extension adds
-the CPU method (`Array`), the GPU extensions their device array types.
-"""
-function to_backend end
 
 """
     host_backend(backend)

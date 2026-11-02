@@ -102,7 +102,8 @@ include("Storage.jl")
 include("Orchestrator.jl")
 
 using .Config: Settings, load_settings, threshold_list
-using .Orchestrator: CollectionHandle, generate, prepare, run_pipeline, validate
+using .Orchestrator: CollectionHandle, PreparedSeries, ValidationReport, generate, prepare,
+                     run_pipeline, validate
 using .Storage: Collection, load_collection, list_collections, distribution, thresholds,
                 summary_table, load_series, export_legacy, source_descriptor,
                 censoring_histogram
@@ -110,22 +111,21 @@ using .Provenance: effective_config, source_summary
 
 export Threshold, threshold, quantize, format_threshold, parse_threshold
 export PreparationStep, PreparationRecord, QuantizedSeries
-export detect_gaps, declare_gaps, gap_table, classify, class_counts
+export detect_gaps, declare_gaps, gap_table, classify, class_counts, class_totals
 export AbstractSearch, NaiveSearch, GuardedSearch, SegmentTreeSearch, FenwickSweep,
        StreamingSearch, DeviceSearch, device_search, waiting_times, waiting_times!
 export StreamingState, DistributionAccumulator, pending
 export OnlineWaitingTimes, snapshot, status
 export WaitingTimeDistribution, empirical_distribution
 export Settings, load_settings, threshold_list, effective_config
-export CollectionHandle, generate, prepare, run_pipeline, validate
+export CollectionHandle, PreparedSeries, ValidationReport, generate, prepare, run_pipeline,
+       validate
 export Collection, load_collection, list_collections, distribution, thresholds,
        summary_table, load_series, export_legacy, source_descriptor
 
 public CLASS_EXACT, CLASS_GAP_CROSSING, CLASS_RIGHT_CENSORED, TIME_UNITS, update!
-public narrow_integer, GRID_TOLERANCE, on_grid, suffix_maximum, SearchWorkspace, MaxTree,
-       FenwickWorkspace,
-       workspace, workspace_bytes, scan_work,
-       check_threshold, first_at_least, duration
+public narrow_integer, GRID_TOLERANCE, on_grid, suffix_maximum, SearchWorkspace, workspace,
+       workspace_bytes, scan_work, check_threshold, duration
 public support, counts, probabilities, cumulative, survival, nsamples, mean_waiting_time,
        ks_distance
 public GAP_KINDS, with_step, sampling_step, record_length, observed_mask, segment_lengths,

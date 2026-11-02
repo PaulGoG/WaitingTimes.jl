@@ -1,0 +1,27 @@
+[algorithm]
+reference_checks = 1
+search = "segment_tree"
+
+[gaps]
+cadence = 1
+detect = "cadence"
+
+[input]
+format = "csv"
+path = "contract.csv"
+value_column = "x"
+
+[output]
+format = "csv"
+root = "out"
+
+[quantization]
+digits = 0
+
+[run]
+log_level = "warn"
+seed = 1
+
+[thresholds]
+mode = "explicit"
+values = [1, 3]

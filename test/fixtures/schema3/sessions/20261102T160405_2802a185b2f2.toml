@@ -1,0 +1,69 @@
+backend = "none"
+chunk_size = 4096
+config_hash = "de3f1ac2238e108996c533c06445c5e76de795e32438dd8cbf40feef72b8605b"
+created = 2026-11-02T16:04:05.334Z
+deltas_computed = ["1", "3"]
+deltas_skipped = []
+git = "unknown"
+id = "20261102T160405_2802a185b2f2"
+julia = "1.13.3"
+kernel = "segmenttreesearch"
+manifest_sha256 = "6dcb7676f9e28751a13b15be34417ff7ca924070b539b0e1c9ac704b5b7c34a4"
+memory_estimate_bytes = 2378
+package_version = "0.4.0"
+status = "completed"
+threads = 12
+
+[hardware]
+blas_threads = 6
+cpu = "Intel(R) Core(TM) Ultra 7 155H"
+hostname = "Lenovo-Yoga-Pro-7"
+julia = "1.13.3"
+logical_cores = 22
+memory_bytes = 33032556544
+os = "Linux x86_64-linux-gnu"
+threads = 12
+
+[producer]
+git_commit = ""
+git_dirty = false
+git_tree_sha1 = "2802a185b2f2bfaa9c6ee1d98811742f521b78ea"
+identity_source = "directory"
+repo_rev = ""
+repo_url = ""
+
+[[reference_checks]]
+delta = "3"
+early = true
+equal = true
+kernel = "naivesearch"
+seconds = 8.98e-7
+skipped = false
+work = 64.0
+
+[timings]
+total_seconds = 0.064906656
+
+    [timings.distribution]
+    calls = 4
+    seconds = 1.1701e-5
+
+    [timings.reference]
+    calls = 3
+    seconds = 7.396e-6
+
+    [timings.search]
+    calls = 2
+    seconds = 5.01e-6
+
+    [timings."series files"]
+    calls = 1
+    seconds = 0.060527293
+
+    [timings.workspace]
+    calls = 2
+    seconds = 1.298e-6
+
+    [timings.write]
+    calls = 4
+    seconds = 0.004353958

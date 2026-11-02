@@ -1,0 +1,49 @@
+digits = 0
+id = "series-contract-x-8f2457fc"
+n_gaps = 1
+n_observations = 18
+n_observed = 18
+n_segments = 2
+record_length = 20
+sampling_step = 1
+time_axis = "elapsed"
+time_unit = "sample"
+time_unit_original = "sample"
+value_type = "Int32"
+
+[gap_kinds]
+detected = 1
+
+[record]
+source = "/tmp/claude-1000/-home-paulgog-coding-workspace-distribution-waiting-times-generator/15c3ae17-aefa-48dd-b043-984f83cde9d7/scratchpad/wt-0.4.0/contract.csv"
+source_sha256 = "42fb1eb8458ead505ba44e276c47bef64859631786c668179f1f14e65c60ae8f"
+
+    [[record.steps]]
+    op = "read_series"
+
+        [record.steps.parameters]
+        epoch_unit = "second"
+        format = "csv"
+        missing_policy = "drop"
+        tie_policy = "error"
+        time_column = ""
+        time_unit = "sample"
+        value_column = "x"
+
+        [record.steps.summary]
+        n_missing = 2
+        n_rows = 20
+    [[record.steps]]
+    op = "quantize"
+
+        [record.steps.parameters]
+        cadence = 1
+        digits = 0
+        narrow = true
+
+        [record.steps.summary]
+        n_gaps = 1
+        n_missing = 2
+        n_observed = 18
+        n_rows = 20
+        value_type = "Int32"

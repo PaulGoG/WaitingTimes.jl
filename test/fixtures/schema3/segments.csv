@@ -1,0 +1,3 @@
+start,stop,length,kind_before,kind_after
+1,9,8,"",detected
+11,21,10,detected,""

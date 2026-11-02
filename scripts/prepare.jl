@@ -5,9 +5,10 @@
 # the number of decimals (digits_sensitivity), the basis of digits = "auto".
 #
 #   julia scripts/prepare.jl --config PATH [--top N] [--digits-scan]
-include(joinpath(dirname(@__DIR__), "activate.jl"))
+include(joinpath(@__DIR__, "activate.jl"))
 
 using WaitingTimes
+using UnicodePlots: UnicodePlots   # enables terminal_overview
 using WaitingTimes.Preprocessing: digits_sensitivity, resolution_digits, sampling_summary,
                                   terminal_overview, value_summary
 
@@ -32,21 +33,22 @@ end
 
 args = parse_commandline(ARGS)
 settings = load_settings(abspath(args["config"]))
-series, ids = prepare(settings)
+prepared = prepare(settings)
+series = prepared.series
 
-println("dataset  ", ids.dataset_id)
-println("series   ", ids.series_id)
+println("dataset  ", prepared.dataset_id)
+println("series   ", prepared.series_id)
 println("series   ", series)
-println("sampling ", sampling_summary(ids.raw))
-println("values   ", value_summary(ids.raw))
-resolution = resolution_digits(ids.raw)
+println("sampling ", sampling_summary(prepared.raw))
+println("values   ", value_summary(prepared.raw))
+resolution = resolution_digits(prepared.raw)
 println("digits   ", series.digits,
     settings.digits === nothing ? " (auto)" : " (configured)", "; recorded resolution ",
     resolution === nothing ? "not on a decimal grid" : string(resolution, " decimals"))
 if args["digits-scan"] == "true"
     println("sensitivity of the δ = 0 distribution to digits (ks: distance to digits + 1):")
     show(stdout, MIME("text/plain"),
-        digits_sensitivity(ids.raw; digits = 0:settings.auto_max_digits);
+        digits_sensitivity(prepared.raw; digits = 0:settings.auto_max_digits);
         allrows = true, summary = false, eltypes = false)
     println()
 end
@@ -56,4 +58,4 @@ for row in first(table, parse(Int, args["top"]))
     println(
         "  [", row.start, ", ", row.stop, ")  length ", row.length, " ", series.time_unit)
 end
-terminal_overview(ids.raw)
+terminal_overview(prepared.raw)

@@ -1,0 +1,3 @@
+delta,mode,n_candidates,n_exact,n_gap_crossing,n_right_censored,n_waiting,tau_min,tau_max,tau_mean,tau_median,seconds,kernel,session
+1,elapsed,17,14,2,1,16,1,4,1.9375,2,2.3469000000000002e-5,segmenttreesearch,20261102T160405_2802a185b2f2
+3,elapsed,17,8,5,4,13,1,9,4.615384615384615,3,1.3069e-5,segmenttreesearch,20261102T160405_2802a185b2f2

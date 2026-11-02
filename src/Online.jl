@@ -42,7 +42,7 @@ mutable struct OnlineWaitingTimes{Tv <: Integer, Tt <: Integer}
     "time unit, one of `TIME_UNITS`"
     const time_unit::Symbol
     "thresholds in the order given"
-    const thresholds::Vector{Threshold{Tv}}
+    const thresholds::Vector{Threshold}
     "one streaming state per threshold"
     const states::Vector{StreamingState{Tv, Tt}}
     "one distribution accumulator per threshold"
@@ -77,8 +77,7 @@ function OnlineWaitingTimes(deltas::AbstractVector, digits::Integer;
         throw(ArgumentError("late_policy must be :error or :skip, got :$late_policy"))
     bound_policy in (:error, :skip) ||
         throw(ArgumentError("bound_policy must be :error or :skip, got :$bound_policy"))
-    thresholds = Threshold{Tv}[Threshold{Tv}(threshold(δ, digits).d, digits)
-                               for δ in deltas]
+    thresholds = Threshold[threshold(δ, digits) for δ in deltas]
     allunique(thresholds) || throw(ArgumentError("thresholds must be distinct"))
     ub = upper_bound === nothing ? nothing :
          grid_value(Tv, check_digits(digits), upper_bound)

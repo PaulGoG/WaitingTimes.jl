@@ -1,5 +1,5 @@
 # Device kernel of DeviceSearch: the guarded scan as a KernelAbstractions kernel,
-# with the CPU backend probe and the CPU methods of the backend registry.
+# with the CPU backend probe and the CPU methods of the backend module.
 module WaitingTimesKernelAbstractionsExt
 
 using KernelAbstractions: KernelAbstractions, Backend, CPU, @Const, @index, @kernel
@@ -7,11 +7,7 @@ using WaitingTimes: WaitingTimes, DeviceSearch, DeviceWorkspace, QuantizedSeries
                     check_threshold, suffix_maximum
 using WaitingTimes.Backends: Backends
 
-function __init__()
-    Backends.register_backend!(:cpu, () -> CPU())
-end
-
-Backends.to_backend(data::AbstractArray, ::CPU) = Array(data)
+Backends.probe(::Val{:cpu}) = CPU()
 Backends.host_backend(::CPU) = true
 function Backends.backend_name(::CPU)
     model = Backends.cpu_model()
@@ -21,9 +17,9 @@ end
 function WaitingTimes.workspace(alg::DeviceSearch{<:Backend},
         s::QuantizedSeries{Tv, Tt}) where {Tv, Tt}
     N = length(s)
+    upload(x) = copyto!(KernelAbstractions.allocate(alg.backend, eltype(x), length(x)), x)
     return DeviceWorkspace(
-        Backends.to_backend(s.values, alg.backend), Backends.to_backend(s.times, alg.backend),
-        Backends.to_backend(suffix_maximum(s.values), alg.backend),
+        upload(s.values), upload(s.times), upload(suffix_maximum(s.values)),
         fill!(KernelAbstractions.allocate(alg.backend, Tt, N), zero(Tt)), N)
 end
 

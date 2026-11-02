@@ -4,7 +4,7 @@
 # partitions and the sessions.
 #
 #   julia scripts/lineage.jl PATH
-include(joinpath(dirname(@__DIR__), "activate.jl"))
+include(joinpath(@__DIR__, "activate.jl"))
 
 using WaitingTimes
 using WaitingTimes.Provenance: read_toml
@@ -25,7 +25,7 @@ function lineage(path::AbstractString)
     println("collection ", c.id, "  created ", meta["artefact"]["created"])
     println("  identity ", meta["identity"])
     series = meta["series"]
-    println("series     ", series["id"], "  (", c.n_observations, " observations, ",
+    println("series     ", series["id"], "  (", c.n_observed, " observations, ",
         c.n_gaps, " gaps, digits ", c.digits, ", unit ", c.time_unit, ")")
     for step in series["record"]["steps"]
         println("    step ", step["op"], "  ", step["parameters"])

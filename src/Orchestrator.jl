@@ -5,13 +5,13 @@ validate kernels against the reference kernel.
 """
 module Orchestrator
 
-using Dates: UTC, now
+using Dates: DateTime, UTC, now
 using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
 using Logging: @info, @warn
 using ProgressMeter: finish!, next!
 using Random: AbstractRNG, MersenneTwister, shuffle
 using TimerOutputs: TimerOutputs, TimerOutput, @timeit, ncalls
-using ..WaitingTimes: WaitingTimes, AbstractSearch, DeviceSearch, FenwickSweep,
+using ..WaitingTimes: WaitingTimes, AbstractSearch, DeviceSearch, FenwickSweep, GapEntry,
                       GuardedSearch,
                       NaiveSearch,
                       QuantizedSeries, SegmentTreeSearch, StreamingSearch, Threshold,
@@ -21,24 +21,25 @@ using ..WaitingTimes: WaitingTimes, AbstractSearch, DeviceSearch, FenwickSweep,
                       segment_lengths, support, waiting_times!, with_step, workspace,
                       workspace_bytes
 using ..Config: Settings, load_settings, step_tag, threshold_decimals, threshold_list
-using ..Provenance: active_manifest, artefact_id, backup_existing!, content_hash,
+using ..Provenance: SourceSummary, active_manifest, artefact_id, backup_existing!,
+                    content_hash,
                     file_sha256, git_state, hardware_fingerprint, package_identity,
                     read_toml, record_to_dict, session_id, slugify, source_summary,
                     toml_ready, write_hardware_fingerprint, write_toml
 using ..Preprocessing: RawSeries, apply_steps, index_series, quantized_series,
                        read_gap_intervals, read_series, resolution_digits, suggest_digits
 using ..Storage: MANIFEST_FILE, SOURCE_FILE, censoring_path, partition_path, read_index,
-                 write_catalog,
                  write_censoring, write_collection_readme, write_distribution,
                  write_index, write_series_files, write_summary, write_waiting_times
 using ..Monitoring: run_progress, with_run_logging
 using ..Backends: backend_name, device_fingerprint, host_backend, reclaim_device_memory!
 
-export CollectionHandle, run_pipeline, prepare, generate, validate, make_kernel,
+export CollectionHandle, PreparedSeries, SourceRecord, ValidationReport, ComparisonResult,
+       KernelSummary, run_pipeline, prepare, generate, validate, make_kernel,
        estimate_memory_bytes, dataset_descriptor
 
 "provenance schema written into metadata files"
-const SCHEMA = "waitingtimes-provenance/3"
+const SCHEMA = "waitingtimes-provenance/4"
 
 """
     CollectionHandle
@@ -82,26 +83,43 @@ function dataset_descriptor(settings::Settings)
 end
 
 """
+    SourceRecord
+
+The source descriptor of an input as `prepare` records it.
+
+$(TYPEDFIELDS)
+"""
+struct SourceRecord
+    "absolute path of the descriptor"
+    path::String
+    "SHA-256 of the descriptor file"
+    sha256::String
+    "the descriptor's table"
+    descriptor::Dict{String, Any}
+    "its normalised identity"
+    summary::SourceSummary
+end
+
+"""
 $(TYPEDSIGNATURES)
 
-Source descriptor named by `[input].source_descriptor` as `(path, sha256,
-descriptor, summary)`: the parsed table and its normalised identity
-([`source_summary`](@ref WaitingTimes.Provenance.source_summary)); `nothing`
-when the setting is empty. Any TOML file is accepted and recorded verbatim; a
-producer version below the minimum the package reads is reported with a
-warning and recorded, a descriptor without code identity with a note.
+Source descriptor named by `[input].source_descriptor` as a
+[`SourceRecord`](@ref): its path and checksum, the parsed table and its
+normalised identity ([`source_summary`](@ref WaitingTimes.Provenance.source_summary));
+`nothing` when the setting is empty. Any TOML file is accepted and recorded
+verbatim; a producer version below the minimum the package reads is reported
+with a warning and recorded, a descriptor without code identity with a note.
 """
 function source_record(settings::Settings)
     isempty(settings.source_descriptor) && return nothing
     path = settings.source_descriptor
     descriptor = read_toml(path)
     summary = source_summary(descriptor)
-    summary["compat_checked"] && !summary["compat_satisfied"] &&
-        @warn "[input] source_descriptor names a producer version this version of WaitingTimes does not read" producer=summary["producer"] version=summary["producer_version"] minimum=summary["producer_compat"]
-    summary["identity"] ||
-        @info "[input] source_descriptor records no git_tree_sha1; the producer's code is not identified" producer=summary["producer"]
-    return (path = path, sha256 = file_sha256(path), descriptor = descriptor,
-        summary = summary)
+    summary.compat_checked && !summary.compat_satisfied &&
+        @warn "[input] source_descriptor names a producer version this version of WaitingTimes does not read" producer=summary.producer version=summary.producer_version minimum=summary.producer_compat
+    summary.identity ||
+        @info "[input] source_descriptor records no git_tree_sha1; the producer's code is not identified" producer=summary.producer
+    return SourceRecord(path, file_sha256(path), descriptor, summary)
 end
 
 # --- kernels -----------------------------------------------------------------
@@ -131,6 +149,20 @@ function make_reference_kernel(settings::Settings)
     WaitingTimes.device_search(settings.backend)
 end
 
+"""
+    kernel_name(alg::AbstractSearch)
+
+Name of a kernel as `[algorithm].search` spells it (`naive`, `guarded`,
+`segment_tree`, `fenwick_sweep`, `streaming`, `device`); the lowercased type
+name for any other kernel.
+"""
+function kernel_name end
+kernel_name(::NaiveSearch) = "naive"
+kernel_name(::GuardedSearch) = "guarded"
+kernel_name(::SegmentTreeSearch) = "segment_tree"
+kernel_name(::FenwickSweep) = "fenwick_sweep"
+kernel_name(::StreamingSearch) = "streaming"
+kernel_name(::DeviceSearch) = "device"
 kernel_name(alg::AbstractSearch) = lowercase(string(nameof(typeof(alg))))
 
 """
@@ -179,14 +211,57 @@ end
 # --- prepare -----------------------------------------------------------------
 
 """
+    PreparedSeries
+
+The series of a configuration after reading, preprocessing and quantisation,
+with its identifiers and what a collection stores beside it. Returned by
+[`prepare`](@ref).
+
+$(TYPEDFIELDS)
+"""
+struct PreparedSeries{S <: QuantizedSeries}
+    "the prepared series on the configured time axis"
+    series::S
+    "dataset identifier"
+    dataset_id::String
+    "dataset slug"
+    dataset_slug::String
+    "hashed identity of the dataset"
+    dataset_identity::Dict{String, Any}
+    "series identifier"
+    series_id::String
+    "series slug: the dataset slug and the tags of the preprocessing steps"
+    series_slug::String
+    "hashed identity of the series"
+    series_identity::Dict{String, Any}
+    "dataset descriptor, `nothing` without one"
+    descriptor::Union{Nothing, Dict{String, Any}}
+    "source descriptor record, `nothing` without one"
+    source::Union{Nothing, SourceRecord}
+    "the series after preprocessing, before quantisation"
+    raw::RawSeries
+    "`:elapsed` or `:index`"
+    time_axis::Symbol
+    "row ordinal of every observation in the prepared input"
+    rows::Vector{Int}
+    "time of every observation on the clock of the input"
+    time_original::Vector{Int64}
+    "gaps of the clock of the input, with kinds"
+    gaps_original::Vector{GapEntry{Int64}}
+    "time unit of the clock of the input"
+    time_unit_original::Symbol
+    "epoch of the clock of the input, `nothing` for none"
+    epoch::Union{Nothing, DateTime}
+end
+
+"""
 $(TYPEDSIGNATURES)
 
-Read, preprocess and quantise the series described by `settings`. Returns the
-series, on the configured time axis, and a named tuple of identifiers and
-slugs together with what the collection stores beside the series: the row
-ordinal (`rows`) and the original clock (`time_original`) of every
-observation, the gaps of the original clock with their kinds
-(`gaps_original`), and that clock's time unit and epoch.
+Read, preprocess and quantise the series described by `settings`. Returns a
+[`PreparedSeries`](@ref): the series on the configured time axis, its
+identifiers and slugs, and what the collection stores beside it (the row
+ordinal and the original clock of every observation, the gaps of that clock
+with their kinds, and that clock's unit and epoch).
 """
 function prepare(settings::Settings)
     descriptor = dataset_descriptor(settings)
@@ -210,7 +285,7 @@ function prepare(settings::Settings)
     declared = isempty(settings.declared_gaps) ? Tuple{Int64, Int64}[] :
                read_gap_intervals(settings.declared_gaps)
     s_clock = quantized_series(rs, digits; detect = settings.gap_detect,
-        cadence = settings.gap_cadence, threshold = settings.gap_threshold, declared = declared)
+        cadence = settings.gap_cadence, declared = declared)
     s = settings.time_axis === :index ?
         index_series(rs, s_clock; detect = settings.gap_detect !== :none) : s_clock
 
@@ -218,10 +293,10 @@ function prepare(settings::Settings)
     dataset_identity = Dict{String, Any}("sha256" => rs.record.source_sha256,
         "value_column" => settings.value_column, "time_column" => settings.time_column)
     source === nothing || (dataset_identity["source_sha256"] = source.sha256)
-    dataset_slug = descriptor === nothing ?
-                   slugify(splitext(basename(settings.input_path))[1] * "-" *
-                           string(settings.value_column)) :
-                   slugify(get(descriptor, "slug", settings.dataset))
+    dataset_slug = String(descriptor === nothing ?
+                          slugify(splitext(basename(settings.input_path))[1] * "-" *
+                                  string(settings.value_column)) :
+                          slugify(get(descriptor, "slug", settings.dataset)))
     dataset_id = artefact_id("dataset", dataset_slug, dataset_identity)
     series_identity = Dict{String, Any}("dataset" => dataset_id,
         "time_unit" => settings.time_unit, "epoch_unit" => settings.epoch_unit,
@@ -230,20 +305,15 @@ function prepare(settings::Settings)
         "declared_gaps_sha256" =>
             isempty(settings.declared_gaps) ? "" :
             file_sha256(settings.declared_gaps),
-        "gap_detect" => settings.gap_detect, "gap_cadence" => settings.gap_cadence,
-        "gap_threshold" => settings.gap_threshold)
+        "gap_detect" => settings.gap_detect, "gap_cadence" => settings.gap_cadence)
     settings.time_axis === :elapsed || (series_identity["time_axis"] = settings.time_axis)
-    series_slug = isempty(settings.steps) ? dataset_slug :
-                  dataset_slug * "+" * join(step_tag.(settings.steps), "+")
+    series_slug = String(isempty(settings.steps) ? dataset_slug :
+                         dataset_slug * "+" * join(step_tag.(settings.steps), "+"))
     series_id = artefact_id("series", series_slug, series_identity)
-    ids = (dataset_id = dataset_id, dataset_slug = dataset_slug,
-        dataset_identity = dataset_identity,
-        series_id = series_id, series_slug = series_slug, series_identity = series_identity,
-        descriptor = descriptor, source = source, raw = rs,
-        time_axis = settings.time_axis, rows = findall(!ismissing, rs.values),
-        time_original = s_clock.times, gaps_original = gap_entries(s_clock),
-        time_unit_original = rs.time_unit, epoch = rs.epoch)
-    return s, ids
+    return PreparedSeries(s, dataset_id, dataset_slug, dataset_identity, series_id,
+        series_slug, series_identity, descriptor, source, rs, settings.time_axis,
+        findall(!ismissing, rs.values), s_clock.times, gap_entries(s_clock),
+        rs.time_unit, rs.epoch)
 end
 
 """
@@ -281,8 +351,8 @@ end
 
 # --- generate ----------------------------------------------------------------
 
-function collection_identity(ids, settings::Settings)
-    return Dict{String, Any}("series" => ids.series_id, "mode" => String(settings.mode))
+function collection_identity(p::PreparedSeries, settings::Settings)
+    return Dict{String, Any}("series" => p.series_id, "mode" => String(settings.mode))
 end
 
 """
@@ -293,50 +363,58 @@ The description of the prepared series written to `series.toml` and into the
 of the input, the record structure (sampling step, record length, segments)
 and the number of gaps of each kind.
 """
-function series_summary(ids, s::QuantizedSeries)
+function series_summary(p::PreparedSeries)
+    s = p.series
     kinds = Dict{String, Any}()
     for k in s.gap_kinds
         kinds[k] = get(kinds, k, 0) + 1
     end
-    out = Dict{String, Any}("id" => ids.series_id, "record" => record_to_dict(s.record),
+    out = Dict{String, Any}("id" => p.series_id, "record" => record_to_dict(s.record),
         "digits" => s.digits, "value_type" => string(eltype(s.values)),
-        "time_axis" => String(ids.time_axis), "time_unit" => String(s.time_unit),
-        "time_unit_original" => String(ids.time_unit_original),
-        "n_observations" => length(s), "n_observed" => length(s),
+        "time_axis" => String(p.time_axis), "time_unit" => String(s.time_unit),
+        "time_unit_original" => String(p.time_unit_original),
+        "n_observed" => length(s),
         "n_gaps" => length(s.gaps), "gap_kinds" => kinds,
         "sampling_step" => Int(sampling_step(s)), "record_length" => record_length(s),
         "n_segments" => length(segment_lengths(s)))
     s.epoch === nothing || (out["epoch"] = s.epoch)
-    ids.epoch === nothing || (out["epoch_original"] = ids.epoch)
+    p.epoch === nothing || (out["epoch_original"] = p.epoch)
     return out
 end
 
-function initial_metadata(id, ids, settings::Settings, s::QuantizedSeries)
-    series = series_summary(ids, s)
-    series["slug"] = ids.series_slug
-    series["identity"] = ids.series_identity
+function initial_metadata(id, p::PreparedSeries, settings::Settings)
+    series = series_summary(p)
+    series["slug"] = p.series_slug
+    series["identity"] = p.series_identity
     meta = Dict{String, Any}(
         "schema" => SCHEMA,
         "artefact" => Dict{String, Any}("id" => id, "kind" => "collection",
-            "created" => now(UTC), "parents" => [ids.series_id]),
-        "identity" => collection_identity(ids, settings),
+            "created" => now(UTC), "parents" => [p.series_id]),
+        "identity" => collection_identity(p, settings),
         "series" => series,
-        "dataset" => Dict{String, Any}("id" => ids.dataset_id, "slug" => ids.dataset_slug,
-            "identity" => ids.dataset_identity,
+        "dataset" => Dict{String, Any}("id" => p.dataset_id, "slug" => p.dataset_slug,
+            "identity" => p.dataset_identity,
             "descriptor" =>
-                ids.descriptor === nothing ? Dict{String, Any}() : ids.descriptor),
+                p.descriptor === nothing ? Dict{String, Any}() : p.descriptor),
         "sessions" => Any[]
     )
-    if ids.source !== nothing
+    if p.source !== nothing
         meta["source"] = merge(
             Dict{String, Any}("file" => SOURCE_FILE,
-                "sha256" => ids.source.sha256, "descriptor" => ids.source.descriptor),
-            ids.source.summary)
+                "sha256" => p.source.sha256, "descriptor" => p.source.descriptor),
+            Dict{String, Any}(String(k) => v for (k, v) in pairs(p.source.summary)))
     end
     return meta
 end
 
-function partition_entry(
+"""
+$(TYPEDSIGNATURES)
+
+Entry of `index.toml` for the partition of `δ`: file, checksum, session, mode,
+the accounting of the indices, the number of waiting times and their minimum,
+maximum, mean and median, the seconds spent and the kernel.
+"""
+function index_entry(
         δ::Threshold, d::WaitingTimeDistribution, file, sha, session, seconds, kernel)
     sup = support(d)
     K = nsamples(d)
@@ -362,30 +440,19 @@ function weighted_median(values, weights)
     return last(values)
 end
 
-function catalog_row(entry, id, series_slug)
-    Dict{String, Any}(
-        "id" => id, "kind" => "distribution", "series" => series_slug, "delta" =>
-            entry["delta"],
-        "mode" => entry["mode"], "file" => entry["file"], "sha256" => entry["sha256"],
-        "session" => entry["session"], "n_waiting" => entry["n_waiting"],
-        "n_right_censored" => entry["n_right_censored"])
-end
-
 """
 $(TYPEDSIGNATURES)
 
-Rewrite `index.toml`, `summary.csv` and `catalog.csv` of the collection `id`
-in `dir` from the partition entries `existing` (keyed by threshold string),
-sorted on the grid integer of the threshold for a grid of `digits` decimals.
-Returns the sorted entries.
+Rewrite `index.toml` and `summary.csv` of the collection in `dir` from the
+partition entries `existing` (keyed by threshold string), sorted on the grid
+integer of the threshold for a grid of `digits` decimals. Returns the sorted
+entries.
 """
-function write_index_files(dir::AbstractString, existing::AbstractDict,
-        id::AbstractString, series_slug::AbstractString, digits::Integer)
+function write_index_files(dir::AbstractString, existing::AbstractDict, digits::Integer)
     entries = sort!(collect(values(existing));
         by = e -> parse_threshold(e["delta"], digits).d)
     write_index(dir, entries)
     write_summary(dir, entries)
-    write_catalog(dir, [catalog_row(e, id, series_slug) for e in entries])
     return entries
 end
 
@@ -420,6 +487,133 @@ end
 """
 $(TYPEDSIGNATURES)
 
+Memory budget of a session: the host estimate of `alg` on `s` against
+`[limits].max_ram_gb`, the bound in bytes, and the device kernels among `alg`
+and `reference`, each checked against `[limits].max_vram_gb` with its backend
+logged. Throws `ArgumentError` above either bound.
+"""
+function memory_budget(settings::Settings, s::QuantizedSeries, alg::AbstractSearch,
+        reference::Union{Nothing, AbstractSearch})
+    bytes = estimate_memory_bytes(s, alg;
+        store_waiting_times = settings.store_waiting_times)
+    limit = settings.max_ram_gb * 2^30
+    bytes <= limit || throw(ArgumentError(
+        "estimated memory $(round(bytes / 2^30; digits = 2)) GiB exceeds [limits] max_ram_gb = $(settings.max_ram_gb)",
+    ))
+    devices = DeviceSearch[k for k in (alg, reference) if k isa DeviceSearch]
+    for k in devices
+        host_backend(k.backend) && continue
+        vram = workspace_bytes(k, s)
+        vram <= settings.max_vram_gb * 2^30 || throw(ArgumentError(
+            "estimated device memory $(round(vram / 2^30; digits = 2)) GiB exceeds [limits] max_vram_gb = $(settings.max_vram_gb)",
+        ))
+        @info "device backend" name=backend_name(k.backend) device_gib=round(vram/2^30; digits = 3)
+    end
+    return (; bytes, limit, devices)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Classify the waiting times `τ` of threshold `δ`, build the distribution in the
+configured mode, write the partition, its censoring histogram and, under
+`[output].store_waiting_times`, the dense file (existing files backed up under
+`[output].overwrite`), and return the index entry with the censoring file and
+its checksum. `search_seconds` is the search time attributed to the threshold.
+"""
+function write_partition!(timer, dir, id, session, δ::Threshold, τ, s::QuantizedSeries,
+        settings::Settings, alg::AbstractSearch, search_seconds::Float64)
+    key = format_threshold(δ)
+    seconds = search_seconds + @elapsed begin
+        class, lower, upper = @timeit timer "distribution" classify(τ, s)
+        d = @timeit timer "distribution" empirical_distribution(τ, δ, s, class;
+            mode = settings.mode)
+        exact, gap_crossing = class_columns(τ, class, d)
+        bounds, bound_counts = censoring_counts(class, lower)
+    end
+    path = partition_path(dir, δ, settings.output_format)
+    cens_path = censoring_path(dir, δ, settings.output_format)
+    if settings.overwrite
+        backup_existing!(path)
+        backup_existing!(cens_path)
+    end
+    metadata = Dict("schema" => SCHEMA, "collection" => id, "delta" => key,
+        "session" => session, "mode" => String(settings.mode))
+    sha = @timeit timer "write" write_distribution(path, d,
+        settings.output_format; metadata = metadata, exact = exact,
+        gap_crossing = gap_crossing)
+    cens_sha = @timeit timer "write" write_censoring(cens_path, bounds,
+        bound_counts, settings.output_format; metadata = metadata)
+    if settings.store_waiting_times
+        wt_path = joinpath(dir, "waiting_times",
+            "delta=" * key * "." *
+            (settings.output_format === :arrow ? "arrow" : "csv"))
+        settings.overwrite && backup_existing!(wt_path)
+        @timeit timer "write" write_waiting_times(
+            wt_path, τ, class, lower, upper,
+            settings.output_format; metadata = metadata)
+    end
+    entry = index_entry(δ, d, relpath(path, dir), sha, session, seconds,
+        kernel_name(alg))
+    entry["censoring_file"] = relpath(cens_path, dir)
+    entry["censoring_sha256"] = cens_sha
+    return entry
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Close the session: rewrite the index files, copy the manifest and the hardware
+fingerprint, write the final session record (`status = "completed"`), merge the
+producer, environment and session entries into `meta` and write
+`metadata.toml`, and regenerate the collection README.
+"""
+function finish_session!(timer, ctx, meta::AbstractDict, p::PreparedSeries,
+        settings::Settings, alg::AbstractSearch, existing::AbstractDict, computed, skipped,
+        checks)
+    (; dir, session, session_path, created, git, identity, manifest, bytes) = ctx
+    entries = write_index_files(dir, existing, p.series.digits)
+
+    manifest_sha = ""
+    if manifest === nothing
+        @warn "no resolved manifest for the active environment; the session records no dependency versions"
+    else
+        cp(manifest, joinpath(dir, "sessions", session * ".manifest.toml"); force = true)
+        cp(manifest, joinpath(dir, MANIFEST_FILE); force = true)
+        manifest_sha = file_sha256(manifest)
+    end
+    hardware = hardware_fingerprint()
+    device_report = alg isa DeviceSearch ? device_fingerprint(alg.backend) : ""
+    write_hardware_fingerprint(joinpath(dir, "sessions", session * ".hardware.txt");
+        device_report = device_report)
+    cp(joinpath(dir, "sessions", session * ".hardware.txt"), joinpath(dir, "hardware.txt"); force = true)
+    record = session_record(session, created, alg, settings, git, identity, bytes;
+        status = "completed", manifest_sha256 = manifest_sha, hardware = hardware,
+        deltas_computed = computed, deltas_skipped = skipped,
+        reference_checks = checks, timings = timings(timer))
+    write_toml(session_path, record)
+    meta["producer"] = merge(
+        Dict{String, Any}("name" => "WaitingTimes",
+            "version" => string(pkgversion(WaitingTimes)), "session" => session),
+        identity)
+    meta["environment"] = Dict{String, Any}("manifest_sha256" => manifest_sha,
+        "manifest_file" => manifest === nothing ? "" : MANIFEST_FILE,
+        "julia" => string(VERSION), "session" => session)
+    push!(meta["sessions"],
+        Dict{String, Any}("id" => session, "created" => record["created"],
+            "kernel" => record["kernel"], "git" => git, "n_computed" =>
+                length(computed),
+            "n_skipped" => length(skipped), "n_reference_checks" => length(checks)))
+    write_toml(joinpath(dir, "metadata.toml"), meta)
+    write_collection_readme(dir, meta, entries, settings.output_format)
+    @info "session complete" computed=length(computed) skipped=length(skipped) reference_checks=length(checks) seconds=round(
+        TimerOutputs.tottime(timer)/1e9; digits = 2)
+    return nothing
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Generate (or extend) the collection of waiting-time distributions described
 by `settings`: prepare the series, compute every configured threshold not yet
 present (every one under `[output].overwrite`, the existing files backed up
@@ -427,20 +621,21 @@ first), write partitions, run reference checks, and record the session.
 `kernel` replaces the configured search kernel (`[algorithm].search`).
 Returns a [`CollectionHandle`](@ref).
 
-The session is resumable: `index.toml`, `summary.csv` and `catalog.csv` are
-rewritten after a chunk of thresholds once `[run].checkpoint_seconds` have
-passed since the previous rewrite (after every chunk when it is 0), so an
-interrupted run leaves an index of every partition written up to its last
-checkpoint, and the next run computes the rest. The session record is written
-with `status = "running"` before the first threshold and rewritten with
-`status = "completed"` at the end. With `[algorithm].reference_checks > 0` the
-kernel is compared with the reference kernel on the largest pending threshold
-within `[limits].max_reference_work` before any partition is written; a
-disagreement raises there.
+The session is resumable: `index.toml` and `summary.csv` are rewritten after a
+chunk of thresholds once `[run].checkpoint_seconds` have passed since the
+previous rewrite (after every chunk when it is 0), so an interrupted run leaves
+an index of every partition written up to its last checkpoint, and the next
+run computes the rest. The session record is written with `status = "running"`
+before the first threshold and rewritten with `status = "completed"` at the
+end. With `[algorithm].reference_checks > 0` the kernel is compared with the
+reference kernel on the largest pending threshold within
+`[limits].max_reference_work` before any partition is written; a disagreement
+raises there.
 """
 function generate(settings::Settings; kernel::AbstractSearch = make_kernel(settings))
-    s, ids = prepare(settings)
-    id = artefact_id("collection", ids.series_slug, collection_identity(ids, settings))
+    p = prepare(settings)
+    s = p.series
+    id = artefact_id("collection", p.series_slug, collection_identity(p, settings))
     dir = joinpath(settings.output_root, id)
     mkpath(joinpath(dir, "distributions"))
     mkpath(joinpath(dir, "sessions"))
@@ -451,39 +646,33 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
     session = session_id(code)
     created = now(UTC)
     manifest = active_manifest()
+    session_path = joinpath(dir, "sessions", session * ".toml")
     timer = TimerOutput()
     computed = String[]
     skipped = String[]
     checks = Dict{String, Any}[]
     with_run_logging(joinpath(dir, "run.log"); level = settings.log_level) do
-        @info "collection" id dir session series=ids.series_id observations=length(s) gaps=length(s.gaps)
+        @info "collection" id dir session series=p.series_id observations=length(s) gaps=length(s.gaps)
         config_snapshot = joinpath(dir, "config.toml")
         isfile(config_snapshot) || write_toml(config_snapshot, settings.raw)
         write_toml(joinpath(dir, "sessions", session * ".config.toml"), settings.raw)
-        ids.source === nothing || isfile(joinpath(dir, SOURCE_FILE)) ||
-            cp(ids.source.path, joinpath(dir, SOURCE_FILE))
+        p.source === nothing || isfile(joinpath(dir, SOURCE_FILE)) ||
+            cp(p.source.path, joinpath(dir, SOURCE_FILE))
         meta_path = joinpath(dir, "metadata.toml")
-        meta = isfile(meta_path) ? read_toml(meta_path) :
-               initial_metadata(id, ids, settings, s)
-        toml_ready(meta["identity"]) == toml_ready(collection_identity(ids, settings)) ||
+        meta = isfile(meta_path) ? read_toml(meta_path) : initial_metadata(id, p, settings)
+        toml_ready(meta["identity"]) == toml_ready(collection_identity(p, settings)) ||
             throw(ArgumentError(
                 "directory $dir holds a collection with a different identity",
             ))
         isfile(meta_path) || write_toml(meta_path, meta)   # loadable from the first session on
         isfile(joinpath(dir, "gaps.csv")) || @timeit timer "series files" begin
-            write_series_files(dir, s, settings.output_format; rows = ids.rows,
-                time_original = ids.time_original,
-                gaps_original = ids.time_axis === :index ? ids.gaps_original : nothing)
-            write_toml(joinpath(dir, "series.toml"), series_summary(ids, s))
+            write_series_files(dir, s, settings.output_format; rows = p.rows,
+                time_original = p.time_original,
+                gaps_original = p.time_axis === :index ? p.gaps_original : nothing)
+            write_toml(joinpath(dir, "series.toml"), series_summary(p))
         end
 
         alg = kernel
-        bytes = estimate_memory_bytes(s, alg;
-            store_waiting_times = settings.store_waiting_times)
-        limit = settings.max_ram_gb * 2^30
-        bytes <= limit || throw(ArgumentError(
-            "estimated memory $(round(bytes / 2^30; digits = 2)) GiB exceeds [limits] max_ram_gb = $(settings.max_ram_gb)",
-        ))
         thresholds = threshold_list(settings, s)
         entries = read_index(dir)
         existing = Dict(e["delta"] => e for e in entries)
@@ -498,17 +687,9 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
         end
         reference = settings.reference_checks > 0 && !isempty(todo) ?
                     make_reference_kernel(settings) : nothing
-        devices = DeviceSearch[k for k in (alg, reference) if k isa DeviceSearch]
-        for k in devices
-            host_backend(k.backend) && continue
-            vram = workspace_bytes(k, s)
-            vram <= settings.max_vram_gb * 2^30 || throw(ArgumentError(
-                "estimated device memory $(round(vram / 2^30; digits = 2)) GiB exceeds [limits] max_vram_gb = $(settings.max_vram_gb)",
-            ))
-            @info "device backend" name=backend_name(k.backend) device_gib=round(vram/2^30; digits = 3)
-        end
+        budget = memory_budget(settings, s, alg, reference)
         @info "thresholds" total=length(thresholds) existing=length(existing) kernel=kernel_name(alg) memory_gib=round(
-            bytes/2^30; digits = 3)
+            budget.bytes/2^30; digits = 3)
         ws = @timeit timer "workspace" workspace(alg, s)
         ws_ref = reference === nothing ? nothing :
                  @timeit timer "workspace" workspace(reference, s)
@@ -519,12 +700,12 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
         transient = transient_bytes(s; store_waiting_times = settings.store_waiting_times)
         batch = alg isa FenwickSweep ?
                 clamp(
-            floor(Int, (limit - bytes) / (length(s) * sizeof(Tt) + transient)), 1,
-            max(1, length(todo))) : 1
+            floor(Int, (budget.limit - budget.bytes) /
+                       (length(s) * sizeof(Tt) + transient)),
+            1, max(1, length(todo))) : 1
         τs = [Vector{Tt}(undef, length(s)) for _ in 1:min(batch, max(1, length(todo)))]
-        session_path = joinpath(dir, "sessions", session * ".toml")
         write_toml(session_path,
-            session_record(session, created, alg, settings, git, identity, bytes;
+            session_record(session, created, alg, settings, git, identity, budget.bytes;
                 status = "running", deltas_skipped = skipped))
         if reference !== nothing
             early = early_reference_check(timer, s, todo, alg, ws, reference, ws_ref,
@@ -544,40 +725,9 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
                 end
             end
             for (δ, τ) in zip(chunk, outs)
-                key = format_threshold(δ)
-                seconds = search_seconds / length(chunk) + @elapsed begin
-                    class, lower, upper = @timeit timer "distribution" classify(τ, s)
-                    d = @timeit timer "distribution" empirical_distribution(τ, δ, s, class;
-                        mode = settings.mode)
-                    exact, gap_crossing = class_columns(τ, class, d)
-                    bounds, bound_counts = censoring_counts(class, lower)
-                end
-                path = partition_path(dir, δ, settings.output_format)
-                cens_path = censoring_path(dir, δ, settings.output_format)
-                if settings.overwrite
-                    backup_existing!(path)
-                    backup_existing!(cens_path)
-                end
-                metadata = Dict("schema" => SCHEMA, "collection" => id, "delta" => key,
-                    "session" => session, "mode" => String(settings.mode))
-                sha = @timeit timer "write" write_distribution(path, d,
-                    settings.output_format; metadata = metadata, exact = exact,
-                    gap_crossing = gap_crossing)
-                cens_sha = @timeit timer "write" write_censoring(cens_path, bounds,
-                    bound_counts, settings.output_format; metadata = metadata)
-                if settings.store_waiting_times
-                    wt_path = joinpath(dir, "waiting_times",
-                        "delta=" * key * "." *
-                        (settings.output_format === :arrow ? "arrow" : "csv"))
-                    settings.overwrite && backup_existing!(wt_path)
-                    @timeit timer "write" write_waiting_times(
-                        wt_path, τ, class, lower, upper,
-                        settings.output_format; metadata = metadata)
-                end
-                entry = partition_entry(δ, d, relpath(path, dir), sha, session, seconds,
-                    kernel_name(alg))
-                entry["censoring_file"] = relpath(cens_path, dir)
-                entry["censoring_sha256"] = cens_sha
+                entry = write_partition!(timer, dir, id, session, δ, τ, s, settings, alg,
+                    search_seconds / length(chunk))
+                key = entry["delta"]
                 existing[key] = entry
                 push!(computed, key)
                 next!(progress)
@@ -585,8 +735,7 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
             # resume checkpoint: the index files are rewritten with every
             # partition written so far, at most every [run].checkpoint_seconds
             if time() - last_checkpoint >= settings.checkpoint_seconds
-                @timeit timer "write" write_index_files(dir, existing, id, ids.series_slug,
-                    s.digits)
+                @timeit timer "write" write_index_files(dir, existing, s.digits)
                 last_checkpoint = time()
             end
         end
@@ -599,48 +748,16 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
                     ws_ref, settings; exclude = early_key))
         end
 
-        entries = write_index_files(dir, existing, id, ids.series_slug, s.digits)
-
-        manifest_sha = ""
-        if manifest === nothing
-            @warn "no resolved manifest for the active environment; the session records no dependency versions"
-        else
-            cp(manifest, joinpath(dir, "sessions", session * ".manifest.toml"); force = true)
-            cp(manifest, joinpath(dir, MANIFEST_FILE); force = true)
-            manifest_sha = file_sha256(manifest)
-        end
-        hardware = hardware_fingerprint()
-        device_report = alg isa DeviceSearch ? device_fingerprint(alg.backend) : ""
-        write_hardware_fingerprint(joinpath(dir, "sessions", session * ".hardware.txt");
-            device_report = device_report)
-        cp(joinpath(dir, "sessions", session * ".hardware.txt"), joinpath(dir, "hardware.txt"); force = true)
-        record = session_record(session, created, alg, settings, git, identity, bytes;
-            status = "completed", manifest_sha256 = manifest_sha, hardware = hardware,
-            deltas_computed = computed, deltas_skipped = skipped,
-            reference_checks = checks, timings = timings(timer))
-        write_toml(session_path, record)
-        meta["producer"] = merge(
-            Dict{String, Any}("name" => "WaitingTimes",
-                "version" => string(pkgversion(WaitingTimes)), "session" => session),
-            identity)
-        meta["environment"] = Dict{String, Any}("manifest_sha256" => manifest_sha,
-            "manifest_file" => manifest === nothing ? "" : MANIFEST_FILE,
-            "julia" => string(VERSION), "session" => session)
-        push!(meta["sessions"],
-            Dict{String, Any}("id" => session, "created" => record["created"],
-                "kernel" => record["kernel"], "git" => git, "n_computed" =>
-                    length(computed),
-                "n_skipped" => length(skipped), "n_reference_checks" => length(checks)))
-        write_toml(meta_path, meta)
-        write_collection_readme(dir, meta, entries, settings.output_format)
-        @info "session complete" computed=length(computed) skipped=length(skipped) reference_checks=length(checks) seconds=round(
-            TimerOutputs.tottime(timer)/1e9; digits = 2)
-        for k in devices
+        ctx = (; id, dir, session, session_path, created, git, identity, manifest,
+            bytes = budget.bytes)
+        finish_session!(timer, ctx, meta, p, settings, alg, existing, computed, skipped,
+            checks)
+        for k in budget.devices
             reclaim_device_memory!(k.backend)
         end
     end
     return CollectionHandle(
-        id, dir, ids.series_id, ids.dataset_id, session, computed, skipped, checks)
+        id, dir, p.series_id, p.dataset_id, session, computed, skipped, checks)
 end
 
 function timings(timer::TimerOutput)
@@ -810,6 +927,72 @@ function reference_check!(timer, s, thresholds, computed, alg, ws, reference, ws
 end
 
 """
+    ComparisonResult
+
+One kernel compared with the reference kernel at one threshold.
+
+$(TYPEDFIELDS)
+"""
+struct ComparisonResult
+    "kernel name"
+    kernel::String
+    "threshold as a fixed-decimal string"
+    delta::String
+    "whether the results agree index by index (`false` when skipped)"
+    equal::Bool
+    "number of differing indices"
+    n_differences::Int
+    "scan work of the comparison, in element comparisons"
+    work::Float64
+    "whether the comparison was skipped above `[limits].max_reference_work`"
+    skipped::Bool
+    "seconds the reference kernel took (0 when skipped)"
+    seconds::Float64
+end
+
+"""
+    KernelSummary
+
+Summary of one kernel over the thresholds compared.
+
+$(TYPEDFIELDS)
+"""
+struct KernelSummary
+    "kernel name"
+    name::String
+    "whether every comparison made agreed"
+    equal::Bool
+    "thresholds compared"
+    n_checked::Int
+    "differing indices summed over the comparisons"
+    n_differences::Int
+    "thresholds skipped above the work bound"
+    n_skipped::Int
+    "seconds of the reference kernel summed over the comparisons"
+    seconds::Float64
+end
+
+"""
+    ValidationReport
+
+Report of [`validate`](@ref).
+
+$(TYPEDFIELDS)
+"""
+struct ValidationReport
+    "series identifier"
+    series::String
+    "name of the reference kernel"
+    reference_kernel::String
+    "every kernel compared on at least one threshold, with no disagreement"
+    all_equal::Bool
+    "one result per kernel and threshold"
+    results::Vector{ComparisonResult}
+    "one summary per kernel"
+    kernels::Vector{KernelSummary}
+end
+
+"""
 $(TYPEDSIGNATURES)
 
 Compare kernels with the reference kernel (`[algorithm].reference_kernel`) on
@@ -821,31 +1004,24 @@ ones (`reference_thresholds`). `kernels` is a vector of `name => alg`
 pairs compared in turn; by default the configured kernel alone. The reference
 kernel runs once per threshold, every kernel being compared with that result.
 
-Returns a report dictionary: `series`, `kernel` (the kernel names),
-`reference_kernel`, `all_equal` (every kernel compared on at least one
-threshold, with no disagreement),
-`results` (one dictionary per kernel and threshold: `kernel`, `delta`,
-`equal`, `n_differences`, `work`, `skipped`, `seconds` of the reference
-kernel) and `kernels` (one dictionary per kernel: `name`, `equal`, `n_checked`
-thresholds compared, `n_differences` summed over them, `n_skipped` above the
-work bound, `seconds` of the reference kernel summed). Disagreements are
-reported, not thrown.
+Returns a [`ValidationReport`](@ref): the series identifier, the name of the
+reference kernel, whether every kernel was compared on at least one threshold
+with no disagreement, one [`ComparisonResult`](@ref) per kernel and threshold
+and one [`KernelSummary`](@ref) per kernel. Disagreements are reported, not
+thrown.
 """
 function validate(settings::Settings; deltas = nothing, kernels = nothing)
-    s, ids = prepare(settings)
+    p = prepare(settings)
     reference = make_reference_kernel(settings)
     named = if kernels === nothing
         configured = make_kernel(settings)
         Pair{String, AbstractSearch}[kernel_name(configured) => configured]
     else
-        Pair{String, AbstractSearch}[String(first(p)) => last(p) for p in kernels]
+        Pair{String, AbstractSearch}[String(first(k)) => last(k) for k in kernels]
     end
-    results, summaries = compare_kernels(s, deltas, named, reference, settings)
-    return Dict{String, Any}("series" => ids.series_id,
-        "kernel" => join(first.(named), ", "),
-        "reference_kernel" => kernel_name(reference),
-        "all_equal" => all(k -> k["equal"] && k["n_checked"] > 0, summaries),
-        "results" => results, "kernels" => summaries)
+    results, summaries = compare_kernels(p.series, deltas, named, reference, settings)
+    return ValidationReport(p.series_id, kernel_name(reference),
+        all(k -> k.equal && k.n_checked > 0, summaries), results, summaries)
 end
 
 """
@@ -853,21 +1029,25 @@ Comparison loop of [`validate`](@ref) on the series `s`: the thresholds are
 placed on the grid of `s` (`deltas`, or the sampled set of `reference_thresholds`
 when `nothing`), the reference kernel runs once per threshold within
 `[limits].max_reference_work`, and every kernel of `named` is compared with
-that result. Returns the per-threshold results and the per-kernel summaries.
+that result. Returns the per-threshold [`ComparisonResult`](@ref)s and the
+per-kernel [`KernelSummary`](@ref)s.
 """
 function compare_kernels(s::QuantizedSeries{Tv, Tt}, deltas, named, reference,
         settings::Settings) where {Tv, Tt}
     thresholds = deltas === nothing ?
                  reference_thresholds(threshold_list(settings, s),
         settings.reference_checks, MersenneTwister(settings.seed)) :
-                 Threshold{Tv}[δ isa Threshold ? Threshold{Tv}(δ.d, δ.digits) :
-                               WaitingTimes.threshold(δ, s) for δ in deltas]
+                 Threshold[δ isa Threshold ? δ : WaitingTimes.threshold(δ, s)
+                           for δ in deltas]
     ws_ref = workspace(reference, s)
     wss = [workspace(alg, s) for (_, alg) in named]
-    results = Dict{String, Any}[]
-    summaries = [Dict{String, Any}("name" => name, "equal" => true, "n_checked" => 0,
-                     "n_differences" => 0, "n_skipped" => 0, "seconds" => 0.0)
-                 for (name, _) in named]
+    results = ComparisonResult[]
+    n_kernels = length(named)
+    all_agree = fill(true, n_kernels)
+    n_checked = zeros(Int, n_kernels)
+    n_differing = zeros(Int, n_kernels)
+    n_skipped = zeros(Int, n_kernels)
+    reference_seconds = zeros(Float64, n_kernels)
     τ = Vector{Tt}(undef, length(s))
     τ_reference = similar(τ)
     guarded = !(reference isa NaiveSearch)
@@ -883,20 +1063,20 @@ function compare_kernels(s::QuantizedSeries{Tv, Tt}, deltas, named, reference,
             n_differences = skipped ? 0 : count(i -> τ_reference[i] != τ[i], eachindex(τ))
             equal = !skipped && n_differences == 0
             push!(results,
-                Dict{String, Any}("kernel" => name, "delta" => key, "equal" => equal,
-                    "n_differences" => n_differences, "work" => work,
-                    "skipped" => skipped, "seconds" => seconds))
-            summary = summaries[k]
+                ComparisonResult(name, key, equal, n_differences, work, skipped, seconds))
             if skipped
-                summary["n_skipped"] += 1
+                n_skipped[k] += 1
             else
-                summary["n_checked"] += 1
-                summary["n_differences"] += n_differences
-                summary["seconds"] += seconds
-                summary["equal"] &= equal
+                n_checked[k] += 1
+                n_differing[k] += n_differences
+                reference_seconds[k] += seconds
+                all_agree[k] &= equal
             end
         end
     end
+    summaries = [KernelSummary(name, all_agree[k], n_checked[k], n_differing[k],
+                     n_skipped[k], reference_seconds[k])
+                 for (k, (name, _)) in enumerate(named)]
     return results, summaries
 end
 
