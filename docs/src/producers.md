@@ -14,7 +14,7 @@ breaks it fails there.
 ## The collection contract
 
 Whatever the input, a collection of provenance schema
-`waitingtimes-provenance/3` holds
+`waitingtimes-provenance/4` holds
 
 - the source descriptor of the input verbatim (`source.toml`) and its
   normalised summary (`[source]` of `metadata.toml`: producer, version, code

@@ -38,7 +38,7 @@ computed here; the numbers behind every figure of this page are in
 WaitingTimes.jl/
 ├── Project.toml, activate.jl     # package environment; activate.jl instantiates it silently
 ├── src/                          # library: grid, series, kernels, distribution, pipeline
-├── ext/                          # Distributions, CairoMakie, KernelAbstractions and GPU-backend extensions
+├── ext/                          # Distributions, CairoMakie, UnicodePlots, KernelAbstractions and GPU-backend extensions
 ├── scripts/                      # run, launch, prepare, validate, crosscheck, lineage
 ├── configs/                      # run configurations and dataset descriptors
 ├── bench/                        # kernel benchmarks (own environment)
@@ -105,7 +105,8 @@ julia -i activate.jl     # the same, then a REPL in it
 ```
 
 Every script and auxiliary environment activates itself; no `--project` flag
-is needed anywhere.
+is needed anywhere. The scripts run in their own environment, `scripts/`,
+instantiated on first use like the others.
 
 ## Entry points
 
@@ -128,17 +129,16 @@ julia -e 'using Pkg; Pkg.activate("JuliaFormatter"; shared = true); Pkg.add("Jul
 
 Raw inputs are expected under `data/raw/` (gitignored); the configurations in
 `configs/` reference them relative to the configuration file. A run writes a
-collection directory `data/<collection id>/` (provenance schema 3) with a
+collection directory `data/<collection id>/` (provenance schema 4) with a
 `README.md` describing its own files. Provenance lives in `config.toml`,
 `metadata.toml`, `hardware.txt`, the resolved manifest and, under
 `sessions/`, the per-session records, configuration snapshots and manifests.
 Each threshold is one partition under `distributions/`, its counts split
 into exact and gap-crossing waits, with its censoring histogram under
 `censoring/`; beside them lie the prepared series, its gaps by kind
-(`gaps.csv`) and the segments between them (`segments.csv`). `index.toml`,
-`summary.csv` and `catalog.csv` are rewritten at every checkpoint of a session
-and at its end, so an interrupted run leaves a collection that loads and
-resumes.
+(`gaps.csv`) and the segments between them (`segments.csv`). `index.toml`
+and `summary.csv` are rewritten at every checkpoint of a session and at its
+end, so an interrupted run leaves a collection that loads and resumes.
 
 When `[input].source_descriptor` names the identity file of the program that
 produced the input (a DeepSpaceTelemetry.jl run's `descriptor.toml`, a
@@ -209,7 +209,7 @@ The package is described by `CITATION.cff`. In BibTeX:
   author  = {Gogîță, Paul-Adrian},
   title   = {WaitingTimes.jl: exact waiting-time distributions of scalar time series},
   year    = {2026},
-  version = {0.4.0},
+  version = {0.5.0},
   url     = {https://github.com/PaulGoG/WaitingTimes.jl}
 }
 ```
@@ -256,17 +256,19 @@ WaitingTimes.jl/
 │   ├── Config.jl                 # TOML schema, validated Settings, threshold grids
 │   ├── Preprocessing.jl          # ingestion (csv/dat/arrow/tick), transforms, diagnostics
 │   ├── Monitoring.jl             # terminal and file logging, TTY-gated progress
-│   ├── Storage.jl                # per-threshold partitions, index, summary, catalog
+│   ├── Storage.jl                # per-threshold partitions, index, summary
 │   ├── Orchestrator.jl           # prepare, generate (resume, reference checks), validate
-│   ├── Backends.jl               # backend registry and selection (probes from the extensions)
+│   ├── Backends.jl               # backend probes and selection (methods from the extensions)
 │   ├── DeviceKernels.jl          # DeviceSearch, its workspace type, backend selection
 │   └── precompile.jl             # PrecompileTools workload
 ├── ext/
 │   ├── WaitingTimesDistributionsExt.jl   # DiscreteNonParametric view of a distribution
 │   ├── WaitingTimesCairoMakieExt.jl      # figure theme, decade ticks, series and distribution figures
 │   ├── WaitingTimesKernelAbstractionsExt.jl   # the device kernel on the CPU and GPU backends
+│   ├── WaitingTimesUnicodePlotsExt.jl    # in-terminal overview of a series
 │   └── WaitingTimes{CUDA,oneAPI,AMDGPU,Metal}Ext.jl   # GPU backend probes
 ├── scripts/
+│   ├── Project.toml, activate.jl   # scripts environment (UnicodePlots for prepare.jl)
 │   ├── run_pipeline.jl           # generate or extend a collection from a TOML config
 │   ├── launch_run.jl             # detached run with console log under data/logs/
 │   ├── prepare.jl                # diagnostics and gap table before a run
@@ -292,7 +294,8 @@ WaitingTimes.jl/
 │   ├── contract_tests.jl         # schema-2 read, dense files, limit guards, reference kernels, gap absorption
 │   ├── device/                   # opt-in oneAPI tests on an Intel GPU (own environment)
 │   └── fixtures/                 # EUR-USD input and legacy outputs for regression
-│       └── schema2/              # hand-written schema-2 collection
+│       ├── schema2/              # hand-written schema-2 collection
+│       └── schema3/              # schema-3 collection written by 0.4.0
 ├── docs/
 │   ├── Project.toml, activate.jl, make.jl, make_readme_assets.jl
 │   └── src/                      # formulation, kernels, pipeline, configuration, provenance,

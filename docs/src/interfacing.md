@@ -50,6 +50,7 @@ d = distribution(c, threshold(1.0, c.digits))   # or by Threshold
 summary_table(c)                          # one row per threshold: counts and statistics
 s = load_series(c)                        # the prepared QuantizedSeries, as stored
 c.time_axis                               # :elapsed or :index
+c.n_observed                              # observations of the prepared series
 class_counts(c, "1.0")                    # (support, exact, gap_crossing) per support value
 WaitingTimes.censoring_histogram(c, "1.0")   # (lower, count) of the right-censored indices
 WaitingTimes.segment_lengths(c)           # runs of observations between gaps
@@ -87,7 +88,7 @@ Downstream tools may rely on the exported names and on those declared
 | Group | Names |
 |---|---|
 | read side of collections | `load_collection`, `thresholds`, `distribution`, `class_counts`, `censoring_histogram`, `source_descriptor`, `source_summary`, `segment_lengths`, `record_length` |
-| series tools | `classify`, `gap_table`, `observed_mask`, `describe` |
+| series tools | `classify`, `class_totals`, `gap_table`, `observed_mask`, `describe` |
 | accessors of a distribution | `support`, `counts`, `probabilities`, `cumulative`, `survival`, `nsamples`, `ks_distance` |
 | figures (CairoMakie extension) | `figure_theme`, `decade_ticks`, `save_figure`, `plot_series`, `plot_distribution`, `plot_values` |
 | provenance | `Provenance.artefact_id`, `content_hash`, `canonical_toml`, `git_state`, `hardware_fingerprint`, `backup_existing!` |
@@ -95,7 +96,8 @@ Downstream tools may rely on the exported names and on those declared
 The field layout of [`WaitingTimeDistribution`](@ref) (twelve fields,
 `horizon` last) and its twelve- and eleven-argument constructors, the latter
 without a horizon, are part of the contract, as are the file layout and
-column names of a collection of provenance schema 3.
+column names of a collection of provenance schema 4 (schemas 2 and 3 are
+still read).
 
 Two lower-level readers remain for tabular work:
 

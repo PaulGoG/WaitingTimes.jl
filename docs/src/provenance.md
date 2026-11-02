@@ -19,7 +19,7 @@ identity, so a collection can be extended with more thresholds later.
 
 ## Files
 
-`metadata.toml` (schema `waitingtimes-provenance/3`) holds the schema
+`metadata.toml` (schema `waitingtimes-provenance/4`) holds the schema
 version, the `[artefact]` section (identifier, kind, creation time, parents),
 the `[identity]`, the `[series]` section, the `[dataset]` section with the
 descriptor, the `[source]` section when `[input].source_descriptor` is set,
@@ -42,8 +42,8 @@ descriptor, the `[source]` section when `[input].source_descriptor` is set,
   version.
 
 `index.toml` lists every partition with its file, checksum, session and
-per-threshold statistics; `summary.csv` and `catalog.csv` are regenerated
-from it after every checkpoint of a session and at its end.
+per-threshold statistics; `summary.csv` is regenerated from it after every
+checkpoint of a session and at its end.
 
 Each session also has its own file under `sessions/`. It records the kernel
 and backend, thread count, package version, code identity, git state and
@@ -59,7 +59,9 @@ already lists. `hardware.txt` carries
 collection identifier, threshold and session in their schema metadata; CSV
 partitions carry none. A collection of schema 2 (WaitingTimes 0.2) is read
 with time axis `elapsed`, gaps of kind `unknown`, and without class counts
-or censoring histograms.
+or censoring histograms. A collection of schema 3 (0.3 and 0.4) reads as
+written; schema 4 drops the catalogue and the duplicate observation count
+and records kernels as the configuration spells them.
 
 ## Code identity
 

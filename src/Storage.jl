@@ -421,6 +421,12 @@ Thresholds of the collection, sorted.
 """
 thresholds(c::Collection) = [parse_threshold(e["delta"], c.digits) for e in c.index]
 
+"""
+$(TYPEDSIGNATURES)
+
+Index entry of the partition at `δ` in `c`; throws `ArgumentError` when `δ` is
+on another grid or has no partition.
+"""
 function find_partition(c::Collection, δ::Threshold)
     δ.digits == c.digits ||
         throw(ArgumentError("threshold has $(δ.digits) digits, the collection has $(c.digits)"))

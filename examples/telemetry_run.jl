@@ -163,7 +163,7 @@ for (a, b) in sort(collect(zip(holes.RowFirst[inside], holes.RowLast[inside])))
 end
 spacing = quantized_series(
     RawSeries(values, times, :millisecond, nothing, PreparationRecord(run_dir)),
-    0; detect = :threshold, threshold = period_ms)
+    0; detect = :cadence, cadence = period_ms)
 spacing_rows = [((a - 1) ÷ period_ms + 2, b ÷ period_ms) for (a, b) in spacing.gaps]
 println(length(spacing_rows), " gaps from the sample spacing, equal to the ",
     count(inside), " declared holes inside the span with adjacent holes merged: ",
@@ -174,14 +174,14 @@ println(length(spacing_rows), " gaps from the sample spacing, equal to the ",
 # availability: both carry the declared holes, the second has dynamics.
 flag = quantized_series(
     RawSeries(values, times, :millisecond, nothing, PreparationRecord(run_dir)),
-    0; detect = :threshold, threshold = period_ms, declared = declared)
+    0; detect = :cadence, cadence = period_ms, declared = declared)
 println("flag series: ", flag)
 rng = StableRNG(7)
 walk = round.(random_walk(rng, length(values)); digits = 2)
 signal = quantized_series(
     RawSeries(Vector{Union{Missing, Float64}}(walk), times,
         :millisecond, nothing, PreparationRecord("random walk on the mission's availability")),
-    2; detect = :threshold, threshold = period_ms, declared = declared)
+    2; detect = :cadence, cadence = period_ms, declared = declared)
 println("masked walk:  ", signal)
 table = gap_table(signal)
 println("longest gaps [ms]: ", [(g.start, g.stop, g.length) for g in first(table, 3)])
@@ -201,7 +201,7 @@ end
 # to the last delivered sample, the rows of the holes as missing values, so the
 # index axis is the payload row (counted from the first delivered row) and the
 # declared holes stay gaps, of kind "gap", on both. The collection contract
-# (provenance schema 3, source summary, gap kinds, record structure, per-class
+# (provenance schema 4, source summary, gap kinds, record structure, per-class
 # partitions) is asserted, so that a change of the producer that breaks it
 # fails here.
 "assert one clause of the collection contract, naming it when it fails"
@@ -234,8 +234,8 @@ mktempdir() do dir
                             "time_column" => "time_ms", "time_unit" => "millisecond",
                             "epoch_unit" => "millisecond", "time_axis" => axis,
                             "source_descriptor" => descriptor_path),
-                    "gaps" => Dict("declared" => holes_toml, "detect" => "threshold",
-                        "threshold" => period_ms),
+                    "gaps" => Dict("declared" => holes_toml, "detect" => "cadence",
+                        "cadence" => period_ms),
                     "quantization" => Dict("digits" => 2),
                     "thresholds" =>
                         Dict("mode" => "explicit", "values" => [0.5, 1.0, 2.0, 5.0]),
@@ -252,7 +252,7 @@ mktempdir() do dir
 
     descriptor = TOML.parsefile(descriptor_path)
     for c in (ce, ci)
-        contract(c.metadata["schema"] == "waitingtimes-provenance/3", "schema 3")
+        contract(c.metadata["schema"] == "waitingtimes-provenance/4", "schema 4")
         contract(read(joinpath(c.dir, "source.toml")) == read(descriptor_path),
             "source.toml is the run's descriptor.toml")
         summary = WaitingTimes.source_summary(c)
@@ -275,7 +275,7 @@ mktempdir() do dir
             "the holes are the gaps, of kind gap")
         contract(
             length(WaitingTimes.segment_lengths(c)) == nrow(gaps) + 1 &&
-                sum(WaitingTimes.segment_lengths(c)) == c.n_observations,
+                sum(WaitingTimes.segment_lengths(c)) == c.n_observed,
             "segments")
         contract(WaitingTimes.record_length(c) == length(rows), "record length in payload rows")
         for δ in (0.5, 5.0)

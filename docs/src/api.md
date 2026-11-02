@@ -30,6 +30,7 @@ WaitingTimes.GAP_KINDS
 gap_table
 classify
 class_counts
+class_totals
 WaitingTimes.with_step
 WaitingTimes.sampling_step
 WaitingTimes.record_length
@@ -62,10 +63,7 @@ WaitingTimes.suffix_maximum
 WaitingTimes.scan_work
 WaitingTimes.workspace_bytes
 WaitingTimes.SearchWorkspace
-WaitingTimes.MaxTree
-WaitingTimes.FenwickWorkspace
 WaitingTimes.check_threshold
-WaitingTimes.first_at_least
 WaitingTimes.duration
 ```
 
@@ -112,6 +110,11 @@ effective_config
 prepare
 generate
 validate
+PreparedSeries
+ValidationReport
+WaitingTimes.Orchestrator.SourceRecord
+WaitingTimes.Orchestrator.ComparisonResult
+WaitingTimes.Orchestrator.KernelSummary
 run_pipeline
 CollectionHandle
 WaitingTimes.PACKAGE_ROOT
@@ -132,7 +135,7 @@ WaitingTimes.Preprocessing.trailing_mean_fluctuations
 WaitingTimes.Preprocessing.log_returns
 WaitingTimes.Preprocessing.log_levels
 WaitingTimes.Preprocessing.differences
-WaitingTimes.Preprocessing.centered_moving_average
+WaitingTimes.Preprocessing.detrend_moving_average
 WaitingTimes.Preprocessing.clip_quantile
 WaitingTimes.Preprocessing.clip_sigma
 WaitingTimes.Preprocessing.clip_extremes
@@ -164,6 +167,8 @@ WaitingTimes.Provenance.manifest_entry
 WaitingTimes.Provenance.source_identity
 WaitingTimes.Provenance.package_identity
 WaitingTimes.Provenance.source_summary
+WaitingTimes.Provenance.SourceSummary
+WaitingTimes.Provenance.SOURCE_SUMMARY_KEYS
 WaitingTimes.Provenance.MINIMUM_PRODUCER_VERSION
 WaitingTimes.Storage.partition_path
 WaitingTimes.Storage.load_distributions
@@ -184,10 +189,9 @@ WaitingTimes.Storage.write_collection_readme
 
 ```@docs
 WaitingTimes.Backends.get_best_backend
-WaitingTimes.Backends.to_backend
+WaitingTimes.Backends.probe
+WaitingTimes.Backends.GPU_PRIORITY
 WaitingTimes.Backends.backend_name
-WaitingTimes.Backends.register_backend!
-WaitingTimes.Backends.BACKEND_PROBES
 WaitingTimes.Backends.cpu_model
 WaitingTimes.Backends.device_fingerprint
 WaitingTimes.Backends.reclaim_device_memory!
