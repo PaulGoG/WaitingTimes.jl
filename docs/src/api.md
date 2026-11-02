@@ -148,7 +148,7 @@ WaitingTimes.Preprocessing.digits_sensitivity
 WaitingTimes.Preprocessing.suggest_digits
 ```
 
-## Provenance, naming, storage
+## Provenance and storage
 
 ```@docs
 WaitingTimes.Provenance.artefact_id
@@ -165,8 +165,6 @@ WaitingTimes.Provenance.source_identity
 WaitingTimes.Provenance.package_identity
 WaitingTimes.Provenance.source_summary
 WaitingTimes.Provenance.MINIMUM_PRODUCER_VERSION
-WaitingTimes.Naming.artefact_name
-WaitingTimes.Naming.parse_artefact_name
 WaitingTimes.Storage.partition_path
 WaitingTimes.Storage.load_distributions
 Collection

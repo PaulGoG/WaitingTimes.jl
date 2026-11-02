@@ -96,7 +96,6 @@ function decade_ticks end
 
 include("Provenance.jl")
 include("Config.jl")
-include("Naming.jl")
 include("Preprocessing.jl")
 include("Monitoring.jl")
 include("Storage.jl")
@@ -133,7 +132,7 @@ public GAP_KINDS, with_step, sampling_step, record_length, observed_mask, segmen
        segment_table, describe, SeriesDescription, censoring_histogram, source_summary
 public discrete_distribution, plot_series, plot_distribution, plot_values, save_figure,
        figure_theme, decade_ticks, PACKAGE_ROOT
-public Synthetic, Backends, Provenance, Config, Naming, Preprocessing, Monitoring, Storage,
+public Synthetic, Backends, Provenance, Config, Preprocessing, Monitoring, Storage,
        Orchestrator
 
 include("precompile.jl")
