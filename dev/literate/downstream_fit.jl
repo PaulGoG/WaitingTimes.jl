@@ -27,7 +27,8 @@ first(table, 4)
 #
 # The same object the pipeline wrote, recomputed directly from the series.
 
-series, _ = prepare(load_settings(joinpath(pkgdir(WaitingTimes), "configs", "quickstart.toml")))
+settings = load_settings(joinpath(pkgdir(WaitingTimes), "configs", "quickstart.toml"))
+series = prepare(settings).series
 δ = threshold(0.002, series)
 d = empirical_distribution(waiting_times(series, δ), δ, series)
 
