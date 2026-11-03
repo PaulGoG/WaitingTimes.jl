@@ -6,8 +6,8 @@ authors:
   - family-names: "Gogîță"
     given-names: "Paul-Adrian"
     affiliation: "Faculty of Physics, University of Bucharest; Institute of Space Science, Măgurele"
-version: 0.5.0
-date-released: 2026-11-02
+version: 0.5.1
+date-released: 2026-11-03
 license: MIT
 repository-code: "https://github.com/PaulGoG/WaitingTimes.jl"
 keywords:
