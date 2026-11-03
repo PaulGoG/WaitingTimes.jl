@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
+## [Unreleased]
+
+### Changed
+
+- The examples environment pins DeepSpaceTelemetry 3.1.2, a documentation
+  release of the producer; nothing changes at run time.
+
 ## [0.5.0] - 2026-11-02
 
 ### Changed

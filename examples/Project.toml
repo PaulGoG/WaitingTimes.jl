@@ -11,7 +11,7 @@ TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 WaitingTimes = "78cbc771-1cb5-4db9-b01d-2cca60acb935"
 
 [sources]
-DeepSpaceTelemetry = {rev = "16eb87a13b560184698e1e951d7b137cb3b08a6f", url = "https://github.com/PaulGoG/DeepSpaceTelemetry.jl"}
+DeepSpaceTelemetry = {rev = "b9f49dc7f3618f8bfd6685bda5c3d7564fe2c3a3", url = "https://github.com/PaulGoG/DeepSpaceTelemetry.jl"}
 MarketTickStreamer = {rev = "bd0bfa223b37908e3bcf0d63518dfdba6994e673", url = "https://github.com/PaulGoG/MarketTickStreamer.jl"}
 WaitingTimes = {path = ".."}
 
