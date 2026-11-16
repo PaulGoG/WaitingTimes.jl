@@ -164,9 +164,9 @@ is met at no grid up to `auto_max_digits` fails. `julia scripts/prepare.jl
 from which a fixed value can also be read. For recorded series whose last
 digit is instrument noise the table shows whether a coarser grid leaves the
 distributions unchanged; that coarsening is left to the analyst.
-The rationale follows the statistical theory of quantisation (Widrow, Kollár
-and Liu) and the rounding of statistics to measurement precision (Cousineau),
-see [References](@ref).
+The rationale follows the statistical theory of quantisation
+[Widrow1996](@cite) and the rounding of statistics to measurement precision
+[Cousineau2020](@cite).
 
 ## Preprocessing steps
 

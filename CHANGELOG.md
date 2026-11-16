@@ -5,6 +5,29 @@ Keep a Changelog and the project adheres to Semantic Versioning.
 
 ## [Unreleased]
 
+The package ends at the distributions: model fitting leaves it for a
+downstream package.
+
+### Removed
+
+- `examples/legacy_fit.jl` and `examples/published_fits.jl`, the fitting
+  recipe of the 2024 analysis and the reproduction of Table 1 of the 2026
+  paper; the README figure with the scale-free and Pareto-Tsallis fits; the
+  tail fit of the downstream example, which now reads a collection back into
+  its distributions. Optim leaves the examples and documentation
+  environments.
+- Names documented as internals are no longer exported from the submodules
+  or declared `public`: `Provenance.write_toml`, `read_toml`, `file_sha256`,
+  `session_id`, `toml_ready`, `record_to_dict`, `dict_to_record`,
+  `write_hardware_fingerprint`; `Orchestrator.make_kernel`,
+  `estimate_memory_bytes`, `dataset_descriptor`; `Monitoring`
+  (`with_run_logging`, `run_progress`, `log_level`), which is no longer a
+  public module; `Preprocessing.apply_steps`, `terminal_overview`;
+  `Backends.cpu_backend`; and every `Storage` name except
+  `partition_path` and `write_collection_readme` beside the exported read
+  side. They remain reachable qualified or by explicit import, outside the
+  contract.
+
 ### Fixed
 
 - Two sessions of one collection started within the same UTC second took the
@@ -42,12 +65,9 @@ Keep a Changelog and the project adheres to Semantic Versioning.
 - The host memory estimate checked against `[limits].max_ram_gb` counts the
   workspace of the reference kernel; the run-log stream is closed at the end
   of the session.
-- The downstream example of the documentation estimated the tail exponent of
-  integer waiting times with the continuous maximum-likelihood formula and
-  compared a continuous distribution function with a step function. It uses
-  Eq. (3.7) of Clauset, Shalizi and Newman (2009) and reads the model at
-  `k + 1/2`; on the EUR-USD fixture the exponent moves by 0.03 and the
-  Kolmogorov–Smirnov distance from 0.095 to 0.033.
+- `CITATION.cff` gives the co-authors of the 2026 paper their published
+  names (Tudor-Gabriel Dumitru, Florin-Ioan Constantin, Tudor-Andrei Diac,
+  Alexandra-Florentina Neagoe).
 
 ### Added
 
@@ -60,9 +80,15 @@ Keep a Changelog and the project adheres to Semantic Versioning.
 
 ### Changed
 
+- `[input].time_format`, when set, enters the series identity: it decides how
+  textual time stamps become the time axis. Collections generated with a
+  time format change identifier; those without one keep theirs.
 - Documentation: the waiting time with a threshold is traced to the
   investment horizon of Simonsen, Jensen and Johansen (2002); docstrings and
-  pages corrected against the code; `read_index` is documented with the API.
+  pages corrected against the code; `read_index` is documented with the API;
+  the references page is built with DocumenterCitations from a BibTeX file;
+  the README follows the file tree with the setup, the entry points and the
+  status of the components.
 
 ## [0.5.1] - 2026-11-03
 

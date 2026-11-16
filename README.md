@@ -19,18 +19,9 @@ and G. T. Pană, P.-A. Gogîță, A. Nicolin-Żaczek, *Rom. J. Phys.* **69**,
 [doi:10.59277/RomJPhys.2024.69.111](https://doi.org/10.59277/RomJPhys.2024.69.111).
 Every fast kernel is checked index by index against a naive reference scan.
 The results are written as collections that carry their own provenance, and
-an online estimator follows the same distributions on a live stream.
-
-![Survival functions of the Geisenheim wind-speed waiting times at a small
-and a large threshold, with scale-free and Pareto-Tsallis
-fits](docs/src/assets/transition.png)
-
-At δ = 1 km/h the survival function of the Geisenheim hourly wind-speed
-waiting times is scale-free over three decades; at δ = 32.5 km/h it is
-Pareto-Tsallis, the two regimes the papers describe. Both fits use the
-recipe of the 2024 analysis (`examples/legacy_fit.jl`) on distributions
-computed here; the numbers behind every figure of this page are in
-[`docs/src/assets/PROVENANCE.toml`](docs/src/assets/PROVENANCE.toml).
+an online estimator follows the same distributions on a live stream. The
+package ends at the distributions: fitting models to them, as the papers do,
+is left to the downstream tools that read the collections.
 
 ## File structure
 
@@ -44,55 +35,10 @@ WaitingTimes.jl/
 ├── bench/                        # kernel benchmarks (own environment)
 ├── test/                         # test suite, fixtures, opt-in device tests
 ├── docs/                         # Documenter site with an executable example
-├── examples/                     # worked consumers of the two producers; Table 1 reproduction
+├── examples/                     # worked consumers of the two producers
 ├── data/                         # gitignored: raw inputs, collections, logs
 ├── CITATION.cff, CHANGELOG.md, LICENSE, .JuliaFormatter.toml
 ```
-
-## Formulation
-
-For a series `A₁..A_N` observed at strictly increasing integer times `t₁..t_N`
-and a threshold `δ ≥ 0`, the waiting time of index `n` is
-
-    τₙ = t_m − tₙ,   m = min{ m > n : A_m ≥ Aₙ + δ },
-
-the elapsed time to the first observed value at least `δ` above `Aₙ`. Indices
-without such an `m` are right-censored and contribute no waiting time.
-
-Values and thresholds are quantised to a decimal grid with `digits` decimals
-and handled as integers, so every kernel produces bit-identical results; the
-naive forward scan (`NaiveSearch`) is the reference implementation the other
-kernels are checked against. Time passes through missing samples
-and data gaps; gaps are recorded and reported (`gap_table`, `classify`) and
-never alter a waiting time.
-
-`SegmentTreeSearch` is the default kernel, at milliseconds per threshold on
-millions of points. `FenwickSweep` computes many thresholds in one sweep and
-`StreamingSearch` runs online, for live pipelines. `GuardedSearch`, the naive
-scan under a suffix-maximum guard and multithreaded, may stand in for
-`NaiveSearch` as reference kernel where the naive scan is too slow
-(`[algorithm].reference_kernel`). `DeviceSearch` runs the guarded scan on CPU
-or GPU through the KernelAbstractions extension (`using KernelAbstractions`).
-
-![How each kernel resolves the waiting times of one index on a 48-sample
-series](docs/src/assets/kernels.gif)
-
-On the full threshold grids of the six datasets shipped as configurations
-(7 124 thresholds, up to 10⁶ points), no kernel differs from the reference at
-a single index.
-
-![Wall time per threshold of every kernel on synthetic random walks of 10⁴
-to 10⁶ points at three thresholds](docs/src/assets/timings.png)
-
-## The transition across thresholds
-
-![The survival function of the Geisenheim waiting times sweeping through the
-threshold grid from 0 to 50 km/h](docs/src/assets/sweep.gif)
-
-A collection holds one distribution per threshold. The indicators of the
-2026 paper, the difference of the two fits' Kolmogorov–Smirnov distances and
-the generalised Kullback–Leibler divergence between their tails, are
-computed downstream from the collection along this sweep.
 
 ## Setup
 
@@ -184,20 +130,66 @@ push!(est, t_ns, price)                        # one sample; snapshot(est) gives
 | Gap classification and class accounting | done |
 | Empirical distribution | done |
 | Legacy fixture regression (EUR-USD) | done, exact |
+| Kernels against exact first-passage laws | done; closed-form counts and the Sparre Andersen law in the tests |
 | Segment-tree, Fenwick and streaming kernels | done, equal to the reference kernel on the 7 124 dataset thresholds and on 4·10⁶ synthetic points |
 | Synthetic generators, benchmarks | done |
 | Configuration, storage, provenance, preprocessing, scripts | done; quickstart end to end in the tests |
 | Distributions.jl and CairoMakie extensions | done |
 | KernelAbstractions device kernel | done, a package extension (`using KernelAbstractions`), tested on the CPU by default and with oneAPI on an Intel Arc GPU |
-| Preprocessing (published treatment, `clip_sigma`, log returns, log levels) | done; Table 1 of the paper reproduced by `examples/published_fits.jl` |
+| Preprocessing (published treatment, `clip_sigma`, log returns, log levels) | done |
 | Automatic choice of `digits` | done |
 | Collection read side, legacy export, per-collection README | done |
 | Source identity of a collection, code identity of every session | done; DeepSpaceTelemetry.jl run descriptors and MarketTickStreamer.jl session sidecars |
 | Gap kinds and sources, record structure (segments, record length), index time axis | done |
 | Online estimator for live streams (`OnlineWaitingTimes`) | done; equal to the batch result on every prefix; memory bounded by a declared upper bound or a horizon |
-| Worked consumers of MarketTickStreamer.jl and DeepSpaceTelemetry.jl, Table 1 reproduction | done, `examples/`; the consumers assert the collection contract in CI |
+| Worked consumers of MarketTickStreamer.jl and DeepSpaceTelemetry.jl | done, `examples/`; the consumers assert the collection contract in CI |
 | Precompile workload | done; first result below 0.1 s after `using WaitingTimes` |
 | Documentation site | done |
+
+## Formulation
+
+For a series `A₁..A_N` observed at strictly increasing integer times `t₁..t_N`
+and a threshold `δ ≥ 0`, the waiting time of index `n` is
+
+    τₙ = t_m − tₙ,   m = min{ m > n : A_m ≥ Aₙ + δ },
+
+the elapsed time to the first observed value at least `δ` above `Aₙ`. Indices
+without such an `m` are right-censored and contribute no waiting time.
+
+Values and thresholds are quantised to a decimal grid with `digits` decimals
+and handled as integers, so every kernel produces bit-identical results; the
+naive forward scan (`NaiveSearch`) is the reference implementation the other
+kernels are checked against. Time passes through missing samples
+and data gaps; gaps are recorded and reported (`gap_table`, `classify`) and
+never alter a waiting time.
+
+`SegmentTreeSearch` is the default kernel, at milliseconds per threshold on
+millions of points. `FenwickSweep` computes many thresholds in one sweep and
+`StreamingSearch` runs online, for live pipelines. `GuardedSearch`, the naive
+scan under a suffix-maximum guard and multithreaded, may stand in for
+`NaiveSearch` as reference kernel where the naive scan is too slow
+(`[algorithm].reference_kernel`). `DeviceSearch` runs the guarded scan on CPU
+or GPU through the KernelAbstractions extension (`using KernelAbstractions`).
+
+![How each kernel resolves the waiting times of one index on a 48-sample
+series](docs/src/assets/kernels.gif)
+
+On the full threshold grids of the six datasets shipped as configurations
+(7 124 thresholds, up to 10⁶ points), no kernel differs from the reference at
+a single index.
+
+![Wall time per threshold of every kernel on synthetic random walks of 10⁴
+to 10⁶ points at three thresholds](docs/src/assets/timings.png)
+
+## The transition across thresholds
+
+![The survival function of the Geisenheim waiting times sweeping through the
+threshold grid from 0 to 50 km/h](docs/src/assets/sweep.gif)
+
+A collection holds one distribution per threshold. The indicators of the
+2026 paper, the difference of the two fits' Kolmogorov–Smirnov distances and
+the generalised Kullback–Leibler divergence between their tails, are
+computed downstream from the collection along this sweep.
 
 ## How to cite
 
@@ -306,9 +298,7 @@ WaitingTimes.jl/
 ├── examples/                     # own environment: the two public packages from GitHub
 │   ├── Project.toml, activate.jl, check_environment.jl
 │   ├── tick_stream.jl            # MarketTickStreamer.jl: online against batch, session persistence and following, closures, both axes
-│   ├── telemetry_run.jl          # DeepSpaceTelemetry.jl run through its adapter → declared gaps → collections on both axes
-│   ├── published_fits.jl         # Table 1 reproduction
-│   └── legacy_fit.jl             # the 2024 fitting recipe
+│   └── telemetry_run.jl          # DeepSpaceTelemetry.jl run through its adapter → declared gaps → collections on both axes
 ├── .github/, codecov.yml         # CI (tests on Julia min, 1 and pre, producer examples, coverage, docs), Dependabot
 ├── CITATION.cff, CHANGELOG.md, LICENSE, .JuliaFormatter.toml
 ```

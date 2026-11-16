@@ -12,11 +12,12 @@ index ``n`` is
 
 the elapsed time to the first observed value at least ``\delta`` above
 ``A_n``. The distribution of ``\{\tau_n\}`` over a grid of thresholds is the
-dynamical fingerprint studied in Gogîță et al., *J. Phys. Complex.* 7 (2026)
-035007 ([doi:10.1088/2632-072X/ae8aa5](https://doi.org/10.1088/2632-072X/ae8aa5)),
-where it shows a scale-free regime at small ``\delta`` and a
-Pareto-Tsallis regime at large ``\delta`` across weather, sea-level,
-currency and automotive data.
+dynamical fingerprint studied by [Gogita2026](@citet), where it shows a
+scale-free regime at small ``\delta`` and a Pareto-Tsallis regime at large
+``\delta`` across weather, sea-level, currency and automotive data. The
+package ends at the distributions: fitting models to them is left to the
+downstream tools, which read the collections it writes
+([Interfacing](interfacing.md)).
 
 The package computes these distributions exactly and reproducibly. Values
 and thresholds are integers on a decimal grid, so every kernel produces
@@ -36,6 +37,6 @@ of the grid with the reference kernel ([Pipeline](pipeline.md),
 ```@contents
 Pages = ["formulation.md", "kernels.md", "pipeline.md", "configuration.md",
     "provenance.md", "validation.md", "interfacing.md", "producers.md",
-    "generated/downstream_fit.md", "api.md", "internals.md", "references.md"]
+    "generated/downstream.md", "api.md", "internals.md", "references.md"]
 Depth = 1
 ```

@@ -82,8 +82,9 @@ and earlier, MarketTickStreamer.jl) as having no code identity.
 
 ## The public contract
 
-Downstream tools may rely on the exported names and on those declared
-`public`, among them
+Downstream tools may rely on the names exported from `WaitingTimes` and its
+submodules and on those declared `public`, the names of the [API](api.md)
+page, among them
 
 | Group | Names |
 |---|---|
@@ -178,7 +179,7 @@ threshold fed with [`update!`](@ref WaitingTimes.update!), and a
 
 ## Worked consumers
 
-`examples/` holds three runnable consumers with their own environment.
+`examples/` holds two runnable consumers with their own environment.
 `tick_stream.jl` drives the online estimator from a `Channel{Trade}` of
 MarketTickStreamer.jl (a synthetic tape, a replayed recording or a followed
 session) under the producer's snapshot convention and checks it against the
@@ -189,7 +190,5 @@ reads its run directory through the producer's adapter. The gaps of the
 series are the holes the run declares in `masks/gaps.csv` (lost,
 undelivered, pruned, not generated), checked against the gaps found from the
 sample spacing, and the generated collection carries the run's
-`descriptor.toml` as its source. `published_fits.jl` reproduces Table 1 of
-the paper with the fitting recipe of the 2024 analysis (`legacy_fit.jl`) on
-the shipped configurations. The [Downstream example](@ref) puts the
-in-memory pieces together for a model fit.
+`descriptor.toml` as its source. The [Downstream example](@ref) reads a
+collection back into the objects a downstream analysis works with.

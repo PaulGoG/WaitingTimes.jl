@@ -5,12 +5,16 @@ include(joinpath(@__DIR__, "activate.jl"))
 
 using WaitingTimes
 using Documenter
+using DocumenterCitations
 using Literate
 
 DocMeta.setdocmeta!(WaitingTimes, :DocTestSetup, :(using WaitingTimes); recursive = true)
 
+const BIBLIOGRAPHY = CitationBibliography(joinpath(@__DIR__, "src", "refs.bib"))
+
 const LITERATE_SOURCES = joinpath(@__DIR__, "src", "literate")
 const GENERATED = joinpath(@__DIR__, "src", "generated")
+rm(GENERATED; force = true, recursive = true)   # no page of a renamed source survives
 mkpath(GENERATED)
 for file in readdir(LITERATE_SOURCES; join = true)
     endswith(file, ".jl") && Literate.markdown(file, GENERATED; documenter = true)
@@ -36,11 +40,12 @@ makedocs(;
         "Validation" => "validation.md",
         "Interfacing" => "interfacing.md",
         "Producers" => "producers.md",
-        "Downstream example" => "generated/downstream_fit.md",
+        "Downstream example" => "generated/downstream.md",
         "API" => "api.md",
         "Internals" => "internals.md",
         "References" => "references.md"
     ],
+    plugins = [BIBLIOGRAPHY],
     checkdocs = :public,
     warnonly = [:cross_references]
 )
