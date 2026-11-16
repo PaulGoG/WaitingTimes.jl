@@ -22,12 +22,17 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   `exclude_intervals` that are not integers with `start < stop`, and step
   parameters in another letter case than the transforms read
   (`denominator = "Mean"`).
+- `exclude_intervals` rejects overlapping intervals (they may touch). With
+  `splice = true` on a time axis the overlap was subtracted twice, so the
+  later times, and the waiting times across the cut, came out too short.
 - Time stamps beyond the `Int64` nanosecond range raise an error naming
   `[input].epoch_unit` (millisecond stamps read under the default `"second"`
   wrapped around silently, as did dates after 2262-04-11).
 - `prepare` stores values as `Int32` only when the largest configured
   threshold leaves `q_n + d` within `Int32`; a signed series with a large
   threshold raised `OverflowError` with no configuration key to avoid it.
+  `load_series` returns `Int64` values for a collection that holds such a
+  threshold.
 - `plot_distribution` draws a distribution with a single distinct waiting
   time instead of throwing.
 - The host memory estimate checked against `[limits].max_ram_gb` counts the

@@ -52,13 +52,13 @@ tail = sample[sample .>= x_min]
 α = 1 + length(tail) / sum(log.(tail ./ (x_min - 0.5)))
 pareto = Pareto(α - 1, x_min - 0.5)
 
-# The Kolmogorov–Smirnov distance compares the empirical tail at each integer
-# ``k`` with the model at ``k + 1/2``, the upper edge of the values that round
-# to ``k``.
+# The Kolmogorov–Smirnov distance compares the empirical tail at every integer
+# ``k`` from ``x_{\min}`` to the longest wait with the model at ``k + 1/2``,
+# the upper edge of the values that round to ``k``.
 
 tail_dn = WaitingTimes.discrete_distribution(empirical_distribution(
     [τ >= x_min ? τ : 0 for τ in waiting_times(series, δ)], δ, series))
-distance = maximum(abs(cdf(pareto, k + 0.5) - cdf(tail_dn, k)) for k in support(tail_dn))
+distance = maximum(abs(cdf(pareto, k + 0.5) - cdf(tail_dn, k)) for k in x_min:maximum(tail))
 (alpha = α, x_min = x_min, D_KS = distance)
 
 # ## Figure

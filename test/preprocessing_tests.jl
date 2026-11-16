@@ -129,14 +129,28 @@ end
         @test occursin("[input] delimiter",
             message(config(""; input = "delimiter = '\\t'\n")))
         @test load_settings(config(""; input = "delimiter = \";\"\n")).delimiter == ";"
-        # interval pairs are integers with start < stop
-        for bad in ("[[20, 10]]", "[[10.5, 20]]", "[[1, 2, 3]]", "[[true, 2]]")
+        # interval pairs are integers with start < stop, and do not overlap
+        for bad in ("[[20, 10]]", "[[10.5, 20]]", "[[1, 2, 3]]", "[[true, 2]]",
+            "[[5, 20], [1, 10]]")
             @test occursin("intervals",
                 message(config(step("op = \"exclude_intervals\"\nintervals = $bad\n"))))
         end
         @test length(load_settings(config(step(
             "op = \"exclude_intervals\"\nintervals = [[1, 2], [3.0, 4]]\n"))).steps) == 1
+        @test length(load_settings(config(step(
+            "op = \"exclude_intervals\"\nintervals = [[2, 4], [1, 2]]\n"))).steps) == 1
     end
+end
+
+@testset "Excluded intervals may touch, not overlap" begin
+    P = WT.Preprocessing
+    rs = P.RawSeries(Union{Missing, Float64}[1.0, 2.0, 3.0], Int64[0, 5, 25], :second,
+        nothing, PreparationRecord("intervals"))
+    # the cut [1, 20) removes the row at 5 and 19 s: the row at 25 moves to 6
+    @test P.exclude_intervals(rs, [(1, 20)]).times == [0, 6]
+    @test P.exclude_intervals(rs, [(10, 20), (1, 10)]).times == [0, 6]
+    @test_throws ArgumentError P.exclude_intervals(rs, [(1, 10), (5, 20)])
+    @test_throws ArgumentError P.exclude_intervals(rs, [(1, 10), (5, 20)]; splice = false)
 end
 
 @testset "Time stamps outside the Int64 nanosecond range" begin
@@ -151,4 +165,8 @@ end
     @test_throws ArgumentError P.time_to_ns(-1_794_787_200_000, :second, nothing, 1)
     @test_throws ArgumentError P.time_to_ns(1.0e30, :second, nothing, 1)
     @test_throws ArgumentError P.time_to_ns(DateTime(9999, 12, 31), :second, nothing, 1)
+    # typemax(Int64) ns is 2262-04-11T23:47:16.854775807: the fraction is bounded too
+    @test P.time_to_ns("2262-04-11T23:47:16.8000", :second, nothing, 1) ==
+          9_223_372_036_800_000_000
+    @test_throws ArgumentError P.time_to_ns("2262-04-11T23:47:16.9000", :second, nothing, 1)
 end

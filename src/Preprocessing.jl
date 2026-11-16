@@ -243,9 +243,14 @@ function time_to_ns(v::AbstractString, epoch_unit, fmt, i)
         m = match(ISO_SUBMILLISECOND, s)
         if m !== nothing
             whole = tryparse(DateTime, m[1])
-            whole === nothing ||
-                return time_to_ns(whole, epoch_unit, fmt, i) +
-                       parse(Int64, rpad(m[2], 9, '0'))
+            if whole !== nothing
+                ns = time_to_ns(whole, epoch_unit, fmt, i)
+                fraction = parse(Int64, rpad(m[2], 9, '0'))
+                ns <= typemax(Int64) - fraction || throw(ArgumentError(
+                    "time stamp $(repr(v)) at row $i lies outside the Int64 nanosecond range (1677-09-21 to 2262-04-11)",
+                ))
+                return ns + fraction
+            end
         end
     end
     dt = fmt === nothing ? tryparse(DateTime, s) : tryparse(DateTime, s, fmt)
@@ -327,9 +332,10 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Remove the rows whose time (or index) lies in any `[a, b)` interval. With
-`splice = true` (the default) the time axis closes over each cut
-(later times shift back by the cut length, so no elapsed time is counted
+Remove the rows whose time (or index) lies in any `[a, b)` interval; the
+intervals, in the time unit of `rs` (rows without a time axis), may touch but
+not overlap. With `splice = true` (the default) the time axis closes over each
+cut (later times shift back by the cut length, so no elapsed time is counted
 across it); with `splice = false` the rows are set to `missing` and the cut
 remains a gap.
 """
@@ -339,6 +345,11 @@ function exclude_intervals(rs::RawSeries, intervals::AbstractVector; splice::Boo
         a < b || throw(ArgumentError("interval [$a, $b) is empty"))
     end
     sort!(ivs; by = first)
+    for k in 2:length(ivs)
+        ivs[k][1] >= ivs[k - 1][2] || throw(ArgumentError(
+            "intervals [$(ivs[k - 1][1]), $(ivs[k - 1][2])) and [$(ivs[k][1]), $(ivs[k][2])) overlap; merge them",
+        ))
+    end
     n = length(rs)
     axis = rs.times === nothing ? collect(Int64, 1:n) : rs.times
     inside = falses(n)

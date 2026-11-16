@@ -712,6 +712,31 @@ end
         @test eltype(large.values) == Int64
         # from -10 the level 5 is reached one sample later, from -9.5 the level 5.5 likewise
         @test waiting_times(large, 15.0, NaiveSearch()) == [1, 0, 1, 0, 0]
+        # a collection extended past the Int32 headroom loads a series that admits
+        # every one of its thresholds
+        output = "[algorithm]\nreference_checks = 0\n[output]\nroot = \"out\"\n"
+        first_session = generate(load_settings(config("[0.5]\n" * output)))
+        loaded = WaitingTimes.Storage.load_series(load_collection(first_session.dir))
+        @test eltype(loaded.values) == Int32
+        extended = generate(load_settings(config("[0.5, 15.0]\n" * output)))
+        @test extended.id == first_session.id && extended.computed == ["15.00000000"]
+        loaded = WaitingTimes.Storage.load_series(load_collection(extended.dir))
+        @test eltype(loaded.values) == Int64
+        @test waiting_times(loaded, "15.00000000", NaiveSearch()) == [1, 0, 1, 0, 0]
+    end
+end
+
+@testset "Session identifier already taken" begin
+    free_session_id = WaitingTimes.Orchestrator.free_session_id
+    mktempdir() do dir
+        mkpath(joinpath(dir, "sessions"))
+        id = "20260101T000000_0123456789ab"
+        @test free_session_id(dir, id) == id
+        touch(joinpath(dir, "sessions", id * ".toml"))
+        @test free_session_id(dir, id) == id * "-2"
+        # the configuration snapshot of a session that wrote no record reserves it too
+        touch(joinpath(dir, "sessions", id * "-2.config.toml"))
+        @test free_session_id(dir, id) == id * "-3"
     end
 end
 

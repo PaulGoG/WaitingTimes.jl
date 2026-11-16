@@ -13,7 +13,8 @@ using CSV: CSV
 using DataFrames: DataFrame, nrow
 using Dates: DateTime
 using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
-using ..WaitingTimes: WaitingTimes, QuantizedSeries, Threshold, WaitingTimeDistribution,
+using ..WaitingTimes: WaitingTimes, INT32_NARROWING_LIMIT, QuantizedSeries, Threshold,
+                      WaitingTimeDistribution,
                       counts,
                       cumulative, format_threshold, gap_entries, parse_threshold,
                       probabilities, record_length, segment_lengths, segment_table, support,
@@ -562,7 +563,8 @@ const VALUE_TYPES = Dict("Int8" => Int8, "Int16" => Int16, "Int32" => Int32,
 $(TYPEDSIGNATURES)
 
 The prepared series of the collection as a `QuantizedSeries`: values of the
-stored integer type, times, gaps with their kinds and sources, digits, time
+stored integer type (`Int64` when a threshold of the collection exceeds the
+`Int32` headroom), times, gaps with their kinds and sources, digits, time
 unit, epoch and preparation record as written, so that the series equals the
 one the collection was computed from (record values as they pass through
 TOML). A schema-2 collection has no stored epoch and its gaps read back with
@@ -572,6 +574,8 @@ function load_series(c::Collection)
     series = c.metadata["series"]
     epoch = get(series, "epoch", nothing)
     value_type = get(VALUE_TYPES, String(get(series, "value_type", "Int64")), Int64)
+    # a later session with a threshold beyond the Int32 headroom ran on Int64 values
+    any(δ -> δ.d >= INT32_NARROWING_LIMIT, thresholds(c)) && (value_type = Int64)
     return read_series_files(c.dir, c.digits, c.time_unit;
         epoch = epoch === nothing ? nothing : DateTime(epoch),
         record = dict_to_record(series["record"]), value_type = value_type)

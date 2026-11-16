@@ -182,6 +182,9 @@ const PREPROCESSING_OPS = Dict{String, PreprocessingOp}(
                       iv[1] < iv[2],
                 ivs) ||
                 throw(ArgumentError("[$where_] intervals must be an array of [start, stop] pairs of integers with start < stop"))
+            sorted = sort!([(iv[1], iv[2]) for iv in ivs])
+            all(k -> sorted[k][1] >= sorted[k - 1][2], 2:length(sorted)) ||
+                throw(ArgumentError("[$where_] intervals must not overlap"))
             haskey(step, "splice") && as_bool(step["splice"], where_, "splice")
             return nothing
         end,

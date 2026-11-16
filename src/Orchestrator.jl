@@ -624,14 +624,17 @@ end
 """
 $(TYPEDSIGNATURES)
 
-[`session_id`](@ref) of `code` for a new session of the collection in `dir`. A
-second session started within the same UTC second takes the suffix `-2`, a
-third `-3`, so that no session overwrites the record of another.
+Identifier of a new session of the collection in `dir`: the candidate `stamp`
+(a [`session_id`](@ref)), or `stamp` with the suffix `-2`, `-3`, … when a
+session started within the same UTC second holds it, so that no session
+overwrites the record or the configuration snapshot of another. Sessions of
+one collection are assumed to start one after the other.
 """
-function free_session_id(dir::AbstractString, code::AbstractString)
-    stamp = session_id(code)
-    session, k = stamp, 1
-    while isfile(joinpath(dir, "sessions", session * ".toml"))
+function free_session_id(dir::AbstractString, stamp::AbstractString)
+    taken(id) = isfile(joinpath(dir, "sessions", id * ".toml")) ||
+                isfile(joinpath(dir, "sessions", id * ".config.toml"))
+    session, k = String(stamp), 1
+    while taken(session)
         k += 1
         session = string(stamp, '-', k)
     end
@@ -670,7 +673,7 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
     identity = package_identity()
     code = isempty(identity["git_commit"]) ? identity["git_tree_sha1"] :
            identity["git_commit"]
-    session = free_session_id(dir, code)
+    session = free_session_id(dir, session_id(code))
     created = now(UTC)
     manifest = active_manifest()
     session_path = joinpath(dir, "sessions", session * ".toml")

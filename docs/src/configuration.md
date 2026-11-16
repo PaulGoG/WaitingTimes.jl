@@ -20,7 +20,7 @@ time_unit = "sample"              # "sample" | "nanosecond" | "microsecond" | "m
 time_axis = "elapsed"             # "elapsed" | "index"
 time_format = ""                  # Dates format for textual stamps; "" = ISO 8601 or numeric
 epoch_unit = "second"             # unit of numeric stamps: "nanosecond" | "microsecond" | "millisecond" | "second" | "minute" | "hour" | "day"
-delimiter = ""                    # "" = format default
+delimiter = ""                    # one character; "" = format default
 header = false                    # first row is a header
 missing_policy = "drop"           # "drop" | "error"
 tie_policy = "error"              # "error" | "first" | "last" | "mean"
@@ -171,12 +171,14 @@ see [References](@ref).
 ## Preprocessing steps
 
 Each entry of `steps` is a table with an `op` key; parameters are validated
-when the configuration is loaded.
+when the configuration is loaded. A step table is hashed and used as written,
+so its choices are lower case as listed, whereas the choices of the sections
+are read in any letter case.
 
 | `op` | Parameters | Effect |
 |---|---|---|
 | `select_range` | `from`, `to` | keep the rows with time (or index) in `[from, to]` |
-| `exclude_intervals` | `intervals = [[a, b], ...]`, `splice = true` | remove the rows in `[a, b)`; with `splice` the time axis closes over the cut, otherwise the rows become missing (a recorded gap) |
+| `exclude_intervals` | `intervals = [[a, b], ...]`, `splice = true` | remove the rows in `[a, b)`, with integers `a < b` in the time unit of the series and intervals that may touch but not overlap; with `splice` the time axis closes over the cut, otherwise the rows become missing (a recorded gap) |
 | `round` | `digits` | round the values to `digits` decimals (the original analysis rounded before detrending) |
 | `trailing_mean_fluctuations` | `window`, `denominator = "mean"`, `offset = "none"`, `on_nonpositive = "error"` | deviation from the mean of the previous `window` observations. `denominator = "mean"` gives the percentage fluctuation of the papers, `"scale"` divides by the standard deviation of the deviations, `"none"` keeps data units. `offset = "auto"` shifts a series whose minimum is below 1 so that its minimum becomes 1 before a `"mean"` computation (the papers' rule) and leaves any other series unchanged; a number is added as given. `on_nonpositive = "missing"` records a non-positive trailing mean as a missing observation instead of aborting |
 | `log_returns` | | `100 log(x_k / x_{k-1})` |
