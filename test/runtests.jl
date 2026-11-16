@@ -22,8 +22,6 @@ using WaitingTimes.Synthetic: random_walk, iid_series, insert_missing, irregular
 const WT = WaitingTimes
 const FIXTURES = joinpath(@__DIR__, "fixtures")
 
-# --- helpers -----------------------------------------------------------------
-
 "Definition of the waiting time as a plain serial loop, independent of the kernels."
 function reference_waiting_times(q::AbstractVector, t::AbstractVector, d::Integer)
     N = length(q)
@@ -270,6 +268,59 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
             @test all(upper[class .== WT.CLASS_EXACT] .== τ[class .== WT.CLASS_EXACT])
             @test all(lower[class .== WT.CLASS_EXACT] .== τ[class .== WT.CLASS_EXACT])
             @test all(τ[class .== WT.CLASS_RIGHT_CENSORED] .== 0)
+        end
+    end
+
+    @testset "Exact first-passage laws" begin
+        # Waiting time of the first sample of every sequence of a finite
+        # ensemble, against closed-form counts. No kernel output enters the
+        # expected values.
+        first_wait(x, a) = Int(waiting_times(QuantizedSeries(x, 0), a, NaiveSearch())[1])
+        unresolved(τ, k) = count(w -> w == 0 || w > k, τ)
+
+        # Independent values on G levels: the wait of a start value v exceeds k
+        # when the next k values all lie below v + a.
+        G, L = 4, 6
+        sequences = vec(collect.(Iterators.product(ntuple(_ -> 0:(G - 1), L)...)))
+        for a in 0:G
+            τ = [first_wait(x, a) for x in sequences]
+            for k in 1:(L - 1)
+                @test unresolved(τ, k) ==
+                      sum(min(v + a, G)^k for v in 0:(G - 1)) * G^(L - 1 - k)
+            end
+        end
+
+        # Simple random walk, all 2^K paths. Hitting-time theorem for a ≥ 1:
+        # P(τ = k) = (a / k) P(S_k = a). At a = 0 the wait lasts while the walk
+        # stays below its start: P(τ > k) = C(k - 1, ⌊(k - 1)/2⌋) 2^-k.
+        K = 12
+        walks = vec([vcat(0, cumsum(collect(steps)))
+                     for steps in Iterators.product(ntuple(_ -> (-1, 1), K)...)])
+        for a in 1:4
+            τ = [first_wait(x, a) for x in walks]
+            for k in a:K
+                paths = iseven(k + a) ? a * binomial(k, (k + a) ÷ 2) ÷ k * 2^(K - k) : 0
+                @test count(==(k), τ) == paths
+            end
+        end
+        τ = [first_wait(x, 0) for x in walks]
+        for k in 1:K
+            @test unresolved(τ, k) == binomial(k - 1, (k - 1) ÷ 2) * 2^(K - k)
+        end
+
+        # Continuous symmetric steps at δ = 0 (Sparre Andersen):
+        # P(τ > k) = C(2k, k) 4^-k for any such step law. One wait per
+        # independent replica makes every indicator a Bernoulli variable,
+        # asserted within 5 standard errors.
+        rng = StableRNG(1954)
+        R, K = 20_000, 32
+        for steps in (n -> randn(rng, n), n -> rand(rng, n) .- 0.5)
+            τ = [Int(waiting_times(QuantizedSeries(cumsum(steps(K + 1)), 9), 0,
+                     NaiveSearch())[1]) for _ in 1:R]
+            for k in (1, 2, 4, 8, 16, 32)
+                p = Float64(binomial(big(2k), k) // big(4)^k)
+                @test abs(unresolved(τ, k) / R - p) <= 5 * sqrt(p * (1 - p) / R)
+            end
         end
     end
 
