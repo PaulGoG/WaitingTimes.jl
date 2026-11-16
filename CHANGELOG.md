@@ -24,7 +24,11 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   (`denominator = "Mean"`).
 - `exclude_intervals` rejects overlapping intervals (they may touch). With
   `splice = true` on a time axis the overlap was subtracted twice, so the
-  later times, and the waiting times across the cut, came out too short.
+  later times, and the waiting times across the cut, came out too short; a
+  collection built that way should be regenerated. A configuration with
+  overlapping intervals no longer loads, also where the overlap was harmless
+  (`splice = false`, or a series without a time column); merging the
+  intervals changes the series identifier, the step being hashed as written.
 - Time stamps beyond the `Int64` nanosecond range raise an error naming
   `[input].epoch_unit` (millisecond stamps read under the default `"second"`
   wrapped around silently, as did dates after 2262-04-11).
@@ -43,7 +47,7 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   compared a continuous distribution function with a step function. It uses
   Eq. (3.7) of Clauset, Shalizi and Newman (2009) and reads the model at
   `k + 1/2`; on the EUR-USD fixture the exponent moves by 0.03 and the
-  Kolmogorov–Smirnov distance from 0.095 to 0.030.
+  Kolmogorov–Smirnov distance from 0.095 to 0.033.
 
 ### Added
 

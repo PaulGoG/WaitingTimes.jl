@@ -131,7 +131,7 @@ end
         @test load_settings(config(""; input = "delimiter = \";\"\n")).delimiter == ";"
         # interval pairs are integers with start < stop, and do not overlap
         for bad in ("[[20, 10]]", "[[10.5, 20]]", "[[1, 2, 3]]", "[[true, 2]]",
-            "[[5, 20], [1, 10]]")
+            "[[0, 1e19]]", "[[5, 20], [1, 10]]")
             @test occursin("intervals",
                 message(config(step("op = \"exclude_intervals\"\nintervals = $bad\n"))))
         end

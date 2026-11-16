@@ -178,7 +178,10 @@ const PREPROCESSING_OPS = Dict{String, PreprocessingOp}(
             ivs isa AbstractVector &&
             all(
                 iv -> iv isa AbstractVector && length(iv) == 2 &&
-                      all(x -> x isa Real && !(x isa Bool) && isinteger(x), iv) &&
+                      all(
+                          x -> x isa Real && !(x isa Bool) && isinteger(x) &&
+                               typemin(Int64) <= x <= typemax(Int64),
+                          iv) &&
                       iv[1] < iv[2],
                 ivs) ||
                 throw(ArgumentError("[$where_] intervals must be an array of [start, stop] pairs of integers with start < stop"))
