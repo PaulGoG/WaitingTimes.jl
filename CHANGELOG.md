@@ -3,6 +3,58 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
+## [Unreleased]
+
+### Fixed
+
+- Two sessions of one collection started within the same UTC second took the
+  same identifier, and the second overwrote the session record of the first.
+  A session whose identifier is taken gets the suffix `-2`, `-3`, ….
+- `metadata.toml` and the session records are written beside their
+  destination and moved into place, as `index.toml` was; a run killed while
+  writing no longer leaves a collection that cannot be loaded or resumed.
+- A run interrupted between `gaps.csv` and `series.toml` left the later
+  series files unwritten in every later session; a resumed session writes
+  them.
+- Configuration values that validated and failed later are rejected on load
+  with the key named: a choice that is not a string (`detect = false`), a
+  delimiter of more than one character, interval pairs of
+  `exclude_intervals` that are not integers with `start < stop`, and step
+  parameters in another letter case than the transforms read
+  (`denominator = "Mean"`).
+- Time stamps beyond the `Int64` nanosecond range raise an error naming
+  `[input].epoch_unit` (millisecond stamps read under the default `"second"`
+  wrapped around silently, as did dates after 2262-04-11).
+- `prepare` stores values as `Int32` only when the largest configured
+  threshold leaves `q_n + d` within `Int32`; a signed series with a large
+  threshold raised `OverflowError` with no configuration key to avoid it.
+- `plot_distribution` draws a distribution with a single distinct waiting
+  time instead of throwing.
+- The host memory estimate checked against `[limits].max_ram_gb` counts the
+  workspace of the reference kernel; the run-log stream is closed at the end
+  of the session.
+- The downstream example of the documentation estimated the tail exponent of
+  integer waiting times with the continuous maximum-likelihood formula and
+  compared a continuous distribution function with a step function. It uses
+  Eq. (3.7) of Clauset, Shalizi and Newman (2009) and reads the model at
+  `k + 1/2`; on the EUR-USD fixture the exponent moves by 0.03 and the
+  Kolmogorov–Smirnov distance from 0.095 to 0.030.
+
+### Added
+
+- Tests of the kernels against exact first-passage laws: complete ensembles
+  of independent values on a finite grid and of simple random walks
+  (hitting-time theorem), and the Sparre Andersen survival probability of
+  walks with continuous symmetric steps.
+- `Format.yml` checks the committed JuliaFormatter style; the test jobs run
+  on two threads.
+
+### Changed
+
+- Documentation: the waiting time with a threshold is traced to the
+  investment horizon of Simonsen, Jensen and Johansen (2002); docstrings and
+  pages corrected against the code; `read_index` is documented with the API.
+
 ## [0.5.1] - 2026-11-03
 
 ### Changed
