@@ -10,11 +10,12 @@ using Test
 using Aqua
 using ExplicitImports
 using JET
-# JET follows the compiler and loads as empty stubs on a Julia version it does
-# not support yet. On a pre-release the package analysis is then skipped; on a
-# release it runs regardless, so an unsupported JET fails instead of passing
-# silently, which is the signal to widen its compat bound.
-const JET_ENABLED = JET.JET_AVAILABLE || isempty(VERSION.prerelease)
+# JET follows the compiler, so the package analysis runs on releases only: on
+# a pre-release it is skipped (JET 0.13.2 crashed the 1.14 pre-release in
+# jl_code_for_staged), and on a release it runs regardless, so an unsupported
+# JET fails instead of passing silently, which is the signal to widen its
+# compat bound.
+const JET_ENABLED = isempty(VERSION.prerelease)
 using StableRNGs
 using Statistics: mean
 using WaitingTimes.Synthetic: random_walk, iid_series, insert_missing, irregular_times
@@ -79,7 +80,7 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         if JET_ENABLED
             JET.test_package(WaitingTimes; target_modules = (WaitingTimes,))
         else
-            @test_skip "JET package analysis (JET unavailable on Julia $(VERSION))"
+            @test_skip "JET package analysis (not run on the pre-release Julia $(VERSION))"
         end
     end
 
