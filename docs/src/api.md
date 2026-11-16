@@ -4,6 +4,18 @@
 WaitingTimes
 ```
 
+## Modules
+
+```@docs
+WaitingTimes.Config
+WaitingTimes.Preprocessing
+WaitingTimes.Provenance
+WaitingTimes.Storage
+WaitingTimes.Orchestrator
+WaitingTimes.Backends
+WaitingTimes.Synthetic
+```
+
 ## Grid and thresholds
 
 ```@docs

@@ -141,7 +141,7 @@ push!(est, t_ns, price)                        # one sample; snapshot(est) gives
 | Collection read side, legacy export, per-collection README | done |
 | Source identity of a collection, code identity of every session | done; DeepSpaceTelemetry.jl run descriptors and MarketTickStreamer.jl session sidecars |
 | Gap kinds and sources, record structure (segments, record length), index time axis | done |
-| Online estimator for live streams (`OnlineWaitingTimes`) | done; equal to the batch result on every prefix; memory bounded by a declared upper bound or a horizon |
+| Online estimator for live streams (`OnlineWaitingTimes`) | done; equal to the batch result on every prefix; memory bounded by a horizon |
 | Worked consumers of MarketTickStreamer.jl and DeepSpaceTelemetry.jl | done, `examples/`; the consumers assert the collection contract in CI |
 | Precompile workload | done; first result below 0.1 s after `using WaitingTimes` |
 | Documentation site | done |

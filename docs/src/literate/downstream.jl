@@ -38,7 +38,9 @@ d = distribution(c, "0.0020")
 
 series = prepare(load_settings(config)).series
 δ = threshold(0.002, series)
-empirical_distribution(waiting_times(series, δ), δ, series) == d
+recomputed = empirical_distribution(waiting_times(series, δ), δ, series)
+@assert recomputed == d
+recomputed == d
 
 # ## The Distributions.jl view
 #
@@ -65,8 +67,8 @@ fig = with_theme(WaitingTimes.figure_theme()) do
         k = WaitingTimes.support(dk)
         S = WaitingTimes.survival(dk)
         keep = S .> 0
-        scatter!(ax, k[keep], S[keep]; color = color, marker = marker, markersize = 10,
-            strokecolor = :black, strokewidth = 0.5, label = "δ = " * key)
+        scatter!(ax, k[keep], S[keep]; color = color, marker = marker,
+            strokecolor = :black, label = "δ = " * key)
     end
     Legend(fig[0, 1], ax)
     fig

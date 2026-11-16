@@ -6,12 +6,12 @@ comparable with `==` across kernels and backends.
 
 | Kernel | Cost per threshold | Parallelism | Role |
 |---|---|---|---|
-| [`NaiveSearch`](@ref) | ``O(\sum_n \tau_n)``, worst ``O(N^2)`` | over indices, chunked dynamic scheduling | the definition; reference kernel |
+| [`NaiveSearch`](@ref) | ``O(\sum_n \min(\tau_n, N - n))``, worst ``O(N^2)`` | over indices, chunked dynamic scheduling | the definition; reference kernel |
 | [`GuardedSearch`](@ref) | same, censored indices skipped in ``O(1)`` | over indices | the naive scan under a suffix-maximum guard; admitted as `reference_kernel` where the naive scan is too slow |
 | [`SegmentTreeSearch`](@ref) | ``O(N \log N)``, insensitive to ``\delta`` | over indices | production kernel |
 | [`FenwickSweep`](@ref) | ``O(N \log V)``; any number of thresholds per sweep | none (sequential in ``n``) | dense grids, few cores, small memory |
 | [`StreamingSearch`](@ref) | ``O(N \log N)``, one pass, no lookahead | none | live pipelines; equals the reference kernel on every prefix |
-| [`DeviceSearch`](@ref) | ``O(\sum_n \tau_n)`` | one work-item per index on a KernelAbstractions backend | the guarded scan on GPUs |
+| [`DeviceSearch`](@ref) | as the guarded scan | one work-item per index on a KernelAbstractions backend | the guarded scan on GPUs |
 
 ## Segment tree
 

@@ -28,7 +28,7 @@ makedocs(;
         canonical = "https://PaulGoG.github.io/WaitingTimes.jl",
         edit_link = "main",
         assets = String[],
-        size_threshold = 400 * 1024, size_threshold_warn = 200 * 1024
+        size_threshold = 400 * 1024, size_threshold_warn = 256 * 1024
     ),
     pages = [
         "Home" => "index.md",

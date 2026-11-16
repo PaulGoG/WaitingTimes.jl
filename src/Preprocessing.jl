@@ -605,8 +605,8 @@ the step `op` with `parameters` and `summary`, the latter extended by
 value is set to `missing` and its time position remains: the measurement is
 discarded as invalid but its time has passed, and the cut is a recorded gap.
 The 2024 analysis did this (its time column kept the original row indices),
-and it reproduces the published results. With `splice = true`
-the row and its slot vanish. On a sample-indexed series the later indices
+and its published results rest on it. With `splice = true` the row and its
+slot vanish. On a sample-indexed series the later indices
 close up; on an explicit time axis every later time moves back by the span
 from the removed row's predecessor to the removed row, and no elapsed time is
 counted for it.
@@ -680,8 +680,8 @@ levels at once, so the removed share exceeds `fraction` by up to one level.
 `fraction = 0.004` is the rule of the 2024 code, with which the published
 tables were computed; the 0.04 % stated in Rom. J. Phys. 69, 111 (2024),
 §2.3 (doi:10.59277/RomJPhys.2024.69.111), is a misprint of the paper. With
-`splice = false` (the default, as in the 2024 code) this step reproduces the
-published Table 1 entries of the pruned series; see [`remove_rows`](@ref).
+`splice = false` (the default) the rows are removed as the 2024 code removed
+them; see [`remove_rows`](@ref).
 """
 function clip_extremes(rs::RawSeries; fraction::Real = 0.004, digits::Integer,
         splice::Bool = false)

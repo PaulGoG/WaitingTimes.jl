@@ -85,8 +85,11 @@ downstream package.
   time format change identifier; those without one keep theirs.
 - Documentation: the waiting time with a threshold is traced to the
   investment horizon of Simonsen, Jensen and Johansen (2002); docstrings and
-  pages corrected against the code; `read_index` is documented with the API;
-  the references page is built with DocumenterCitations from a BibTeX file;
+  pages corrected against the code; the cost of the naive scan counts the
+  right-censored indices; under a downward drift only a horizon bounds the
+  memory of the streaming state, a declared upper bound helping only near the
+  range of bounded values; `read_index` and the public submodules are
+  documented with the API; the references page is built with DocumenterCitations from a BibTeX file;
   the README follows the file tree with the setup, the entry points and the
   status of the components.
 

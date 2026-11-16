@@ -199,8 +199,8 @@ minute closes: three to four decimals, or `digits = "auto"`.
 Pruning discards a measurement as invalid. With `splice = false` (the
 default) the value becomes missing and its slot remains, so the time passed
 and the cut is a recorded gap. The 2024 code did the same, its time column
-keeping the original row indices, and this reproduces the published
-results. With `splice = true` the row and its slot are deleted and the clock
+keeping the original row indices, and the published results rest on this
+treatment. With `splice = true` the row and its slot are deleted and the clock
 closes over it. After every step the observed values must be finite; a
 non-finite value aborts the run naming the step and the row.
 
@@ -211,10 +211,8 @@ automatic shift, and `clip_extremes` with `fraction = 0.004`. Rom. J. Phys.
 ([doi:10.59277/RomJPhys.2024.69.111](https://doi.org/10.59277/RomJPhys.2024.69.111)),
 states the pruned share as 0.04 % of both signs; that figure is a misprint.
 The published tables were computed with the 0.4 % rule of the
-code, in whole magnitude levels, which reproduces Table 1 of J. Phys.
-Complex. 7, 035007 (2026) for the Trieste and fuel-consumption series. The
-shipped `trieste_sea_level.toml` and `trustee_fuel.toml` carry this
-treatment.
+code, in whole magnitude levels. The shipped `trieste_sea_level.toml` and
+`trustee_fuel.toml` carry this treatment.
 
 Thresholds are generated on the grid: a linear grid from `min` to `max` by
 `step`; a logarithmic grid with `points_per_decade` between `min > 0` and

@@ -6,7 +6,6 @@ of the public contract ([Interfacing](interfacing.md)).
 ## Config
 
 ```@docs
-WaitingTimes.Config
 WaitingTimes.Config.PreprocessingOp
 WaitingTimes.Config.validate_step
 WaitingTimes.Config.warn_ignored_keys
@@ -25,7 +24,6 @@ WaitingTimes.Config.parse_run
 ## Preprocessing
 
 ```@docs
-WaitingTimes.Preprocessing
 WaitingTimes.Preprocessing.apply_steps
 WaitingTimes.Preprocessing.terminal_overview
 WaitingTimes.Preprocessing.remove_rows
@@ -36,7 +34,6 @@ WaitingTimes.Preprocessing.check_finite
 ## Provenance
 
 ```@docs
-WaitingTimes.Provenance
 WaitingTimes.Provenance.write_toml
 WaitingTimes.Provenance.read_toml
 WaitingTimes.Provenance.file_sha256
@@ -64,7 +61,6 @@ WaitingTimes.Monitoring.log_level
 ## Storage
 
 ```@docs
-WaitingTimes.Storage
 WaitingTimes.Storage.MANIFEST_FILE
 WaitingTimes.Storage.SOURCE_FILE
 WaitingTimes.Storage.write_distribution
@@ -89,7 +85,6 @@ WaitingTimes.Storage.preprocessing_steps
 ## Orchestrator
 
 ```@docs
-WaitingTimes.Orchestrator
 WaitingTimes.Orchestrator.dataset_descriptor
 WaitingTimes.Orchestrator.make_kernel
 WaitingTimes.Orchestrator.estimate_memory_bytes
@@ -114,14 +109,7 @@ WaitingTimes.Orchestrator.kernel_name
 ## Backends
 
 ```@docs
-WaitingTimes.Backends
 WaitingTimes.Backends.cpu_backend
-```
-
-## Synthetic
-
-```@docs
-WaitingTimes.Synthetic
 ```
 
 ## Kernels and streaming

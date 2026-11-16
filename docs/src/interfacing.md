@@ -152,10 +152,12 @@ batch result of `StreamingSearch`, which equals the reference kernel on
 every prefix (tested).
 
 The pending set grows with the stream wherever a fraction of the indices
-never resolves: under a downward drift, or when bounded values meet a
-threshold near their range (a random walk with drift ``-0.5\,\sigma`` per
-sample leaves two thirds of its indices pending at ``\delta = 0.5\,\sigma``).
-Two options bound it for long-running pipelines:
+never resolves: under a downward drift (a random walk with drift
+``-0.5\,\sigma`` per sample leaves two thirds of its indices pending at
+``\delta = 0.5\,\sigma``), or when bounded values meet a threshold near
+their range. A declared upper bound of the values removes the indices whose
+target lies above it, which settles the second case; under a drift the
+targets stay within the range and only a horizon bounds the memory:
 
 ```julia
 est = OnlineWaitingTimes([0.5, 5.0, 50.0], 2;
