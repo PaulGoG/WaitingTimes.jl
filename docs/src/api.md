@@ -172,6 +172,7 @@ WaitingTimes.Provenance.SOURCE_SUMMARY_KEYS
 WaitingTimes.Provenance.MINIMUM_PRODUCER_VERSION
 WaitingTimes.Storage.partition_path
 WaitingTimes.Storage.load_distributions
+WaitingTimes.Storage.read_index
 Collection
 load_collection
 list_collections

@@ -6,7 +6,7 @@ comparable with `==` across kernels and backends.
 
 | Kernel | Cost per threshold | Parallelism | Role |
 |---|---|---|---|
-| [`NaiveSearch`](@ref) | ``O(\sum_n \tau_n)``, worst ``O(N^2)`` | over indices, chunked dynamic scheduling | the definition; permanent reference kernel |
+| [`NaiveSearch`](@ref) | ``O(\sum_n \tau_n)``, worst ``O(N^2)`` | over indices, chunked dynamic scheduling | the definition; reference kernel |
 | [`GuardedSearch`](@ref) | same, censored indices skipped in ``O(1)`` | over indices | the naive scan under a suffix-maximum guard; admitted as `reference_kernel` where the naive scan is too slow |
 | [`SegmentTreeSearch`](@ref) | ``O(N \log N)``, insensitive to ``\delta`` | over indices | production kernel |
 | [`FenwickSweep`](@ref) | ``O(N \log V)``; any number of thresholds per sweep | none (sequential in ``n``) | dense grids, few cores, small memory |
@@ -15,13 +15,13 @@ comparable with `==` across kernels and backends.
 
 ## Segment tree
 
-A maximum segment tree over the positions answers, for each index, the
+A maximum segment tree over the positions finds, for each index, the
 leftmost later position whose value reaches the target: climb to the first
 right sibling whose maximum qualifies, then descend to its leftmost
 qualifying leaf, ``O(\log N)``. The tree is built once per series and is
-read-only during queries. On synthetic random walks with 22 threads it
-answers ``4 \cdot 10^6`` points at large ``\delta`` in 33 ms per threshold;
-the naive scan needs about 7 s at ``10^6`` points.
+read-only during queries. With 22 threads it takes 33 ms per threshold on a
+synthetic random walk of ``4 \cdot 10^6`` points at large ``\delta``; the
+naive scan needs about 7 s at ``10^6`` points.
 
 ## Fenwick sweep
 
@@ -32,7 +32,7 @@ prefix-minimum query. Several thresholds share one sweep through
 `waiting_times(s, deltas, FenwickSweep())`, which saves the tree updates but
 not the per-threshold queries, so it is at most 1.5 times faster than
 separate sweeps.
-[`run_pipeline`](@ref) serves the thresholds of a session in batches with the
+[`run_pipeline`](@ref) runs the thresholds of a session in batches with the
 Fenwick sweep, bounded by `[limits].max_ram_gb`, and one at a time with the
 other kernels.
 
@@ -58,12 +58,12 @@ bounds the heap by twice the samples within one horizon, at a cost within
 
 `DeviceSearch` is the guarded scan as a KernelAbstractions kernel, with one
 work-item per index and the host-computed suffix maxima for the censoring
-test. A package extension provides it: `using KernelAbstractions` enables it on
-the CPU backend, and loading CUDA, AMDGPU, oneAPI or Metal defines the probe
-of that GPU backend; [`device_search`](@ref) selects a named backend, and
+test. A package extension provides it. `using KernelAbstractions` enables it
+on the CPU backend, and loading CUDA, AMDGPU, oneAPI or Metal defines the
+probe of that GPU backend. [`device_search`](@ref) selects a named backend;
 `:auto` tries them in that order whatever the load order. Device access is
 serialised and the series arrays are uploaded once per series. The CPU
-backend runs in the default test suite; opt-in device tests live in
+backend runs in the default test suite; the opt-in device tests are in
 `test/device/`.
 
 ## Kernel interface

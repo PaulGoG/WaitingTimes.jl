@@ -61,19 +61,18 @@ without such an `m` are right-censored and contribute no waiting time.
 
 Values and thresholds are quantised to a decimal grid with `digits` decimals
 and handled as integers, so every kernel produces bit-identical results; the
-naive forward scan (`NaiveSearch`) is the permanent reference implementation
-the other kernels are checked against. Time passes through missing samples
+naive forward scan (`NaiveSearch`) is the reference implementation the other
+kernels are checked against. Time passes through missing samples
 and data gaps; gaps are recorded and reported (`gap_table`, `classify`) and
 never alter a waiting time.
 
 `SegmentTreeSearch` is the default kernel, at milliseconds per threshold on
-millions of points. `FenwickSweep` serves many thresholds per sweep and
-`StreamingSearch` runs online, for live pipelines. `NaiveSearch` is the
-reference kernel; `GuardedSearch`, the same scan under a suffix-maximum guard
-and multithreaded, may stand in for it where the naive scan is too slow
-(`[algorithm].reference_kernel`), and `DeviceSearch` runs that guarded scan
-as a KernelAbstractions kernel on CPU or GPU with the KernelAbstractions
-extension (`using KernelAbstractions`).
+millions of points. `FenwickSweep` computes many thresholds in one sweep and
+`StreamingSearch` runs online, for live pipelines. `GuardedSearch`, the naive
+scan under a suffix-maximum guard and multithreaded, may stand in for
+`NaiveSearch` as reference kernel where the naive scan is too slow
+(`[algorithm].reference_kernel`). `DeviceSearch` runs the guarded scan on CPU
+or GPU through the KernelAbstractions extension (`using KernelAbstractions`).
 
 ![How each kernel resolves the waiting times of one index on a 48-sample
 series](docs/src/assets/kernels.gif)
@@ -90,10 +89,10 @@ to 10⁶ points at three thresholds](docs/src/assets/timings.png)
 ![The survival function of the Geisenheim waiting times sweeping through the
 threshold grid from 0 to 50 km/h](docs/src/assets/sweep.gif)
 
-A collection holds one distribution per threshold. The downstream indicators
-of the 2026 paper, the difference of the two fits' Kolmogorov–Smirnov
-distances and the generalised Kullback–Leibler divergence between their
-tails, are computed downstream from the collection along this sweep.
+A collection holds one distribution per threshold. The indicators of the
+2026 paper, the difference of the two fits' Kolmogorov–Smirnov distances and
+the generalised Kullback–Leibler divergence between their tails, are
+computed downstream from the collection along this sweep.
 
 ## Setup
 
@@ -105,8 +104,8 @@ julia -i activate.jl     # the same, then a REPL in it
 ```
 
 Every script and auxiliary environment activates itself; no `--project` flag
-is needed anywhere. The scripts run in their own environment, `scripts/`,
-instantiated on first use like the others.
+is needed. The scripts run in their own environment, `scripts/`, instantiated
+on first use like the others.
 
 ## Entry points
 
@@ -122,21 +121,21 @@ julia --threads=auto bench/run_benchmarks.jl                                   #
 julia --threads=auto test/device/runtests.jl                                   # opt-in GPU tests (oneAPI)
 julia docs/make.jl                                                             # documentation site into docs/build/
 JULIA_PKG_USE_CLI_GIT=true julia examples/check_environment.jl                 # instantiate the examples environment (clones two packages)
-julia --threads=auto examples/tick_stream.jl                                   # tick stream: online estimator against batch, collections on both time axes, contract checked
-julia examples/telemetry_run.jl                                                # telemetry run: its declared gaps, collections that name the run, contract checked
+julia --threads=auto examples/tick_stream.jl                                   # MarketTickStreamer.jl consumer, collection contract checked
+julia examples/telemetry_run.jl                                                # DeepSpaceTelemetry.jl consumer, collection contract checked
 julia -e 'using Pkg; Pkg.activate("JuliaFormatter"; shared = true); Pkg.add("JuliaFormatter"); using JuliaFormatter; format(".")'   # formatting
 ```
 
 Raw inputs are expected under `data/raw/` (gitignored); the configurations in
 `configs/` reference them relative to the configuration file. A run writes a
 collection directory `data/<collection id>/` (provenance schema 4) with a
-`README.md` describing its own files. Provenance lives in `config.toml`,
-`metadata.toml`, `hardware.txt`, the resolved manifest and, under
-`sessions/`, the per-session records, configuration snapshots and manifests.
-Each threshold is one partition under `distributions/`, its counts split
-into exact and gap-crossing waits, with its censoring histogram under
-`censoring/`; beside them lie the prepared series, its gaps by kind
-(`gaps.csv`) and the segments between them (`segments.csv`). `index.toml`
+`README.md` describing its own files. Provenance is kept in `config.toml`,
+`metadata.toml`, `hardware.txt`, the resolved manifest and `sessions/`, with
+a record, configuration snapshot and manifest per session. Each threshold is
+one partition under `distributions/`, its counts split into exact and
+gap-crossing waits, with its censoring histogram under `censoring/`. The
+prepared series is stored with its gaps by kind (`gaps.csv`) and the
+segments between them (`segments.csv`). `index.toml`
 and `summary.csv` are rewritten at every checkpoint of a session and at its
 end, so an interrupted run leaves a collection that loads and resumes.
 
@@ -146,7 +145,7 @@ MarketTickStreamer.jl session sidecar), the collection keeps a verbatim copy
 as `source.toml` and records it in `metadata.toml` with the producer's code
 identity. `[input].time_axis = "index"` places the series on the row ordinal
 of the input instead of its clock; for a tick stream that is the trade count,
-and exchange closures no longer count as elapsed time.
+and exchange closures add no time to a wait.
 Rerunning with a wider threshold grid adds partitions and appends a session.
 Existing partitions are rewritten only when `[output].overwrite = true`, and
 are backed up first.
@@ -165,7 +164,7 @@ WaitingTimes.support(d), WaitingTimes.probabilities(d), WaitingTimes.cumulative(
 From a collection on disk, and in real time:
 
 ```julia
-c = load_collection("data/<collection id>")   # show(c) prints an overview; thresholds(c), summary_table(c)
+c = load_collection("data/<collection id>")   # the REPL displays an overview; thresholds(c), summary_table(c)
 source_descriptor(c)                           # the producer's descriptor of the input, verbatim, or nothing
 WaitingTimes.source_summary(c)                 # its producer, version and code identity (git_tree_sha1)
 class_counts(c, "0.0005")                      # exact and gap-crossing waits per support value
@@ -185,11 +184,11 @@ push!(est, t_ns, price)                        # one sample; snapshot(est) gives
 | Gap classification and class accounting | done |
 | Empirical distribution | done |
 | Legacy fixture regression (EUR-USD) | done, exact |
-| Segment-tree, Fenwick and streaming kernels | done; equal to the reference kernel on all 7 124 dataset thresholds and on 4·10⁶ synthetic points |
+| Segment-tree, Fenwick and streaming kernels | done, equal to the reference kernel on the 7 124 dataset thresholds and on 4·10⁶ synthetic points |
 | Synthetic generators, benchmarks | done |
 | Configuration, storage, provenance, preprocessing, scripts | done; quickstart end to end in the tests |
 | Distributions.jl and CairoMakie extensions | done |
-| KernelAbstractions device kernel | done; a package extension (`using KernelAbstractions`); CPU backend in the default tests, oneAPI verified on an Intel Arc GPU |
+| KernelAbstractions device kernel | done, a package extension (`using KernelAbstractions`), tested on the CPU by default and with oneAPI on an Intel Arc GPU |
 | Preprocessing (published treatment, `clip_sigma`, log returns, log levels) | done; Table 1 of the paper reproduced by `examples/published_fits.jl` |
 | Automatic choice of `digits` | done |
 | Collection read side, legacy export, per-collection README | done |

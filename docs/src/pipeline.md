@@ -20,8 +20,8 @@ large gaps can be located and cut before a run.
 
 [`generate`](@ref) computes every configured threshold not yet present in the
 collection, writes one partition per threshold, runs reference checks, and
-records the session. With the Fenwick sweep the thresholds of a session are
-served in one pass per batch, the batch as large as `[limits].max_ram_gb`
+records the session. With the Fenwick sweep a session's thresholds are
+computed in one pass per batch, the batch as large as `[limits].max_ram_gb`
 leaves room for. The collection directory (provenance schema
 `waitingtimes-provenance/4`) is
 
@@ -66,8 +66,9 @@ case they are backed up as `<name>#k.<ext>` first. `index.toml` and
 `summary.csv` are rewritten at every checkpoint (`[run].checkpoint_seconds`,
 10 s by default) and at the end of the session, so an
 interrupted run resumes from the partitions already written. With reference
-checks enabled the kernel is compared with the reference kernel on the
-largest pending threshold before any partition is written.
+checks enabled the kernel is first compared with the reference kernel on the
+largest pending threshold whose reference work is within
+`[limits].max_reference_work`, before any partition is written.
 
 ## Validate
 
@@ -91,10 +92,12 @@ julia --threads=auto scripts/crosscheck.jl --config configs/quickstart.toml
 julia scripts/lineage.jl data/<collection id>
 ```
 
-Every script activates the scripts environment itself (`scripts/activate.jl`). `launch_run.jl`
-starts the pipeline as a detached process with a console log under
-`data/logs/`. `run_pipeline.jl` loads KernelAbstractions and the GPU package
-named by `[algorithm].backend` when the configuration uses the device kernel
-and they are installed, which activates the corresponding extensions.
-`crosscheck.jl` compares every kernel with the configured reference
-kernel index by index on the whole threshold grid of a configuration.
+Every script activates the scripts environment itself
+(`scripts/activate.jl`). `launch_run.jl` starts the pipeline as a detached
+process with a console log under `data/logs/`. `run_pipeline.jl` loads
+KernelAbstractions and the GPU package named by `[algorithm].backend` when
+the configuration uses the device kernel and they are installed, which
+activates the corresponding extensions. `crosscheck.jl` compares every kernel
+with the configured reference kernel index by index on the threshold grid of
+a configuration, or on every K-th threshold with `--every K`; `--env` runs it
+in another environment, such as `test/device` for a GPU package.

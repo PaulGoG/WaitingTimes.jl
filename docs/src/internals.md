@@ -1,6 +1,7 @@
 # Internals
 
-Docstrings of the internal modules and functions, kept here so that the whole package is documented; none of these names is part of the public contract ([Interfacing](interfacing.md)).
+Docstrings of the internal modules and functions. None of these names is part
+of the public contract ([Interfacing](interfacing.md)).
 
 ## Config
 
@@ -70,7 +71,6 @@ WaitingTimes.Storage.write_distribution
 WaitingTimes.Storage.read_distribution
 WaitingTimes.Storage.write_summary
 WaitingTimes.Storage.write_index
-WaitingTimes.Storage.read_index
 WaitingTimes.Storage.write_waiting_times
 WaitingTimes.Storage.read_waiting_times
 WaitingTimes.Storage.write_series_files

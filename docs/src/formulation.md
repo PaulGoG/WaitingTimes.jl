@@ -50,12 +50,12 @@ series and reported; they never alter a waiting time. The classification
 between the index and its observed passage, so the true waiting time is only
 bracketed) or right-censored, and the distribution records the three counts.
 An `:exact` mode that keeps only exact waits exists for comparison studies
-and is not a default anywhere.
+and is not the default.
 
 ## Pruning versus gaps
 
-A recorded gap is time that passed unobserved: the observation is absent but
-its slot remains, so the clock runs through it and the classification reports
+A recorded gap is time that passed unobserved. The observation is absent but
+its slot remains; the clock runs through it, and the classification reports
 which waiting times crossed it. Pruning (`clip_quantile`, `clip_sigma`,
 `clip_extremes`) discards a measurement as invalid. By default the value
 becomes missing and its slot remains, so a pruned value is treated exactly

@@ -7,20 +7,21 @@
 #
 # Without a run directory the shipped `drop_policy` scenario runs first, on
 # the tick clock: three mission days, deterministic, about a minute with its
-# post-processing, the figure stages skipped. Its lossy channel drops rejected transfers for good, so
-# about one sixth of the batches are lost and as many are still undelivered
-# at mission end. The run is placed under the output directory
-# (`run_mission(cfg; data_root)`), so nothing is written into the installed
-# package. A given run directory must be a finished run of DeepSpaceTelemetry
-# 2.6 or later, the oldest producer the adapter opens by default.
+# post-processing, the figure stages skipped. Its lossy channel discards
+# rejected transfers, so about one sixth of the batches are lost and as many
+# are still undelivered at mission end. The run is placed under the output
+# directory (`run_mission(cfg; data_root)`), so nothing is written into the
+# installed package. A given run directory must be a finished run of
+# DeepSpaceTelemetry 2.6 or later, the oldest producer the adapter opens by
+# default.
 #
-# The run directory is read through the producer's adapter
-# (`DeepSpaceTelemetry.RunAdapter`, public since 2.6.2; since 2.9.0 it lives
-# in the reader subpackage `DeepSpaceTelemetryReader`, re-exported under the
-# same qualified names; stable within 3.x, where the producer is maintained
-# rather than extended; see the producers page of the documentation). Sample
-# `k` of a batch lies at payload row
-# `payload_row + k - 1`, and time `(r - 1) / sample_rate` from the origin is
+# The run directory is read through the producer's adapter,
+# `DeepSpaceTelemetry.RunAdapter`: public since 2.6.2, in the reader
+# subpackage `DeepSpaceTelemetryReader` since 2.9.0 (re-exported under the
+# same qualified names), and stable within 3.x, the maintenance series of the
+# producer (see the producers page of the documentation). Sample `k` of a
+# batch lies at payload row `payload_row + k - 1`, and time
+# `(r - 1) / sample_rate` from the origin is
 # payload row `r` (`row_time`). `masks/gaps.csv`, the settled table of every
 # hole of the delivered record with its cause (lost, pruned, undelivered,
 # generation gaps), is read with `TelemetryCore.read_table`. Its holes are the

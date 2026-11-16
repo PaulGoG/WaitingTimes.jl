@@ -97,9 +97,9 @@ The field layout of [`WaitingTimeDistribution`](@ref) (twelve fields,
 `horizon` last) and its twelve- and eleven-argument constructors, the latter
 without a horizon, are part of the contract, as are the file layout and
 column names of a collection of provenance schema 4 (schemas 2 and 3 are
-still read).
+also read).
 
-Two lower-level readers remain for tabular work:
+Two lower-level readers suit tabular work:
 
 ```julia
 using WaitingTimes.Storage: load_distributions, read_index
@@ -142,7 +142,7 @@ status(est)                               # per threshold: seen, resolved, pendi
 pending(est)                              # indices without a passage yet, per threshold
 ```
 
-`push!(est, x)` serves sample-indexed streams; `append!(est, times, values)`
+`push!(est, x)` takes sample-indexed streams; `append!(est, times, values)`
 feeds whole batches. A sample whose time does not exceed the previous one is
 rejected under `late_policy = :error` or counted in `est.n_late` and skipped
 under `:skip`; a consolidated tape interleaves venues, so `:skip` is the
@@ -171,7 +171,7 @@ and equal `empirical_distribution(τ, δ, s; horizon = H)` of the batch
 evaluation; memory stays below twice the samples within one horizon.
 `status(est)` reports the evicted and unreachable indices per threshold.
 
-The lower-level pieces remain available: a [`StreamingState`](@ref) at one
+The lower-level pieces are a [`StreamingState`](@ref) at one
 threshold fed with [`update!`](@ref WaitingTimes.update!), and a
 [`DistributionAccumulator`](@ref) turned into a distribution by
 [`empirical_distribution`](@ref).

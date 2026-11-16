@@ -46,12 +46,12 @@ per-threshold statistics; `summary.csv` is regenerated from it after every
 checkpoint of a session and at its end.
 
 Each session also has its own file under `sessions/`. It records the kernel
-and backend, thread count, package version, code identity, git state and
-Julia version; the SHA-256 of the session's manifest, copied to
-`sessions/<id>.manifest.toml`; the hardware fingerprint (host, CPU, cores,
-memory, BLAS threads, and the device report of a GPU backend); the
-configuration hash; the thresholds computed and skipped; the reference
-checks; and the stage timings. Its `status` is `"running"` while the session
+and backend, thread count, package version, code identity, git state, Julia
+version and configuration hash, the thresholds computed and skipped, the
+reference checks and stage timings. It holds the SHA-256 of the session's
+manifest, copied to `sessions/<id>.manifest.toml`, and the hardware
+fingerprint: host, CPU, cores, memory, BLAS threads and a GPU backend's
+device report. Its `status` is `"running"` while the session
 computes and `"completed"` once the record is final; a session file still at
 `"running"` belongs to an interrupted run, whose partitions `index.toml`
 already lists. `hardware.txt` carries

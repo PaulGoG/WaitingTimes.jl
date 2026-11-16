@@ -4,8 +4,8 @@ Series reach WaitingTimes through files, sampled or event-driven, and
 through two producers whose output the package reads directly:
 DeepSpaceTelemetry.jl, which simulates the telemetry chain of a deep-space
 mission and writes run directories, and MarketTickStreamer.jl, which
-captures, replays and compacts trade ticks. A consumer of a collection sees
-only the collection, which carries the same fields whatever the input. The
+captures, replays and compacts trade ticks. A consumer sees only the
+collection, whose fields do not depend on the input. The
 two worked examples, `examples/telemetry_run.jl` and `examples/tick_stream.jl`,
 run in continuous integration against the producer versions pinned in
 `examples/Project.toml` and assert the contract below; a producer change that
@@ -56,7 +56,7 @@ stamped `git_dirty = true` while its directory was pristine, because the
 identity hash left out a tracked placeholder under that root; 3.1.1 fixes
 the hash. The flag of such descriptors is spurious; their `git_tree_sha1` and
 `git_commit` are correct and remain the keys of the producer's code. The fix
-lives in the reader subpackage, which the producer bounds by `3.1`: an
+is in the reader subpackage, which the producer bounds by `3.1`: an
 environment that keeps the 3.1.0 reader beside 3.1.1 stamps the flag until
 the reader is resolved again.
 
@@ -69,13 +69,13 @@ runs of one configuration agree on every product but the wall-clock column of
 A Julia consumer reads the run through the producer's adapter,
 `DeepSpaceTelemetry.RunAdapter` (public since 2.6.2), as
 `examples/telemetry_run.jl` does. `open_run` checks the producer's version
-(2.6.0 or later by default since 3.0) and the lifecycle sentinel;
-`run_geometry` gives the sample rate, the payload origin and the clock mode;
-`list_batches` and `read_batch` give the delivered payload with its payload
-rows (`row_time` the instant of a row); `declared_holes` gives the feed; and
-`delivered_rows` gives the payload rows on the ground at a mission instant.
+(2.6.0 or later by default since 3.0) and the lifecycle sentinel.
+`run_geometry` returns the sample rate, the payload origin and the clock
+mode, `list_batches` and `read_batch` the delivered payload with its payload
+rows (`row_time` the instant of a row), `declared_holes` the feed, and
+`delivered_rows` the payload rows on the ground at a mission instant.
 `TelemetryCore.read_table` reads the tables of the run and states their
-column types. Since 3.0 the producer is maintained rather than extended, and
+column types. Since 3.0 the producer is in maintenance, and
 the file contract and the adapter are stable within 3.x. Since
 DeepSpaceTelemetry 2.9 the adapter and `TelemetryCore` form the subpackage
 `DeepSpaceTelemetryReader` (`reader/` of the repository), re-exported under
@@ -103,8 +103,8 @@ at every multiple of a period on the exchange clock and once at close. The
 snapshots are a function of the sequence alone, so a replay reproduces those
 of the live session.
 
-The file contract, fixed by MarketTickStreamer 1.0.0 and kept by 2.0, serves
-the batch pipeline. The processed day files
+The batch pipeline uses the file contract, fixed by MarketTickStreamer 1.0.0
+and kept by 2.0. The processed day files
 `processed/<SYMBOL>/<YYYY-MM-DD>.csv|.arrow`
 hold `time_ns`, `price` and the other trade columns, rows sorted by
 `time_ns` and exact duplicates removed. They are read with `format = "tick"`,

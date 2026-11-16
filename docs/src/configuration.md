@@ -103,8 +103,7 @@ The original clock is kept: `series.<ext>` carries the row ordinal (`row`)
 and the original time (`time_original`) of every observation, so the
 collection can be rebuilt on the other axis, and on the index axis the gaps
 of the original clock are written to `gaps_original.csv`. The time axis
-enters the series identity only when it is `index`, so elapsed collections
-keep their identifiers.
+enters the series identity only when it is `index`.
 
 ## Gap kinds
 
@@ -244,25 +243,23 @@ same input from another source run is another collection.
 Beside the verbatim table, `[source]` holds a summary in the same keys for
 every producer ([`source_summary`](@ref WaitingTimes.Provenance.source_summary)):
 `producer`, `producer_version`, `git_tree_sha1`, `git_dirty`, `git_commit`,
-and `identity`, which states whether `git_tree_sha1` is present.
+`schema` and `identity`, which states whether `git_tree_sha1` is present.
 `producer_compat`, `compat_checked` and `compat_satisfied` record the check of
 the producer's version against the oldest one whose file contract this
 release reads
 ([`MINIMUM_PRODUCER_VERSION`](@ref WaitingTimes.Provenance.MINIMUM_PRODUCER_VERSION):
 DeepSpaceTelemetry.jl 2.5.0, MarketTickStreamer.jl 1.0.0). A version below
 the minimum is recorded with a warning; a descriptor without `git_tree_sha1`
-is recorded as having no code identity, never rejected.
+is accepted and recorded as having no code identity.
 
-DeepSpaceTelemetry.jl was the first producer to write one: from 2.5 on, a
-finished run directory holds `descriptor.toml` (schema
-`deepspacetelemetry-run/1`, `/2` since 3.0, read alike) with the run
-identifier, the producer's version, the identity of its code, the
-configuration hash, the clock mode, the seed, the payload geometry and the
-size and SHA-256 of every table of the run (`examples/telemetry_run.jl`).
-MarketTickStreamer.jl writes a session
-sidecar, `<session>.meta.toml`, with the session, the producer's version,
-commit and dirty flag, the venue's timestamp unit, the hardware and the
-configuration snapshot (`examples/tick_stream.jl`); it records no tree hash.
+From version 2.5, a finished DeepSpaceTelemetry.jl run directory holds
+`descriptor.toml` (schema `deepspacetelemetry-run/1`, `/2` since 3.0, read
+alike) with the run identifier, the producer's version and code identity,
+the configuration hash, the clock mode, the seed, the payload geometry and
+the size and SHA-256 of every table of the run (`examples/telemetry_run.jl`).
+A MarketTickStreamer.jl session sidecar, `<session>.meta.toml`, records the
+producer's version, commit and dirty flag but no tree hash
+(`examples/tick_stream.jl`).
 
 The authoritative key of the producer's code is `git_tree_sha1` with
 `git_dirty = false`. `git_commit` adds the history and is filled when the

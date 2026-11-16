@@ -4,17 +4,16 @@
 #   julia --threads=auto scripts/crosscheck.jl --config PATH [--every K]
 #         [--backend oneapi|cuda|amdgpu|metal|none] [--env DIR] [--out PATH.csv]
 #
-# Every K-th threshold of the grid is checked (default every one). On a
-# checked threshold every
-# kernel is compared with the reference kernel of the configuration
-# ([algorithm].reference_kernel) through `validate`, which reports the number of
-# differing indices and the reference kernel's work and time; a comparison whose work
-# exceeds [limits].max_reference_work is skipped. With --backend the device
-# kernel also runs on that GPU; the environment must then contain the GPU
-# package. --env selects the environment, the scripts environment by default;
-# test/device holds oneAPI. --out writes one row
-# per kernel and threshold to a CSV file; the summary is always printed, and any
-# disagreement ends the script with an error.
+# Every K-th threshold of the grid is checked (K = 1 by default). On each
+# checked threshold every kernel is compared with the reference kernel of the
+# configuration ([algorithm].reference_kernel) through `validate`, which
+# reports the number of differing indices and the reference kernel's work and
+# time; a comparison whose work exceeds [limits].max_reference_work is
+# skipped. With --backend the device kernel also runs on that GPU; the
+# environment must then contain the GPU package. --env selects the
+# environment, the scripts environment by default; test/device holds oneAPI.
+# --out writes one row per kernel and threshold to a CSV file; the summary is
+# always printed, and any disagreement ends the script with an error.
 function parse_commandline(argv)
     options = Dict{String, Any}("config" => nothing, "every" => 1, "backend" => "none",
         "env" => @__DIR__, "out" => nothing)

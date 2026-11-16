@@ -19,13 +19,13 @@ Pareto-Tsallis regime at large ``\delta`` across weather, sea-level,
 currency and automotive data.
 
 The package computes these distributions exactly and reproducibly. Values
-and thresholds live on a decimal integer grid, so every kernel produces
-bit-identical results; the naive scan is the permanent reference
-implementation the others are checked against
-([Formulation](formulation.md)). A segment-tree kernel serves production runs
-in milliseconds per threshold, a Fenwick sweep serves dense grids and a
-streaming kernel live pipelines, and a KernelAbstractions kernel runs the
-guarded scan on GPUs ([Kernels](kernels.md)). A validated TOML configuration
+and thresholds are integers on a decimal grid, so every kernel produces
+bit-identical results; the naive scan is the reference implementation the
+others are checked against ([Formulation](formulation.md)). Production runs
+use a segment-tree kernel at milliseconds per threshold; a Fenwick sweep
+suits dense grids, a streaming kernel live pipelines, and a
+KernelAbstractions kernel runs the guarded scan on GPUs
+([Kernels](kernels.md)). A validated TOML configuration
 drives a run from ingestion to the written collection, which records its own
 provenance; an interrupted run resumes, and reference checks recompute part
 of the grid with the reference kernel ([Pipeline](pipeline.md),
