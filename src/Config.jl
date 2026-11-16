@@ -176,8 +176,12 @@ const PREPROCESSING_OPS = Dict{String, PreprocessingOp}(
         function (step, where_)
             ivs = require(step, where_, "intervals")
             ivs isa AbstractVector &&
-            all(iv -> iv isa AbstractVector && length(iv) == 2, ivs) ||
-                throw(ArgumentError("[$where_] intervals must be an array of [start, stop] pairs"))
+            all(
+                iv -> iv isa AbstractVector && length(iv) == 2 &&
+                      all(x -> x isa Real && !(x isa Bool) && isinteger(x), iv) &&
+                      iv[1] < iv[2],
+                ivs) ||
+                throw(ArgumentError("[$where_] intervals must be an array of [start, stop] pairs of integers with start < stop"))
             haskey(step, "splice") && as_bool(step["splice"], where_, "splice")
             return nothing
         end,
@@ -199,17 +203,17 @@ const PREPROCESSING_OPS = Dict{String, PreprocessingOp}(
                     as_int(require(step, where_, "window"), where_, "window"; min = 1)
                     denominator = as_symbol(
                         get(step, "denominator", "mean"), where_,
-                        "denominator", (:mean, :scale, :none))
+                        "denominator", (:mean, :scale, :none); exact = true)
                     offset = get(step, "offset", "none")
                     if offset isa AbstractString
-                        as_symbol(offset, where_, "offset", (:none, :auto))
+                        as_symbol(offset, where_, "offset", (:none, :auto); exact = true)
                     else
                         as_float(offset, where_, "offset")
                     end
                     (offset == "none" || denominator === :mean) ||
                         throw(ArgumentError("[$where_] offset applies to denominator = \"mean\" only"))
                     as_symbol(get(step, "on_nonpositive", "error"), where_,
-                        "on_nonpositive", (:error, :missing))
+                        "on_nonpositive", (:error, :missing); exact = true)
                     return nothing
                 end,
                 function (step)
@@ -226,7 +230,7 @@ const PREPROCESSING_OPS = Dict{String, PreprocessingOp}(
         function (step, where_)
             reference = get(step, "reference", "first")
             if reference isa AbstractString
-                as_symbol(reference, where_, "reference", (:first,))
+                as_symbol(reference, where_, "reference", (:first,); exact = true)
             else
                 r = as_float(reference, where_, "reference")
                 r > 0 ||
@@ -262,9 +266,10 @@ const PREPROCESSING_OPS = Dict{String, PreprocessingOp}(
                     k_ = as_float(get(step, "k", 3.0), where_, "k")
                     k_ > 0 || throw(ArgumentError("[$where_] k must be positive, got $k_"))
                     as_symbol(get(step, "center", "mean"), where_, "center",
-                        (:mean, :median))
-                    as_symbol(get(step, "scale", "std"), where_, "scale", (
-                        :std, :mad))
+                        (:mean, :median); exact = true)
+                    as_symbol(get(step, "scale", "std"), where_,
+                        "scale", (
+                            :std, :mad); exact = true)
                     haskey(step, "splice") && as_bool(step["splice"], where_, "splice")
                     return nothing
                 end,
@@ -288,7 +293,7 @@ const PREPROCESSING_OPS = Dict{String, PreprocessingOp}(
         Dict{String, Any}(),
         function (step, where_)
             as_symbol(require(step, where_, "policy"), where_, "policy",
-                (:error, :first, :last, :mean))
+                (:error, :first, :last, :mean); exact = true)
             return nothing
         end,
         step -> "ties")
@@ -338,8 +343,11 @@ function require(table, section, key)
     return table[key]
 end
 
-function as_symbol(value, section, key, allowed)
-    s = Symbol(lowercase(String(value)))
+function as_symbol(value, section, key, allowed; exact::Bool = false)
+    value isa AbstractString || throw(ArgumentError(
+        "[$section] $key must be a string, one of $(join(string.(allowed), ", ")); got $(repr(value))",
+    ))
+    s = Symbol(exact ? value : lowercase(value))
     s in allowed || throw(ArgumentError(
         "[$section] $key = $(repr(value)) is not one of $(join(string.(allowed), ", "))",
     ))
@@ -364,7 +372,8 @@ function as_float(value, section, key; min = -Inf, max = Inf)
 end
 
 function as_bool(value, section, key)
-    value isa Bool || throw(ArgumentError("[$section] $key must be true or false"))
+    value isa Bool ||
+        throw(ArgumentError("[$section] $key must be true or false, got $(repr(value))"))
     return value
 end
 
@@ -377,7 +386,9 @@ end
 function as_column(value, section, key)
     value isa Integer && !(value isa Bool) && return as_int(value, section, key; min = 1)
     value isa AbstractString && return String(value)
-    throw(ArgumentError("[$section] $key must be a column index or name"))
+    throw(ArgumentError(
+        "[$section] $key must be a column index or name, got $(repr(value))",
+    ))
 end
 
 function resolve_path(path::AbstractString, dir::AbstractString)
@@ -460,6 +471,9 @@ function parse_input(raw, config_dir)
             "[input] epoch_unit must be \"nanosecond\" for format = \"tick\", got \"$epoch_unit\"",
         ))
     delimiter = as_string(get(inp, "delimiter", ""), "input", "delimiter")
+    length(delimiter) <= 1 || throw(ArgumentError(
+        "[input] delimiter must be one character or empty, got $(repr(delimiter))",
+    ))
     header = as_bool(get(inp, "header", true), "input", "header")
     missing_policy = as_symbol(get(inp, "missing_policy", "drop"), "input",
         "missing_policy", (:drop, :error))
@@ -515,7 +529,7 @@ function parse_quantization(raw)
             digits_raw, "quantization", "digits"; min = 0, max = MAX_DIGITS))
     end
     auto_max_digits = as_int(get(quant, "auto_max_digits", 8),
-        "quantization", "auto_max_digits"; min = 0, max = 14)
+        "quantization", "auto_max_digits"; min = 0, max = MAX_DIGITS - 1)
     auto_tolerance = as_float(get(quant, "auto_tolerance", 1e-3),
         "quantization", "auto_tolerance"; min = 0.0, max = 1.0)
     0 < auto_tolerance < 1 ||

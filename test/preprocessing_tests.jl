@@ -89,3 +89,66 @@
         @test settings isa WT.Settings
     end
 end
+
+@testset "Configuration values rejected on load" begin
+    mktempdir() do dir
+        write(joinpath(dir, "series.csv"), "value\n1.00\n1.25\n1.10\n1.40\n")
+        function config(rest; input = "")
+            path = joinpath(dir, "c.toml")
+            write(path,
+                "[input]\npath = \"series.csv\"\nvalue_column = \"value\"\n$input" *
+                "[quantization]\ndigits = 2\n" *
+                "[thresholds]\nmode = \"linear\"\nmin = 0.05\nmax = 0.25\nstep = 0.05\n" *
+                rest)
+            return path
+        end
+        message(path) =
+            try
+                load_settings(path)
+                ""
+            catch e
+                e isa ArgumentError ? e.msg : rethrow()
+            end
+        step(body) = "[[preprocessing.steps]]\n" * body
+        @test load_settings(config("")) isa WT.Settings
+        # a choice that is not a string names its key
+        @test occursin("[gaps] detect", message(config("[gaps]\ndetect = false\n")))
+        @test occursin("[algorithm] backend", message(config("[algorithm]\nbackend = 1\n")))
+        # the choices of the sections are case-insensitive
+        @test load_settings(config("[gaps]\ndetect = \"None\"\n")).gap_detect === :none
+        # step parameters are used as written
+        @test occursin("denominator",
+            message(config(step("op = \"trailing_mean_fluctuations\"\nwindow = 2\n" *
+                                "denominator = \"Mean\"\n"))))
+        @test occursin("policy",
+            message(config(step("op = \"collapse_ties\"\npolicy = \"First\"\n"))))
+        @test length(load_settings(config(step(
+            "op = \"trailing_mean_fluctuations\"\nwindow = 2\n" *
+            "denominator = \"mean\"\n"))).steps) == 1
+        # a delimiter is one character
+        @test occursin("[input] delimiter",
+            message(config(""; input = "delimiter = '\\t'\n")))
+        @test load_settings(config(""; input = "delimiter = \";\"\n")).delimiter == ";"
+        # interval pairs are integers with start < stop
+        for bad in ("[[20, 10]]", "[[10.5, 20]]", "[[1, 2, 3]]", "[[true, 2]]")
+            @test occursin("intervals",
+                message(config(step("op = \"exclude_intervals\"\nintervals = $bad\n"))))
+        end
+        @test length(load_settings(config(step(
+            "op = \"exclude_intervals\"\nintervals = [[1, 2], [3.0, 4]]\n"))).steps) == 1
+    end
+end
+
+@testset "Time stamps outside the Int64 nanosecond range" begin
+    P = WT.Preprocessing
+    # 2026-11-16T00:00:00Z is 1 794 787 200 s after the epoch
+    @test P.time_to_ns(1_794_787_200, :second, nothing, 1) == 1_794_787_200 * 10^9
+    @test P.time_to_ns(1.7947872e9, :second, nothing, 1) == 1_794_787_200 * 10^9
+    @test P.time_to_ns(DateTime(2026, 11, 16), :second, nothing, 1) == 1_794_787_200 * 10^9
+    @test P.time_to_ns(1_794_787_200_000, :millisecond, nothing, 1) == 1_794_787_200 * 10^9
+    # millisecond stamps read as seconds, a float beyond Int64, a date after 2262-04-11
+    @test_throws ArgumentError P.time_to_ns(1_794_787_200_000, :second, nothing, 1)
+    @test_throws ArgumentError P.time_to_ns(-1_794_787_200_000, :second, nothing, 1)
+    @test_throws ArgumentError P.time_to_ns(1.0e30, :second, nothing, 1)
+    @test_throws ArgumentError P.time_to_ns(DateTime(9999, 12, 31), :second, nothing, 1)
+end

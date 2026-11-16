@@ -213,9 +213,21 @@ end
 function time_to_ns(v::Real, epoch_unit, _, i)
     v isa Integer || isinteger(v) ||
         throw(ArgumentError("numeric time stamp at row $i is not an integer: $v"))
-    return Int64(v) * UNIT_NANOSECONDS[epoch_unit]
+    unit = UNIT_NANOSECONDS[epoch_unit]
+    bound = typemax(Int64) ÷ unit
+    -bound <= v <= bound || throw(ArgumentError(
+        "time stamp $v at row $i exceeds the Int64 nanosecond range with epoch_unit = :$epoch_unit; check [input] epoch_unit",
+    ))
+    return Int64(v) * unit
 end
-time_to_ns(v::DateTime, _, _, _) = Dates.value(v - unix2datetime(0)) * 10^6
+function time_to_ns(v::DateTime, _, _, i)
+    ms = Dates.value(v - unix2datetime(0))
+    bound = typemax(Int64) ÷ 10^6
+    -bound <= ms <= bound || throw(ArgumentError(
+        "time stamp $v at row $i lies outside the Int64 nanosecond range (1677-09-21 to 2262-04-11)",
+    ))
+    return ms * 10^6
+end
 
 "ISO 8601 date-time with a fraction finer than the millisecond held by `DateTime`"
 const ISO_SUBMILLISECOND = r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{4,9})$"
