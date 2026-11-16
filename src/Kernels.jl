@@ -16,9 +16,11 @@ abstract type AbstractSearch end
     NaiveSearch(; chunk_size = 4096)
 
 Direct evaluation of the definition: for each index scan forward until the
-first value at least `δ` above it. Cost ``O(\\sum_n \\min(\\tau_n, N - n))``
-element comparisons, a right-censored index scanning to the end of the record;
-worst case ``O(N^2)``. It is the reference kernel every other kernel is checked
+first value at least `δ` above it. Cost ``O(\\sum_n (m_n - n))`` element
+comparisons, where ``m_n`` is the position at which the scan from index ``n``
+stops: its passage, or the end ``N`` of the record when it is right-censored
+(on the sample index, ``m_n - n = \\min(\\tau_n, N - n)``); worst case
+``O(N^2)``. It is the reference kernel every other kernel is checked
 against.
 Indices are processed in chunks of `chunk_size` under dynamic scheduling,
 because the cost per index is heavy-tailed.

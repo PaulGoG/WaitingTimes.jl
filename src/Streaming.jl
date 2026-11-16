@@ -34,12 +34,14 @@ Mutable state of an online evaluation at one threshold. Feed samples with
 Without options the pending set grows as ``E[\\min(\\tau, t)]`` after ``t``
 samples: logarithmically for independent values, as ``\\sqrt{t}`` for a random
 walk, and linearly when a fraction of the indices never resolves (a downward
-drift, or bounded values at a threshold near their range). Two options bound
-it. `upper_bound` declares the largest attainable value on the grid: an index
-whose target exceeds it cannot resolve and is counted as censored on arrival
-instead of being stored, which leaves every result unchanged as long as the
-data respect the bound. `horizon` is the longest wait, in time units, kept
-pending: an index older than the horizon is evicted and counted as censored,
+drift, or bounded values at a threshold near their range). `upper_bound`
+declares the largest attainable value on the grid: an index whose target
+exceeds it cannot resolve and is counted as censored on arrival instead of
+being stored, which leaves every result unchanged as long as the data respect
+the bound. It bounds the pending set in the second case only: under a drift
+the unreached targets lie below any bound. `horizon` is the longest wait, in
+time units, kept pending, and bounds the pending set in either case: an index
+older than the horizon is evicted and counted as censored,
 so resolved waits satisfy ``\\tau \\le H`` and the heap stays below twice the
 number of samples within one horizon, or `MIN_COMPACTION` entries, whichever
 is larger.

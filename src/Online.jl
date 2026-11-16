@@ -14,13 +14,15 @@ counted by a [`DistributionAccumulator`](@ref).
 
 Memory is set by the pending indices, not stored samples. Their number
 grows with the stream wherever a fraction of the indices never resolves (a
-downward drift, bounded values at thresholds near their range); for
-long-running pipelines two options bound it (see [`StreamingState`](@ref)).
-`upper_bound`, a real value, declares the largest attainable value: indices
-that cannot resolve are counted as censored on arrival, and the results are
-unchanged. `horizon`, in `time_unit`, evicts indices pending longer than it as
-censored; the distributions then carry the horizon and, on a series without
-gaps, equal `empirical_distribution(τ, δ, s; horizon)` of the batch evaluation.
+downward drift, bounded values at thresholds near their range; see
+[`StreamingState`](@ref)). `upper_bound`, a real value, declares the largest
+attainable value: indices whose target lies above it cannot resolve and are
+counted as censored on arrival, and the results are unchanged. This bounds
+the memory for bounded values near their range, not under a drift, whose
+unreached targets lie below any bound. `horizon`, in `time_unit`, evicts
+indices pending longer than it as censored and bounds the memory in either
+case; the distributions then carry the horizon and, on a series without gaps,
+equal `empirical_distribution(τ, δ, s; horizon)` of the batch evaluation.
 
 `late_policy` governs a sample whose time does not exceed the previous one
 (a late print on an interleaved tape): `:error` throws, `:skip` counts it in

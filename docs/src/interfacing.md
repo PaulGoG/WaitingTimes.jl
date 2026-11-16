@@ -171,7 +171,8 @@ error under `bound_policy = :error` and a missing observation under `:skip`.
 `horizon` evicts indices pending longer than ``H`` and counts them as
 censored, so the distributions are censored at ``H``, carry `horizon = H`,
 and equal `empirical_distribution(τ, δ, s; horizon = H)` of the batch
-evaluation; memory stays below twice the samples within one horizon.
+evaluation; the heap stays below twice the samples within one horizon or
+1024 entries, whichever is larger.
 `status(est)` reports the evicted and unreachable indices per threshold.
 
 The lower-level pieces are a [`StreamingState`](@ref) at one

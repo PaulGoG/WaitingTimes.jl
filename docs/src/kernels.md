@@ -6,12 +6,16 @@ comparable with `==` across kernels and backends.
 
 | Kernel | Cost per threshold | Parallelism | Role |
 |---|---|---|---|
-| [`NaiveSearch`](@ref) | ``O(\sum_n \min(\tau_n, N - n))``, worst ``O(N^2)`` | over indices, chunked dynamic scheduling | the definition; reference kernel |
+| [`NaiveSearch`](@ref) | ``O(\sum_n (m_n - n))``, worst ``O(N^2)`` | over indices, chunked dynamic scheduling | the definition; reference kernel |
 | [`GuardedSearch`](@ref) | same, censored indices skipped in ``O(1)`` | over indices | the naive scan under a suffix-maximum guard; admitted as `reference_kernel` where the naive scan is too slow |
 | [`SegmentTreeSearch`](@ref) | ``O(N \log N)``, insensitive to ``\delta`` | over indices | production kernel |
 | [`FenwickSweep`](@ref) | ``O(N \log V)``; any number of thresholds per sweep | none (sequential in ``n``) | dense grids, few cores, small memory |
 | [`StreamingSearch`](@ref) | ``O(N \log N)``, one pass, no lookahead | none | live pipelines; equals the reference kernel on every prefix |
 | [`DeviceSearch`](@ref) | as the guarded scan | one work-item per index on a KernelAbstractions backend | the guarded scan on GPUs |
+
+In the cost of the scans, ``m_n`` is the position at which the scan from
+index ``n`` stops: its passage, or the end ``N`` of the record when ``n`` is
+right-censored. On the sample index ``m_n - n = \min(\tau_n, N - n)``.
 
 ## Segment tree
 
@@ -51,7 +55,8 @@ After ``t`` samples the heap holds ``E[\min(\tau, t)]`` entries on average:
 drift, bounded values at thresholds near their range). A declared
 `upper_bound` removes the provably unreachable entries without changing any
 result; a `horizon` ``H`` evicts entries older than ``H`` as censored and
-bounds the heap by twice the samples within one horizon, at a cost within
+bounds the heap by twice the samples within one horizon or 1024 entries,
+whichever is larger, at a cost within
 25 % of the unbounded state (random walk, ``10^6`` points).
 
 ## Device kernel
