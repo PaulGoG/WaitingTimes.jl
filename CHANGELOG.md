@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
-## [Unreleased]
+## [0.6.0] - 2026-11-16
 
 The package ends at the distributions: model fitting leaves it for a
 downstream package.
