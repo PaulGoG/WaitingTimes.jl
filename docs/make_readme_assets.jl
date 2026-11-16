@@ -467,8 +467,8 @@ end
 
 # --- timings.png -----------------------------------------------------------------
 if wanted("timings")
-    # Wall time per threshold of every kernel on a synthetic random walk, against
-    # the naive reference kernel, for three thresholds.
+    # Wall time per threshold of every kernel but the device kernel on a synthetic
+    # random walk, against the naive reference kernel, for three thresholds.
     rng = StableRNG(20260927)
     sizes = [10_000, 100_000, 1_000_000]
     deltas = [0.5, 5.0, 50.0]

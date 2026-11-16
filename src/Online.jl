@@ -30,9 +30,9 @@ missing observation (on a sample-indexed stream it keeps its index).
 
 Feed with `push!(est, t, x)` with the time of every observation, or on a
 sample-indexed stream with `push!(est, x)` and `push!(est, missing)` for a
-missing sample, which advances the index so that time passes through it;
-read with [`snapshot`](@ref) (the distributions so
-far), [`pending`](@ref) and [`status`](@ref).
+missing sample, which advances the index so that time passes through it.
+Read with [`snapshot`](@ref) (the distributions so far), [`pending`](@ref) and
+[`status`](@ref).
 
 $(TYPEDFIELDS)
 """
@@ -168,9 +168,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Indices without an observed passage so far, per threshold in threshold
-order; the latest sample is among them unless its target exceeds
-`upper_bound`.
+Number of indices awaiting a passage (within the horizon, when one is set), per
+threshold in threshold order; the latest sample is among them unless its target
+exceeds `upper_bound`.
 """
 pending(est::OnlineWaitingTimes) = [pending(state) for state in est.states]
 
@@ -192,9 +192,8 @@ $(TYPEDSIGNATURES)
 
 Per-threshold status as a vector of named tuples `(delta, n_seen, resolved,
 pending, evicted, unreachable, mean_waiting_time)`: `delta` is the fixed-decimal
-string, `evicted` counts indices
-censored at the horizon, `unreachable` those whose target exceeds the upper
-bound.
+string, `evicted` counts indices censored at the horizon, `unreachable` those
+whose target exceeds the upper bound, and `mean_waiting_time` is in `time_unit`.
 """
 function status(est::OnlineWaitingTimes)
     return [(delta = format_threshold(δ), n_seen = est.n_seen,

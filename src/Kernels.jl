@@ -203,7 +203,7 @@ Number of element comparisons a forward scan performs to reproduce the result
 right-censored index costs ``N - n`` under [`NaiveSearch`](@ref) and nothing
 under the guarded kernels (`guarded = true`), whose suffix-maximum test settles
 it in ``O(1)``. Positions are recovered from the time axis, so the count is in
-index units whatever the time unit of `s`. This is the cost model that bounds a
+index units for any time unit of `s`. This is the cost model that bounds a
 reference check before it is launched.
 """
 function scan_work(τ::AbstractVector{Tt}, s::QuantizedSeries{Tv, Tt};

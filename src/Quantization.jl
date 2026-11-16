@@ -1,8 +1,9 @@
 # Decimal integer grid: values and thresholds as integers scaled by 10^digits.
 
 """
-Largest number of decimal digits accepted for the grid; beyond it the scale
-factor 10^digits is no longer exactly representable in Float64 arithmetic.
+Largest number of decimal digits accepted for the grid; beyond it the grid
+integer of a value of order one exceeds 2^53, above which Float64 arithmetic
+does not represent every integer.
 """
 const MAX_DIGITS = 15
 

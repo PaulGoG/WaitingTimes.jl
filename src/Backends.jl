@@ -36,15 +36,14 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Backend selected by `prefer`: `:none` is the CPU backend of the
-KernelAbstractions extension; `:auto` is the first functional GPU in the order
-of [`GPU_PRIORITY`](@ref), whatever the order in which the GPU packages were
-loaded, with the CPU backend as fallback; a named backend (`:cuda`, `:amdgpu`,
-`:oneapi`, `:metal`) is returned only when its package is loaded and its
-device is functional, otherwise an `ArgumentError` is thrown, so a run never
-silently proceeds on a backend other than the requested one. Without
-KernelAbstractions loaded, `:none` and the fallback of `:auto` throw an
-`ArgumentError`.
+Backend selected by `prefer`. `:none` is the CPU backend of the
+KernelAbstractions extension. `:auto` is the first functional GPU in the order
+of [`GPU_PRIORITY`](@ref), independent of the order in which the GPU packages
+were loaded, with the CPU backend as fallback. A named backend (`:cuda`,
+`:amdgpu`, `:oneapi`, `:metal`) has no fallback: it is returned when its
+package is loaded and its device is functional, and an `ArgumentError` is
+thrown otherwise. Without KernelAbstractions loaded, `:none` and the fallback
+of `:auto` throw an `ArgumentError`, as does any other `prefer`.
 """
 function get_best_backend(; prefer::Symbol = :auto)
     prefer === :none && return cpu_backend()

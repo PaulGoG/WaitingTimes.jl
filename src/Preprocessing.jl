@@ -69,20 +69,22 @@ const UNIT_NANOSECONDS = Dict(:nanosecond => 1, :microsecond => 10^3, :milliseco
 """
 $(TYPEDSIGNATURES)
 
-Read a series from `path`. `format` is `:csv`, `:dat` (space-delimited unless
-`delimiter` is given, runs of delimiters collapsed), `:arrow`, `:tick`
-(MarketTickStreamer processed day files: time column
-`time_ns` unless given, value column `price` when `value_column = ""`, integer
-nanosecond stamps, and `time_unit = :sample` taken as `:nanosecond`) or `:auto`
-(from the file extension: `.csv`, `.dat`, `.arrow`, `.feather`). Columns are
-selected by 1-based index or name. Time stamps are parsed with `time_format`
-when it is given; otherwise they are integers in `epoch_unit` or ISO 8601
-date-times with up to nine fractional digits. `epoch_unit` defaults to
-`:second`, and to `:nanosecond` for tick files, where no other value is
+Read a series from `path` into a [`RawSeries`](@ref). `format` is `:csv`,
+`:dat`, `:arrow`, `:tick` or `:auto`, the last inferred from the file extension
+(`.csv`, `.dat`, `.arrow`, `.feather`). DAT files are space-delimited unless
+`delimiter` is given, with runs of delimiters collapsed. Tick files are the
+processed day files of MarketTickStreamer: integer nanosecond stamps in
+`time_ns` unless `time_column` is given, values in `price` when
+`value_column = ""`, and `time_unit = :sample` taken as `:nanosecond`. Columns
+are selected by 1-based index or name. Time stamps are parsed with
+`time_format` when it is given; otherwise they are integers in `epoch_unit` or
+ISO 8601 date-times with up to nine fractional digits. `epoch_unit` defaults
+to `:second`, and to `:nanosecond` for tick files, where no other value is
 accepted. Time stamps are converted to `time_unit` since the UNIX epoch, must
-be exact multiples of the unit, and must not decrease. Values that are absent or unparsable become `missing` under
-`missing_policy = :drop` or raise under `:error`. Equal time stamps are
-resolved by `tie_policy` (`:error`, `:first`, `:last`, `:mean`).
+be exact multiples of the unit, and must not decrease. Absent or unparsable
+values become `missing` under `missing_policy = :drop` and raise under
+`:error`. Equal time stamps are resolved by `tie_policy` (`:error`, `:first`,
+`:last`, `:mean`).
 """
 function read_series(path::AbstractString; format::Symbol = :auto,
         value_column::Union{Integer, AbstractString},
@@ -577,14 +579,14 @@ $(TYPEDSIGNATURES)
 Remove the rows selected by `remove` (a mask over the rows of `rs`) and record
 the step `op` with `parameters` and `summary`, the latter extended by
 `n_removed`, `fraction_removed` and `positions`. With `splice = false` the
-value is set to `missing` and its time position remains:
-the measurement is discarded as invalid but the time passed, so the cut is a
-recorded gap; this is what the 2024 analysis did (its time column kept the
-original row indices) and what reproduces the published results. With
-`splice = true` the row and its slot vanish: for a sample-indexed series the
-later indices close up, for an explicit time axis every later time moves
-back by the span from the removed row's predecessor to the removed row, so no
-elapsed time is counted for it.
+value is set to `missing` and its time position remains: the measurement is
+discarded as invalid but its time has passed, and the cut is a recorded gap.
+The 2024 analysis did this (its time column kept the original row indices),
+and it reproduces the published results. With `splice = true`
+the row and its slot vanish. On a sample-indexed series the later indices
+close up; on an explicit time axis every later time moves back by the span
+from the removed row's predecessor to the removed row, and no elapsed time is
+counted for it.
 """
 function remove_rows(rs::RawSeries, remove::AbstractVector{Bool}, op::Symbol, parameters,
         summary; splice::Bool)

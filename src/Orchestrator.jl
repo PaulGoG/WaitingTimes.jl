@@ -489,8 +489,8 @@ $(TYPEDSIGNATURES)
 
 Memory budget of a session: the host estimate of `alg` on `s` against
 `[limits].max_ram_gb`, the bound in bytes, and the device kernels among `alg`
-and `reference`, each checked against `[limits].max_vram_gb` with its backend
-logged. Throws `ArgumentError` above either bound.
+and `reference`, those on a GPU each checked against `[limits].max_vram_gb`
+with its backend logged. Throws `ArgumentError` above either bound.
 """
 function memory_budget(settings::Settings, s::QuantizedSeries, alg::AbstractSearch,
         reference::Union{Nothing, AbstractSearch})
@@ -916,7 +916,7 @@ function reference_check!(timer, s, thresholds, computed, alg, ws, reference, ws
             ws_ref; max_work = settings.max_reference_work)
         push!(checks, check_record(key, reference, r))
         if r.skipped
-            @warn "reference check skipped: work bound exceeds [limits] max_reference_work" delta=key work=r.work
+            @warn "reference check skipped: scan work exceeds [limits] max_reference_work" delta=key work=r.work
             continue
         end
         @info "reference check" delta=key kernel=kernel_name(reference) equal=r.equal seconds=round(

@@ -29,7 +29,7 @@ Base.@kwdef struct Settings
     input_path::String
     "`:csv`, `:dat`, `:arrow` or `:tick`"
     input_format::Symbol
-    "dataset descriptor slug, or empty"
+    "name of the dataset descriptor `datasets/<name>.toml` beside the configuration, or empty"
     dataset::String
     "absolute path of the source descriptor (TOML) of the input, or empty"
     source_descriptor::String
@@ -119,7 +119,7 @@ Base.@kwdef struct Settings
     seed::Int
     "`:debug`, `:info` or `:warn`"
     log_level::Symbol
-    "seconds between resume checkpoints of a session (index, summary and catalogue rewritten); 0 after every chunk"
+    "seconds between resume checkpoints of a session (index and summary rewritten); 0 after every chunk"
     checkpoint_seconds::Float64
     "effective configuration as parsed"
     raw::Dict{String, Any}

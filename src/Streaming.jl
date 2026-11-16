@@ -228,7 +228,8 @@ $(TYPEDSIGNATURES)
 Distribution of the waiting times accumulated so far, with the accounting of
 the streaming state: candidates are the samples seen but the last, resolved
 indices count as exact (gaps are not known to a stream), the rest (pending,
-evicted at the horizon, above the upper bound) are right-censored.
+evicted at the horizon, or with a target above the upper bound) are
+right-censored.
 `time_unit` labels the support (default `:sample`).
 """
 function empirical_distribution(

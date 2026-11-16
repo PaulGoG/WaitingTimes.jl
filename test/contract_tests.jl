@@ -1,4 +1,4 @@
-# Paths not exercised elsewhere: reading a collection of provenance schema 2,
+# Paths not exercised elsewhere: reading collections of provenance schemas 2 and 3,
 # the dense waiting-time files, the limit guards, reference checks run with the
 # guarded and device kernels, and the absorption and merging of gaps of several
 # kinds.
@@ -112,7 +112,7 @@ session_record(h) = TOML.parsefile(joinpath(h.dir, "sessions", h.session * ".tom
               c.time_unit === :sample && c.n_observed == 18 && c.n_gaps == 1
         @test thresholds(c) == [Threshold(1, 0), Threshold(3, 0)]
         @test c.index[1]["kernel"] == "segmenttreesearch"   # as 0.4.0 wrote it
-        @test isfile(joinpath(c.dir, "catalog.csv"))        # written by 0.4.0, ignored now
+        @test isfile(joinpath(c.dir, "catalog.csv"))        # a 0.4.0 file the read side ignores
         s = load_series(c)
         @test s.times == CONTRACT_TIMES && s.values == CONTRACT_VALUES
         @test s.gaps == [(9, 11)] && s.gap_kinds == ["detected"]

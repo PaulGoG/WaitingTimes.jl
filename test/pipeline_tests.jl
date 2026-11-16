@@ -1,5 +1,5 @@
-# Provenance, configuration, naming, preprocessing, storage, orchestration and
-# the package extensions.
+# Provenance, configuration, preprocessing, storage, orchestration and the
+# package extensions.
 
 using WaitingTimes.Provenance: artefact_id, backup_existing!, canonical_toml, content_hash,
                                dict_to_record, effective_config, record_to_dict, slugify,
@@ -113,7 +113,7 @@ end
             D("search" => "quantum"))))
         @test load_settings(write_config(D("algorithm" => D("search" => "device")))).search ===
               :device
-        # the threshold variant of detect no longer exists
+        # detect accepts "none" and "cadence" only
         @test_throws ArgumentError load_settings(write_config(D("gaps" =>
             D("detect" => "threshold"))))
         @test_throws ArgumentError load_settings(write_config(D("input" =>

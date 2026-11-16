@@ -62,8 +62,8 @@ end
 
 """
 Kinds of a gap, by where it comes from: `"detected"` from the spacing of the
-time stamps (cadence or threshold rule), `"declared"` from a declaration
-without a producer (`declare_gaps`, `[gaps].declared`), `"hole"` from the
+time stamps ([`detect_gaps`](@ref)), `"declared"` from a declaration without a
+producer (`declare_gaps`, `[gaps].declared`), `"hole"` from the
 declared-hole feed of a DeepSpaceTelemetry.jl run (`holes.csv`), `"gap"` from
 its gap table (`masks/gaps.csv`), and `"session"` from a session calendar or
 an exchange closure (MarketTickStreamer.jl). Overlapping declarations of

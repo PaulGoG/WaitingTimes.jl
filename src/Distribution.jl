@@ -202,7 +202,7 @@ nsamples(d::WaitingTimeDistribution) = sum(d.counts)
 """
 $(TYPEDSIGNATURES)
 
-Mean waiting time of the distribution (`NaN` when empty).
+Mean waiting time of the distribution in its `time_unit` (`NaN` when empty).
 """
 function mean_waiting_time(d::WaitingTimeDistribution)
     K = nsamples(d)

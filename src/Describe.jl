@@ -46,11 +46,10 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Summary of the series `s` as a [`SeriesDescription`](@ref): observations,
-record length, first and last time, minimum, maximum, mean and median of the
-values in data units, digits, sampling step, segments, and the gaps with the
-share of the span `[t_1, t_N]` they cover, in total and by kind. Public but
-not exported, as the name is common: call it as `WaitingTimes.describe`.
+Summary of the series `s` as a [`SeriesDescription`](@ref): size, time span
+and sampling step, value statistics in data units, segments, and the gaps with
+the share of the span `[t_1, t_N]` they cover, in total and by kind. Public but
+not exported because the name is common; call it as `WaitingTimes.describe`.
 """
 function describe(s::QuantizedSeries)
     scale = 10.0^s.digits

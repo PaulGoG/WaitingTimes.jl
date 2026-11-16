@@ -43,8 +43,8 @@ isfile(config_path) || error("Configuration file not found: $config_path")
 settings = load_settings(config_path; output_dir = args["output-dir"])
 
 # Load KernelAbstractions and the GPU package named by [algorithm].backend when
-# the configuration uses the device kernel; the package extensions then
-# register the backends.
+# the configuration uses the device kernel; the package extensions then define
+# the backend probes.
 if settings.search === :device || settings.reference_kernel === :device
     WaitingTimes.Backends.load_device_packages(settings.backend)
 end

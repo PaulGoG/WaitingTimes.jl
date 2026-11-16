@@ -435,12 +435,12 @@ end
 
 """
 Producers whose source descriptors are recognised, with the oldest producer
-version whose file contract this version of WaitingTimes reads: the
-DeepSpaceTelemetry.jl run descriptor (`descriptor.toml`, written since 2.5.0;
-schema `deepspacetelemetry-run/1`, and `/2` since 3.0.0, read alike) and the
-MarketTickStreamer.jl session sidecar (`<session>.meta.toml`, with the
-processed tick files read by `format = :tick`; the file contract is fixed by
-1.0.0 and kept by 2.0).
+version whose file contract this version of WaitingTimes reads.
+DeepSpaceTelemetry.jl writes its run descriptor `descriptor.toml` since 2.5.0,
+with the schema `deepspacetelemetry-run/1`, or `/2` since 3.0.0; both are read
+alike. The MarketTickStreamer.jl session sidecar `<session>.meta.toml` and the
+processed tick files read by `format = :tick` follow a file contract fixed in
+1.0.0 and kept in 2.0.
 """
 const MINIMUM_PRODUCER_VERSION = Dict("DeepSpaceTelemetry" => v"2.5.0",
     "MarketTickStreamer" => v"1.0.0")
@@ -459,20 +459,20 @@ const SourceSummary = NamedTuple{SOURCE_SUMMARY_KEYS,
 """
 $(TYPEDSIGNATURES)
 
-Normalised identity of a source descriptor, whatever its producer, as a
-[`SourceSummary`](@ref) named tuple with the fields `producer` (package name,
-empty when not stated), `producer_version`, `git_tree_sha1` (the authoritative
-code identity, empty when the producer does not record it, as
-DeepSpaceTelemetry before 2.6.1 and MarketTickStreamer), `git_dirty`,
-`git_commit` (empty unless the producer ran from a checkout or was pinned by a
-full commit hash), `identity` (whether `git_tree_sha1` is present),
-`producer_compat` (the minimum version of [`MINIMUM_PRODUCER_VERSION`](@ref)
-checked, empty for an unrecognised producer), `compat_checked` and
-`compat_satisfied`, and `schema`. A DeepSpaceTelemetry run descriptor is
+Normalised identity of a source descriptor as a [`SourceSummary`](@ref) named
+tuple. `producer` is the package name, empty when not stated. `git_tree_sha1`
+is the authoritative code identity, empty when the producer does not record it
+(DeepSpaceTelemetry before 2.6.1, MarketTickStreamer); `identity` states
+whether it is present. `git_commit` is empty unless the producer ran from a
+checkout or was pinned by a full commit hash. `producer_compat` is the minimum
+version of [`MINIMUM_PRODUCER_VERSION`](@ref) checked, empty for an
+unrecognised producer; `compat_checked` and `compat_satisfied` state whether
+the check was made and passed. `producer_version`, `git_dirty` and `schema`
+are read from the descriptor. A DeepSpaceTelemetry run descriptor is
 recognised by its schema, a MarketTickStreamer session sidecar by its
-`[session]` and `[provenance]` tables; any other descriptor by top-level
+`[session]` and `[provenance]` tables, any other descriptor by top-level
 `producer`, `producer_version` or `package_version` and `git_*` keys. A
-descriptor without identity is summarised, never rejected.
+descriptor without identity is summarised, not rejected.
 """
 function source_summary(descriptor::AbstractDict)
     schema = string(get(descriptor, "schema", ""))

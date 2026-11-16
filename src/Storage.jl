@@ -1,10 +1,10 @@
 """
-Collection storage: per-threshold distribution partitions (CSV or Arrow with
-schema metadata), optional dense waiting-time files, the prepared series,
-the regenerated `index.toml` and `summary.csv`, the collection `README.md`,
-and the read side: [`Collection`](@ref),
-[`load_collection`](@ref), [`distribution`](@ref), [`source_descriptor`](@ref),
-[`export_legacy`](@ref).
+Collection storage. The write side covers the per-threshold distribution
+partitions (CSV or Arrow with schema metadata), optional dense waiting-time
+files, the prepared series, the regenerated `index.toml` and `summary.csv` and
+the collection `README.md`. The read side opens a [`Collection`](@ref) with
+[`load_collection`](@ref) and gives access to it through
+[`distribution`](@ref), [`source_descriptor`](@ref) and [`export_legacy`](@ref).
 """
 module Storage
 
@@ -439,9 +439,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-The [`WaitingTimeDistribution`](@ref) of the collection at threshold `δ` (a `Threshold`, a real
-value or a fixed-decimal string), read from its partition with the
-accounting recorded in the index.
+The [`WaitingTimeDistribution`](@ref) of the collection at threshold `δ` (a
+`Threshold`, a real value or a fixed-decimal string), read from its partition
+with the accounting recorded in the index.
 """
 function distribution(c::Collection, δ::Threshold)
     entry = find_partition(c, δ)
@@ -513,12 +513,10 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Normalised identity of the source of the collection's input (see
-[`source_summary`](@ref WaitingTimes.Provenance.source_summary)): `producer`,
-`producer_version`, `git_tree_sha1` (authoritative when `git_dirty` is false),
-`git_dirty`, `git_commit`, `identity`, `producer_compat`, `compat_checked`,
-`compat_satisfied` and `schema`, as a
-[`SourceSummary`](@ref WaitingTimes.Provenance.SourceSummary) named tuple;
+Normalised identity of the source of the collection's input as a
+[`SourceSummary`](@ref WaitingTimes.Provenance.SourceSummary) named tuple (see
+[`source_summary`](@ref WaitingTimes.Provenance.source_summary)); its
+`git_tree_sha1` identifies the producer's code when `git_dirty` is false.
 `nothing` without a source descriptor. For a collection written before the
 summary was recorded it is computed from the stored descriptor.
 """
@@ -536,12 +534,12 @@ end
 $(TYPEDSIGNATURES)
 
 The source descriptor of the collection's input, as configured by
-`[input].source_descriptor`: the producer's identity of the data (for a
-DeepSpaceTelemetry.jl run its `descriptor.toml`: run identifier, producer
-version and code identity, configuration hash, seed, product checksums), or
-`nothing` when the collection was generated without one. The file itself is
-copied verbatim to `source.toml` in the collection directory, and its SHA-256
-is recorded in the `[source]` table of `metadata.toml`. Keys are the
+`[input].source_descriptor`, or `nothing` when the collection was generated
+without one. It is the producer's identity of the data; the `descriptor.toml`
+of a DeepSpaceTelemetry.jl run holds the run identifier, producer version and
+code identity, configuration hash, seed and product checksums. The file itself
+is copied verbatim to `source.toml` in the collection directory, and its
+SHA-256 is recorded in the `[source]` table of `metadata.toml`. Keys are the
 producer's; an absent key means unknown.
 
 ```julia
