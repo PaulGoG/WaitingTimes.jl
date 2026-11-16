@@ -751,6 +751,16 @@ end
         @test formatted.series_id != iso.series_id
         @test formatted.dataset_id == iso.dataset_id
     end
+    # the quickstart identifiers computed by WaitingTimes 0.5.1, before the time
+    # format could enter the identity
+    mktempdir() do dir
+        quick = prepare(load_settings(joinpath(CONFIGS, "quickstart.toml")))
+        @test quick.dataset_id == "dataset-eur_usd-closing_rate-7375e35b"
+        @test quick.series_id == "series-eur_usd-closing_rate-f515da9d"
+        handle = generate(load_settings(joinpath(CONFIGS, "quickstart.toml");
+            output_dir = dir))
+        @test handle.id == "collection-eur_usd-closing_rate-d64d59f9"
+    end
 end
 
 @testset "Session identifier already taken" begin
