@@ -1,0 +1,32 @@
+name: Format
+on:
+  push:
+    branches:
+      - main
+    tags: ['*']
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+jobs:
+  format:
+    name: JuliaFormatter
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - name: Check the committed style
+        shell: julia --color=yes {0}
+        run: |
+          using Pkg
+          Pkg.activate(; temp = true)
+          Pkg.add(PackageSpec(; name = "JuliaFormatter", version = "2"))
+          using JuliaFormatter
+          format("."; overwrite = false) ||
+              error("unformatted files: run JuliaFormatter 2 with .JuliaFormatter.toml")
