@@ -225,7 +225,8 @@ Base.length(s::QuantizedSeries) = length(s.values)
 """
 $(TYPEDSIGNATURES)
 
-Elapsed time between the first and the last observation.
+Elapsed time between the first and the last observation, in the time unit of
+`s`.
 """
 duration(s::QuantizedSeries) = last(s.times) - first(s.times)
 

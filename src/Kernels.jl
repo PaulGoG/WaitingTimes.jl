@@ -102,7 +102,8 @@ workspace_bytes(::GuardedSearch, s::QuantizedSeries{Tv}) where {Tv} = length(s) 
 """
 $(TYPEDSIGNATURES)
 
-Threshold of `s` from a real value or decimal string on the grid of `s`.
+[`Threshold`](@ref) of `s` from a real value or decimal string on the grid of
+`s`, in the unit of the series values.
 """
 threshold(δ::Union{Real, AbstractString}, s::QuantizedSeries) = threshold(δ, s.digits)
 
@@ -138,8 +139,9 @@ end
                    workspace = nothing) -> τ
 
 Waiting times of every index of `s` at threshold `δ` into `τ` (length `N`),
-with `0` where no passage is observed. `workspace` is built on demand for
-kernels that need one.
+in the time unit of `s` and of the element type of `s.times`, with `0` where
+no passage is observed. `workspace` is built on demand for kernels that need
+one.
 """
 function waiting_times!(τ::AbstractVector{Tt}, s::QuantizedSeries{Tv, Tt}, δ::Threshold,
         alg::NaiveSearch; workspace = nothing) where {Tv, Tt}
@@ -174,9 +176,10 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Allocating form of [`waiting_times!`](@ref). `δ` may be a [`Threshold`](@ref),
-a real value or a decimal string on the grid of `s`; `alg` defaults to
-[`SegmentTreeSearch`](@ref).
+Allocating form of [`waiting_times!`](@ref): returns a vector of the element
+type of `s.times`, in the time unit of `s`. `δ` may be a [`Threshold`](@ref),
+a real value in the unit of the series values or a decimal string, both on the
+grid of `s`; `alg` defaults to [`SegmentTreeSearch`](@ref).
 
 ```jldoctest
 julia> s = QuantizedSeries([1, 3, 2, 5, 4, 4, 6], 0);

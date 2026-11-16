@@ -20,6 +20,7 @@ linear `trend` per step, sinusoidal `periods` as `(period, amplitude)` pairs,
 additive Gaussian `noise`, and Gaussian jumps of standard deviation
 `jump_scale`, kept in the walk, with probability `jump_probability` per step.
 The walk starts from `level`; the first sample already carries one step.
+Returns a `Vector{Float64}`.
 """
 function random_walk(rng::AbstractRNG, N::Integer; drift::Real = 0.0, sigma::Real = 1.0,
         tail_alpha::Union{Nothing, Real} = nothing, trend::Real = 0.0,
@@ -59,7 +60,7 @@ end
 $(TYPEDSIGNATURES)
 
 Independent samples of length `N`: `:normal` (standard), `:uniform` on `[0, 1)`,
-or `:exponential` (unit rate).
+or `:exponential` (unit rate). Returns a `Vector{Float64}`.
 """
 function iid_series(rng::AbstractRNG, N::Integer; distribution::Symbol = :normal)
     N >= 1 || throw(ArgumentError("N must be positive, got $N"))

@@ -376,7 +376,10 @@ Open the collection at `dir` (a directory holding `metadata.toml`). The
 metadata are validated: the provenance schema must be one this version reads
 (`waitingtimes-provenance/2`, `/3` or `/4`), and a collection of schema 3 or
 later must state its time axis (`elapsed` or `index`), time units and record
-structure. Collections of schema 2 are read with time axis `:elapsed`.
+structure. Collections of schema 2 are read with time axis `:elapsed`. Returns
+a [`Collection`](@ref). Throws an `ArgumentError` when `metadata.toml` is
+absent, the schema is not one of these, a required `[series]` key is missing
+or the time axis is neither `elapsed` nor `index`.
 """
 function load_collection(dir::AbstractString)
     meta_path = joinpath(dir, "metadata.toml")

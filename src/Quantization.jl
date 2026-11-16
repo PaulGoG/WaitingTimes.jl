@@ -79,8 +79,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Threshold on the grid with `digits` decimals, from a real value (validated to
-lie on the grid) or from a decimal string (parsed exactly).
+[`Threshold`](@ref) on the grid with `digits` decimals, from a real value in
+the unit of the series values (validated to lie on the grid) or from a decimal
+string (parsed exactly).
 """
 threshold(δ::Real, digits::Integer) = Threshold(threshold_integer(δ, digits), digits)
 threshold(δ::AbstractString, digits::Integer) = parse_threshold(δ, digits)

@@ -16,6 +16,8 @@ Gaps of a strictly increasing time vector under a cadence rule: every pair of
 consecutive observations further apart than `cadence` encloses the gap
 `[t_k + 1, t_{k+1})`. For a regular series `cadence = 1` marks every missing
 sample; for irregular timestamps a larger `cadence` acts as a threshold.
+`cadence` is in the unit of `times`; the gaps are returned as `(start, stop)`
+pairs in that unit, each the half-open interval `[start, stop)`.
 """
 function detect_gaps(times::AbstractVector{Tt}, cadence::Integer) where {Tt <: Integer}
     cadence >= 1 || throw(ArgumentError("cadence must be at least 1, got $cadence"))
@@ -125,12 +127,12 @@ $(TYPEDSIGNATURES)
 
 Copy of the series with `intervals` `[start, stop)` merged into its gap list
 (declared gaps from schedules, session boundaries, producer gap tables or
-quality logs). `intervals` holds `(start, stop)` pairs, which take `kind` and
-`source`, or named tuples `(start, stop, kind, source)`. Kinds are those of
-[`GAP_KINDS`](@ref) other than `"detected"`; overlapping intervals are merged
-as described in [`merge_gaps`](@ref). An interval containing an observation or
-reaching outside the record is rejected. The series' record gains a
-`declare_gaps` step; the argument is unchanged.
+quality logs). `intervals` holds `(start, stop)` pairs in the time unit of `s`,
+which take `kind` and `source`, or named tuples `(start, stop, kind, source)`.
+Kinds are those of [`GAP_KINDS`](@ref) other than `"detected"`; overlapping
+intervals are merged as described in [`merge_gaps`](@ref). An interval
+containing an observation or reaching outside the record is rejected. The
+series' record gains a `declare_gaps` step; the argument is unchanged.
 """
 function declare_gaps(s::QuantizedSeries{Tv, Tt}, intervals::AbstractVector;
         kind::AbstractString = "declared", source::AbstractString = "") where {Tv, Tt}
@@ -163,7 +165,7 @@ end
 $(TYPEDSIGNATURES)
 
 Gaps of the series as named tuples `(start, stop, length, kind, source)`,
-longest first.
+longest first; `start`, `stop` and `length` are in the time unit of `s`.
 """
 function gap_table(s::QuantizedSeries)
     rows = [(start = a, stop = b, length = b - a, kind = k, source = src)
@@ -293,7 +295,9 @@ wait the lower bound is the elapsed time to the last observation before the
 first gap after `t_n`, the upper bound `τ[n]`; for a right-censored index the lower
 bound is the elapsed time to the last observation before the first gap (or to
 the end of the record) and the upper bound is `typemax`. Index `N` is never a
-candidate and is reported as right-censored with both bounds zero.
+candidate and is reported as right-censored with both bounds zero. `class` is
+a `Vector{UInt8}`; `lower` and `upper` are in the time unit of `s`, with the
+element type of `s.times`.
 """
 function classify(τ::AbstractVector{Tt}, s::QuantizedSeries{Tv, Tt}) where {Tv, Tt}
     N = length(s)

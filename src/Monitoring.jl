@@ -29,7 +29,7 @@ $(TYPEDSIGNATURES)
 
 Run `f()` with a logger that writes to the terminal (a `TerminalLogger` when
 `stderr` is a TTY, else a plain `ConsoleLogger`) and appends plain text to
-`log_path`, both at `level`.
+`log_path`, both at `level`. Returns the value of `f()`.
 """
 function with_run_logging(f, log_path::AbstractString; level::Symbol = :info)
     min_level = log_level(level)

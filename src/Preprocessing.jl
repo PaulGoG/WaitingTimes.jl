@@ -915,9 +915,12 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Sampling diagnostics: rows, observed and missing counts, and for the observed
-time axis the minimum, median and maximum spacing and the number of spacings
-above `gap_factor` times the median.
+Sampling diagnostics as a named tuple `(n_rows, n_observed, n_missing,
+spacing_min, spacing_median, spacing_max, n_wide_spacings, time_unit)`: rows,
+observed and missing counts, and for the observed time axis the minimum, median
+and maximum spacing and the number of spacings above `gap_factor` times the
+median. Spacings are in the time unit of `rs`, or in rows when it has no time
+axis.
 """
 function sampling_summary(rs::RawSeries; gap_factor::Real = 2)
     idx, _ = observed(rs)
