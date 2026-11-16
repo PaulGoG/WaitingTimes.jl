@@ -726,6 +726,33 @@ end
     end
 end
 
+@testset "Time format in the series identity" begin
+    mktempdir() do dir
+        write(joinpath(dir, "series.csv"),
+            "time,value\n2020-01-01T00:00:00,1.0\n2020-01-01T01:00:00,2.0\n" *
+            "2020-01-01T02:00:00,1.5\n2020-01-01T03:00:00,3.0\n")
+        function config(name, format_line)
+            path = joinpath(dir, name * ".toml")
+            write(path,
+                "[input]\npath = \"series.csv\"\nvalue_column = \"value\"\n" *
+                "time_column = \"time\"\ntime_unit = \"hour\"\n$format_line" *
+                "[quantization]\ndigits = 1\n" *
+                "[thresholds]\nmode = \"explicit\"\nvalues = [0.5]\n")
+            return path
+        end
+        iso = prepare(load_settings(config("iso", "")))
+        formatted = prepare(load_settings(config("formatted",
+            "time_format = \"yyyy-mm-ddTHH:MM:SS\"\n")))
+        # the same time axis, recorded as obtained from another rule
+        @test formatted.series.times == iso.series.times ==
+              [0, 1, 2, 3] .+ iso.series.times[1]
+        @test !haskey(iso.series_identity, "time_format")
+        @test formatted.series_identity["time_format"] == "yyyy-mm-ddTHH:MM:SS"
+        @test formatted.series_id != iso.series_id
+        @test formatted.dataset_id == iso.dataset_id
+    end
+end
+
 @testset "Session identifier already taken" begin
     free_session_id = WaitingTimes.Orchestrator.free_session_id
     mktempdir() do dir

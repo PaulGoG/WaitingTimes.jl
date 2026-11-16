@@ -8,8 +8,8 @@ module Backends
 using DocStringExtensions: TYPEDSIGNATURES
 
 export get_best_backend, backend_name
-public probe, GPU_PRIORITY, cpu_backend, reclaim_device_memory!, cpu_model,
-       device_fingerprint, host_backend, load_device_packages, GPU_PACKAGES
+public probe, GPU_PRIORITY, reclaim_device_memory!, cpu_model, device_fingerprint,
+       host_backend, load_device_packages, GPU_PACKAGES
 
 "GPU backends tried by `:auto`, in order of preference"
 const GPU_PRIORITY = (:cuda, :amdgpu, :oneapi, :metal)

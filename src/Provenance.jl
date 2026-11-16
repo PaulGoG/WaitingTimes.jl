@@ -14,11 +14,10 @@ using TOML: TOML
 using ..WaitingTimes: PACKAGE_ROOT, PreparationRecord, PreparationStep
 using ..Backends: cpu_model
 
-export effective_config, canonical_toml, content_hash, artefact_id, file_sha256, slugify,
-       git_state, hardware_fingerprint, write_hardware_fingerprint, backup_existing!,
-       session_id, read_toml, write_toml, toml_ready, record_to_dict, dict_to_record,
-       tree_hash, active_manifest, manifest_entry, source_identity, package_identity,
-       source_summary, SourceSummary, SOURCE_SUMMARY_KEYS, MINIMUM_PRODUCER_VERSION
+export effective_config, canonical_toml, content_hash, artefact_id, slugify, git_state,
+       hardware_fingerprint, backup_existing!, tree_hash, active_manifest, manifest_entry,
+       source_identity, package_identity, source_summary, SourceSummary,
+       SOURCE_SUMMARY_KEYS, MINIMUM_PRODUCER_VERSION
 
 "top-level key naming the base file an overlay configuration is merged onto"
 const BASE_CONFIG_KEY = "base_config"

@@ -27,7 +27,7 @@ export RawSeries, read_series, select_range, exclude_intervals, round_values,
        clip_quantile, clip_sigma, clip_extremes, collapse_ties, sampling_summary,
        value_summary,
        resolution_digits, increment_scale, digits_sensitivity, suggest_digits,
-       terminal_overview, quantized_series, apply_steps, read_gap_intervals, index_series
+       quantized_series, read_gap_intervals, index_series
 
 """
     RawSeries

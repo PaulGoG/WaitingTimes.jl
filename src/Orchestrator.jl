@@ -35,8 +35,7 @@ using ..Monitoring: run_progress, with_run_logging
 using ..Backends: backend_name, device_fingerprint, host_backend, reclaim_device_memory!
 
 export CollectionHandle, PreparedSeries, SourceRecord, ValidationReport, ComparisonResult,
-       KernelSummary, run_pipeline, prepare, generate, validate, make_kernel,
-       estimate_memory_bytes, dataset_descriptor
+       KernelSummary, run_pipeline, prepare, generate, validate
 
 "provenance schema written into metadata files"
 const SCHEMA = "waitingtimes-provenance/4"
@@ -311,6 +310,7 @@ function prepare(settings::Settings)
             file_sha256(settings.declared_gaps),
         "gap_detect" => settings.gap_detect, "gap_cadence" => settings.gap_cadence)
     settings.time_axis === :elapsed || (series_identity["time_axis"] = settings.time_axis)
+    isempty(settings.time_format) || (series_identity["time_format"] = settings.time_format)
     series_slug = String(isempty(settings.steps) ? dataset_slug :
                          dataset_slug * "+" * join(step_tag.(settings.steps), "+"))
     series_id = artefact_id("series", series_slug, series_identity)

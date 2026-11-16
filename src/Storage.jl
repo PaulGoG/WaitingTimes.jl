@@ -25,11 +25,7 @@ using ..Provenance: Provenance, dict_to_record, file_sha256, read_toml, toml_rea
 export Collection, load_collection, list_collections, distribution, thresholds,
        summary_table, load_series, export_legacy, source_descriptor, censoring_histogram,
        load_distributions, read_index
-public distribution_table, partition_path, write_distribution, read_distribution,
-       write_waiting_times, read_waiting_times, write_series_files, read_series_files,
-       write_index, write_summary, write_collection_readme, SOURCE_FILE, MANIFEST_FILE,
-       censoring_path, write_censoring, write_gap_file, read_gap_file, find_partition,
-       READABLE_SCHEMAS, SERIES_KEYS
+public partition_path, write_collection_readme
 
 function file_extension(format::Symbol)
     format === :arrow ? "arrow" :

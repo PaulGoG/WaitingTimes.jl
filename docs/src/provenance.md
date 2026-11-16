@@ -9,7 +9,7 @@ serialisation of its identity fields (keys sorted, values only).
 | Kind | Identity |
 |---|---|
 | `dataset` | SHA-256 of the raw file, value column, time column, and the SHA-256 of the source descriptor when one is configured |
-| `series` | dataset identifier, time unit and epoch unit, missing and tie policies, preprocessing steps, digits, gap declaration and detection settings, and the time axis when it is `index` |
+| `series` | dataset identifier, time unit and epoch unit, missing and tie policies, preprocessing steps, digits, gap declaration and detection settings, the time format when one is set, and the time axis when it is `index` |
 | `collection` | series identifier, distribution mode |
 
 Identity is mathematical: which kernel, backend, machine or commit produced
