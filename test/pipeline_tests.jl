@@ -507,6 +507,9 @@ end
         again = generate(settings)
         @test again.id == handle.id && isempty(again.computed) &&
               length(again.skipped) == 10
+        @test again.session != handle.session
+        @test isfile(joinpath(handle.dir, "sessions", handle.session * ".toml")) &&
+              isfile(joinpath(handle.dir, "sessions", again.session * ".toml"))
         @test length(TOML.parsefile(joinpath(handle.dir, "metadata.toml"))["sessions"]) == 2
         # extension of the grid adds partitions without touching existing ones
         wider = load_settings(joinpath(CONFIGS, "quickstart.toml"); output_dir = dir)
@@ -677,8 +680,39 @@ end
         WaitingTimes.save_figure(pdf, fig2; sidecar = Dict("kind" => "distribution"))
         @test isfile(pdf)
     end
+    # one distinct waiting time: the survival function vanishes on the whole support
+    s1 = QuantizedSeries(collect(1.0:10.0), 0)
+    single = empirical_distribution(waiting_times(s1, 0), threshold(0, s1), s1)
+    fig3 = WaitingTimes.plot_distribution(single)
+    @test fig3 isa CairoMakie.Figure
+    mktempdir() do dir
+        path = joinpath(dir, "single.png")
+        WaitingTimes.save_figure(path, fig3; sidecar = Dict("kind" => "distribution"))
+        @test isfile(path)
+    end
     empty = empirical_distribution(zeros(Int64, length(s)), δ, s)
     @test_throws ArgumentError WaitingTimes.plot_distribution(empty)
+end
+
+@testset "Value type follows the largest configured threshold" begin
+    mktempdir() do dir
+        write(joinpath(dir, "series.csv"), "value\n-10.0\n10.0\n-9.5\n6.0\n5.0\n")
+        function config(values)
+            path = joinpath(dir, "c.toml")
+            write(path,
+                "[input]\npath = \"series.csv\"\nvalue_column = \"value\"\n" *
+                "[quantization]\ndigits = 8\n" *
+                "[thresholds]\nmode = \"explicit\"\nvalues = $values\n")
+            return path
+        end
+        small = prepare(load_settings(config("[0.5]"))).series
+        @test eltype(small.values) == Int32
+        @test_throws OverflowError waiting_times(small, 15.0, NaiveSearch())
+        large = prepare(load_settings(config("[0.5, 15.0]"))).series
+        @test eltype(large.values) == Int64
+        # from -10 the level 5 is reached one sample later, from -9.5 the level 5.5 likewise
+        @test waiting_times(large, 15.0, NaiveSearch()) == [1, 0, 1, 0, 0]
+    end
 end
 
 # Test kernels: one that fails after `after` thresholds, as an interrupted run
@@ -746,6 +780,9 @@ end
             handle = generate(settings)
             @test handle.id == basename(cdir) && length(handle.computed) == 2 &&
                   length(handle.skipped) == 2
+            @test handle.session != interrupted["id"]
+            @test TOML.parsefile(joinpath(cdir, "sessions",
+                interrupted["id"] * ".toml"))["status"] == "running"
             index = read_index(cdir)
             @test length(index) == 4
             @test all(e -> e["session"] == interrupted["id"], index[1:2])

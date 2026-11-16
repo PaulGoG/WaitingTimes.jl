@@ -35,8 +35,13 @@ function with_run_logging(f, log_path::AbstractString; level::Symbol = :info)
     min_level = log_level(level)
     console = stderr isa Base.TTY ? TerminalLogger(stderr, min_level) :
               ConsoleLogger(stderr, min_level)
-    file = MinLevelLogger(FileLogger(log_path; append = true), min_level)
-    return with_logger(f, TeeLogger(console, file))
+    io = open(log_path, "a")
+    try
+        file = MinLevelLogger(FileLogger(io), min_level)
+        return with_logger(f, TeeLogger(console, file))
+    finally
+        close(io)
+    end
 end
 
 """

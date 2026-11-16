@@ -162,7 +162,7 @@ function WaitingTimes.plot_distribution(d::WaitingTimeDistribution; size = (1200
     xlabel = "Waiting time k [" * unit * "]"
     xlo, xhi = enclosing_decades(k)
     plo, phi = enclosing_decades(p)
-    Flo, Fhi = enclosing_decades(F[keep])
+    Flo, Fhi = any(keep) ? enclosing_decades(F[keep]) : (-1, 0)
     annotation = "δ = " * format_threshold(d.delta) * "\n" * string(nsamples(d)) *
                  " waiting times\n" * string(d.n_right_censored) * " right-censored"
     fig = with_theme(WaitingTimes.figure_theme()) do
@@ -176,7 +176,7 @@ function WaitingTimes.plot_distribution(d::WaitingTimeDistribution; size = (1200
         ax2 = Axis(fig[1, 2]; xlabel = xlabel, ylabel = "P(τ > k)",
             xscale = log10, yscale = log10, xticks = WaitingTimes.decade_ticks(xlo, xhi),
             yticks = WaitingTimes.decade_ticks(Flo, min(Fhi, 0)))
-        stairs!(ax2, k[keep], F[keep]; color = :black, step = :post)
+        any(keep) && stairs!(ax2, k[keep], F[keep]; color = :black, step = :post)
         linkxaxes!(ax1, ax2)
         fig
     end

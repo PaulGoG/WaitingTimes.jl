@@ -247,12 +247,8 @@ Write `index.toml` with the partition entries. The file is written beside its
 destination and moved into place, so a reader never sees a partial index.
 """
 function write_index(dir::AbstractString, entries::AbstractVector)
-    path = joinpath(dir, "index.toml")
-    tmp = path * ".tmp"
-    write_toml(tmp,
+    return write_toml(joinpath(dir, "index.toml"),
         Dict{String, Any}("partitions" => Any[toml_ready(e) for e in entries]))
-    mv(tmp, path; force = true)
-    return path
 end
 
 """

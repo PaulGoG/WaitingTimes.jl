@@ -98,6 +98,7 @@ WaitingTimes.Orchestrator.resolve_digits
 WaitingTimes.Orchestrator.SCHEMA
 WaitingTimes.Orchestrator.transient_bytes
 WaitingTimes.Orchestrator.session_record
+WaitingTimes.Orchestrator.free_session_id
 WaitingTimes.Orchestrator.write_index_files
 WaitingTimes.Orchestrator.compare_with_reference
 WaitingTimes.Orchestrator.reference_thresholds

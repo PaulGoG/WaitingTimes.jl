@@ -562,7 +562,8 @@ $(TYPEDSIGNATURES)
 
 Session identifier `<yyyymmddTHHMMSS>_<tag>` from the UTC wall clock and the
 slug of the first 12 characters of `git`; `generate` passes the commit of the
-package code, or its tree hash when no commit is known.
+package code, or its tree hash when no commit is known. `generate` appends `-k`
+to an identifier already taken in the collection.
 """
 function session_id(git::AbstractString = "unknown")
     stamp = Dates.format(now(UTC), "yyyymmddTHHMMSS")
@@ -581,12 +582,15 @@ read_toml(path::AbstractString) = TOML.parsefile(path)
 $(TYPEDSIGNATURES)
 
 Write `x` as TOML to `path` (keys sorted), converting values with
-[`toml_ready`](@ref).
+[`toml_ready`](@ref). The file is written beside its destination and moved into
+place, so a reader never sees a partial file.
 """
 function write_toml(path::AbstractString, x::AbstractDict)
-    open(path, "w") do io
+    tmp = path * ".tmp"
+    open(tmp, "w") do io
         TOML.print(io, toml_ready(x); sorted = true)
     end
+    mv(tmp, path; force = true)
     return path
 end
 

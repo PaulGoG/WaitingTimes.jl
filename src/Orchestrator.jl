@@ -12,7 +12,7 @@ using ProgressMeter: finish!, next!
 using Random: AbstractRNG, MersenneTwister, shuffle
 using TimerOutputs: TimerOutputs, TimerOutput, @timeit, ncalls
 using ..WaitingTimes: WaitingTimes, AbstractSearch, DeviceSearch, FenwickSweep, GapEntry,
-                      GuardedSearch,
+                      GuardedSearch, INT32_NARROWING_LIMIT,
                       NaiveSearch,
                       QuantizedSeries, SegmentTreeSearch, StreamingSearch, Threshold,
                       WaitingTimeDistribution, censoring_counts, class_columns, classify,
@@ -284,8 +284,12 @@ function prepare(settings::Settings)
         @warn "[quantization] digits is below the recorded resolution of the prepared series; quantisation merges distinct values" digits resolution
     declared = isempty(settings.declared_gaps) ? Tuple{Int64, Int64}[] :
                read_gap_intervals(settings.declared_gaps)
+    # Int32 values only where q_n + d stays within Int32 for every configured threshold
+    δ_max = settings.threshold_mode === :explicit ? maximum(settings.threshold_values) :
+            settings.threshold_max
+    narrow = δ_max * 10.0^digits < INT32_NARROWING_LIMIT
     s_clock = quantized_series(rs, digits; detect = settings.gap_detect,
-        cadence = settings.gap_cadence, declared = declared)
+        cadence = settings.gap_cadence, declared = declared, narrow = narrow)
     s = settings.time_axis === :index ?
         index_series(rs, s_clock; detect = settings.gap_detect !== :none) : s_clock
 
@@ -487,15 +491,21 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Memory budget of a session: the host estimate of `alg` on `s` against
-`[limits].max_ram_gb`, the bound in bytes, and the device kernels among `alg`
-and `reference`, those on a GPU each checked against `[limits].max_vram_gb`
-with its backend logged. Throws `ArgumentError` above either bound.
+Memory budget of a session: the host estimate of `alg` on `s`, with the
+workspace of a host `reference`, against `[limits].max_ram_gb`, the bound in
+bytes, and the device kernels among `alg` and `reference`, those on a GPU each
+checked against `[limits].max_vram_gb` with its backend logged. Throws
+`ArgumentError` above either bound.
 """
 function memory_budget(settings::Settings, s::QuantizedSeries, alg::AbstractSearch,
         reference::Union{Nothing, AbstractSearch})
     bytes = estimate_memory_bytes(s, alg;
         store_waiting_times = settings.store_waiting_times)
+    # the reference workspace is held through the session, on the host unless a GPU kernel
+    if reference !== nothing &&
+       (!(reference isa DeviceSearch) || host_backend(reference.backend))
+        bytes += workspace_bytes(reference, s)
+    end
     limit = settings.max_ram_gb * 2^30
     bytes <= limit || throw(ArgumentError(
         "estimated memory $(round(bytes / 2^30; digits = 2)) GiB exceeds [limits] max_ram_gb = $(settings.max_ram_gb)",
@@ -614,6 +624,23 @@ end
 """
 $(TYPEDSIGNATURES)
 
+[`session_id`](@ref) of `code` for a new session of the collection in `dir`. A
+second session started within the same UTC second takes the suffix `-2`, a
+third `-3`, so that no session overwrites the record of another.
+"""
+function free_session_id(dir::AbstractString, code::AbstractString)
+    stamp = session_id(code)
+    session, k = stamp, 1
+    while isfile(joinpath(dir, "sessions", session * ".toml"))
+        k += 1
+        session = string(stamp, '-', k)
+    end
+    return session
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Generate (or extend) the collection of waiting-time distributions described
 by `settings`: prepare the series, compute every configured threshold not yet
 present (every one under `[output].overwrite`, the existing files backed up
@@ -643,7 +670,7 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
     identity = package_identity()
     code = isempty(identity["git_commit"]) ? identity["git_tree_sha1"] :
            identity["git_commit"]
-    session = session_id(code)
+    session = free_session_id(dir, code)
     created = now(UTC)
     manifest = active_manifest()
     session_path = joinpath(dir, "sessions", session * ".toml")
@@ -665,7 +692,7 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
                 "directory $dir holds a collection with a different identity",
             ))
         isfile(meta_path) || write_toml(meta_path, meta)   # loadable from the first session on
-        isfile(joinpath(dir, "gaps.csv")) || @timeit timer "series files" begin
+        isfile(joinpath(dir, "series.toml")) || @timeit timer "series files" begin
             write_series_files(dir, s, settings.output_format; rows = p.rows,
                 time_original = p.time_original,
                 gaps_original = p.time_axis === :index ? p.gaps_original : nothing)
