@@ -40,21 +40,26 @@ dn = WaitingTimes.discrete_distribution(d)
 
 # ## A Pareto tail by maximum likelihood
 #
-# Expand the counts into a sample, keep the tail above ``x_{\min}``, and let
-# Distributions.jl estimate the shape; then take the Kolmogorov–Smirnov
-# distance between the fitted and the empirical tail.
+# Waiting times are integers, so the tail above ``x_{\min}`` is modelled as a
+# continuous power law rounded to the nearest integer. Its exponent is the
+# maximum-likelihood estimate for integer data of Clauset, Shalizi and Newman,
+# their Eq. (3.7), accurate to about 1 % for ``x_{\min} \gtrsim 6``; the
+# continuous formula applied to integers is biased at such small ``x_{\min}``.
 
 sample = [k for (k, c) in zip(WaitingTimes.support(d), WaitingTimes.counts(d)) for _ in 1:c]
-x_min = 5
+x_min = 6
 tail = sample[sample .>= x_min]
-pareto = fit_mle(Pareto, tail)
+α = 1 + length(tail) / sum(log.(tail ./ (x_min - 0.5)))
+pareto = Pareto(α - 1, x_min - 0.5)
 
-#-
+# The Kolmogorov–Smirnov distance compares the empirical tail at each integer
+# ``k`` with the model at ``k + 1/2``, the upper edge of the values that round
+# to ``k``.
 
 tail_dn = WaitingTimes.discrete_distribution(empirical_distribution(
     [τ >= x_min ? τ : 0 for τ in waiting_times(series, δ)], δ, series))
-distance = maximum(abs(cdf(pareto, k) - cdf(tail_dn, k)) for k in support(tail_dn))
-(alpha = shape(pareto) + 1, x_min = scale(pareto), D_KS = distance)
+distance = maximum(abs(cdf(pareto, k + 0.5) - cdf(tail_dn, k)) for k in support(tail_dn))
+(alpha = α, x_min = x_min, D_KS = distance)
 
 # ## Figure
 #
@@ -72,8 +77,8 @@ fig = with_theme(WaitingTimes.figure_theme()) do
         xlabel = "Waiting time k [days]", ylabel = "P(τ > k)")
     scatter!(ax, k[keep], S[keep]; color = :black, strokecolor = :black,
         label = "Data, δ = 0.002")
-    lines!(ax, kt, ccdf(dn, x_min - 1) .* ccdf.(pareto, kt); color = :orangered,
-        linestyle = :dash, label = "Pareto tail, α = $(round(shape(pareto) + 1; digits = 2))")
+    lines!(ax, kt, ccdf(dn, x_min - 1) .* ccdf.(pareto, kt .+ 0.5); color = :orangered,
+        linestyle = :dash, label = "Pareto tail, α = $(round(α; digits = 2))")
     Legend(fig[0, 1], ax)
     fig
 end

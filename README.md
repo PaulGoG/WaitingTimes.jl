@@ -226,10 +226,14 @@ grew out of:
   *Rom. J. Phys.* **69**, 111 (2024),
   [doi:10.59277/RomJPhys.2024.69.111](https://doi.org/10.59277/RomJPhys.2024.69.111).
 
-The waiting-time definition with a threshold goes back to B. N. Vivirschi,
-P. C. Boboc, V. Băran, A. I. Nicolin, *Phys. Scr.* **95**, 044011 (2020),
-[doi:10.1088/1402-4896/ab623d](https://doi.org/10.1088/1402-4896/ab623d);
-the full list of sources is on the documentation's references page.
+The waiting time with a threshold is the investment horizon of I. Simonsen,
+M. H. Jensen, A. Johansen, *Eur. Phys. J. B* **27**, 583 (2002),
+[doi:10.1140/epjb/e2002-00193-x](https://doi.org/10.1140/epjb/e2002-00193-x),
+which B. N. Vivirschi, P. C. Boboc, V. Băran, A. I. Nicolin, *Phys. Scr.*
+**95**, 044011 (2020),
+[doi:10.1088/1402-4896/ab623d](https://doi.org/10.1088/1402-4896/ab623d),
+adapted to earthquake magnitudes; the full list of sources is on the
+documentation's references page.
 
 <details>
 <summary>Full file tree</summary>

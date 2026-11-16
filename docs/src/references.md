@@ -13,14 +13,31 @@
 - B. N. Vivirschi, P. C. Boboc, V. Băran, A. I. Nicolin, Scale-free
   distributions of waiting times for earthquakes, *Phys. Scr.* **95**, 044011
   (2020), [doi:10.1088/1402-4896/ab623d](https://doi.org/10.1088/1402-4896/ab623d).
-  The waiting-time definition with a magnitude threshold.
+  The waiting time with a magnitude threshold, defined after the investment
+  horizon.
+- I. Simonsen, M. H. Jensen, A. Johansen, Optimal investment horizons, *Eur.
+  Phys. J. B* **27**, 583 (2002),
+  [doi:10.1140/epjb/e2002-00193-x](https://doi.org/10.1140/epjb/e2002-00193-x).
+  The investment horizon: the shortest time in which the return of an asset
+  reaches a given level, the first-passage time that the waiting time
+  generalises to any series.
+- E. Sparre Andersen, On the fluctuations of sums of random variables II,
+  *Math. Scand.* **2**, 194 (1954),
+  [doi:10.7146/math.scand.a-10407](https://doi.org/10.7146/math.scand.a-10407);
+  R. van der Hofstad, M. Keane, An elementary proof of the hitting time
+  theorem, *Am. Math. Mon.* **115**, 753 (2008),
+  [doi:10.1080/00029890.2008.11920588](https://doi.org/10.1080/00029890.2008.11920588).
+  Exact first-passage laws of random walks, the expected values of the
+  exact-law tests ([Validation](validation.md)): the survival probability
+  ``\binom{2k}{k} 4^{-k}`` at ``\delta = 0`` for continuous symmetric steps,
+  and ``P(\tau = k) = (a/k)\, P(S_k = a)`` for the simple walk at level ``a``.
 - A. Clauset, C. R. Shalizi, M. E. J. Newman, Power-law distributions in
   empirical data, *SIAM Rev.* **51**, 661 (2009),
   [doi:10.1137/070710111](https://doi.org/10.1137/070710111).
-  The maximum-likelihood exponent of a power-law tail above ``x_{\min}``, as
-  fitted in the [Downstream example](@ref) and, at every point of an
-  ``x_{\min}`` scan, as the starting value of the scale-free fit in
-  `examples/legacy_fit.jl`.
+  The maximum-likelihood exponent of a power-law tail above ``x_{\min}`` for
+  integer data (their Eq. 3.7), as fitted in the [Downstream example](@ref)
+  and, at every point of an ``x_{\min}`` scan, as the starting value of the
+  scale-free fit in `examples/legacy_fit.jl`.
 - R. Połoczański, A. Wyłomańska, M. Maciejewska, A. Szczurek, J. Gajda,
   Modified cumulative distribution function in application to waiting time
   analysis in the continuous time random walk scenario, *J. Phys. A* **50**,
