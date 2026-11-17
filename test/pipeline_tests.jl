@@ -685,7 +685,10 @@ end
     @test_throws ArgumentError WaitingTimes.stroke_color(:red; factor = 1.5)
     @test WaitingTimes.stroke_color([:red, :blue]) ==
           [WaitingTimes.stroke_color(:red), WaitingTimes.stroke_color(:blue)]
+    @test WaitingTimes.stroke_color(CairoMakie.Makie.Vec3f(1, 0, 0)) ==
+          WaitingTimes.stroke_color(:red)
     @test_throws ArgumentError WaitingTimes.stroke_color(0.5)
+    @test_throws ArgumentError WaitingTimes.stroke_color([0.5, 0.2])
     @test_throws ArgumentError WaitingTimes.stroke_color(nothing)
     # markers are outlined only on request; the caps of range bars, drawn by Makie as
     # markers, are not outlined in black
@@ -699,8 +702,14 @@ end
             strokecolor = WaitingTimes.stroke_color(:red))
         @test CairoMakie.Makie.to_color(own.strokecolor[]) ==
               WaitingTimes.stroke_color(:red)
+        # recipes with markers: the scatter that draws them is outlined on request
         sl = CairoMakie.scatterlines!(ax, [1.0, 2.0], [1.0, 2.0]; strokecolor = :red)
-        @test sl.strokewidth[] == 1.5
+        markers = only(filter(p -> p isa CairoMakie.Scatter, sl.plots))
+        @test markers.strokewidth[] == 1.5
+        @test CairoMakie.Makie.to_color(markers.strokecolor[]) ==
+              CairoMakie.Makie.to_color(:red)
+        st = CairoMakie.stem!(ax, [1.0], [1.0]; strokecolor = :red)
+        @test st.strokewidth[] == 1.5
         rb = CairoMakie.rangebars!(ax, [1.0], [0.0], [2.0]; color = :red, whiskerwidth = 8)
         caps = only(filter(p -> p isa CairoMakie.Scatter, rb.plots))
         @test CairoMakie.Makie.to_color(caps.strokecolor[]).alpha == 0

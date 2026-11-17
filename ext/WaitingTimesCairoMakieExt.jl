@@ -63,11 +63,11 @@ scaled by `factor`), opacity kept; the outline colour of a marker drawn in
 """
 function WaitingTimes.stroke_color(color; factor::Real = 0.6)
     0 < factor <= 1 || throw(ArgumentError("factor must lie in (0, 1], got $factor"))
-    color isa AbstractVector &&
-        return [WaitingTimes.stroke_color(c; factor = factor) for c in color]
-    c = to_color(color)
-    c isa RGBAf || throw(ArgumentError("stroke_color needs a colour, got $(repr(color))"))
-    return RGBAf(factor * c.r, factor * c.g, factor * c.b, c.alpha)
+    darker(c::RGBAf) = RGBAf(factor * c.r, factor * c.g, factor * c.b, c.alpha)
+    c = to_color(color)   # a colour, or a vector of colours
+    c isa RGBAf && return darker(c)
+    c isa AbstractVector{<:RGBAf} && return darker.(c)
+    throw(ArgumentError("stroke_color needs a colour, got $(repr(color))"))
 end
 
 """
