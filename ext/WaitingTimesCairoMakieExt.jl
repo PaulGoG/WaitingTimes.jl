@@ -2,6 +2,7 @@ module WaitingTimesCairoMakieExt
 
 using CairoMakie: CairoMakie, Axis, Figure, Legend, LineElement, PolyElement, Theme, hist!,
                   linkxaxes!, lines!, save, scatter!, stairs!, text!, vspan!, with_theme
+using CairoMakie.Makie: RGBAf, to_color
 using CairoMakie.Makie.MathTeXEngine: texfont
 using WaitingTimes: WaitingTimes, QuantizedSeries, WaitingTimeDistribution, duration,
                     format_threshold, nsamples, probabilities, support, survival
@@ -16,7 +17,12 @@ const SUPERSCRIPTS = Dict('-' => '⁻', '0' => '⁰', '1' => '¹', '2' => '²', 
 
 Publication theme of the package: Computer Modern fonts, base font size 26,
 boxed axes with inward ticks, no minor ticks, faint dashed grid, data lines of
-width 3, markers of size 14 with a stroke, frameless horizontal legends.
+width 3, markers of size 14, frameless horizontal legends.
+
+Marker outlines have width 1.5 and no colour of their own: a marker is outlined
+when `strokecolor` is given, for instance `WaitingTimes.stroke_color(color)`.
+Recipes that draw markers internally, such as the caps of `errorbars` and
+`rangebars`, keep the colour of their series.
 """
 function WaitingTimes.figure_theme()
     return Theme(
@@ -35,7 +41,7 @@ function WaitingTimes.figure_theme()
             xtickalign = 1, ytickalign = 1,
             topspinevisible = true, rightspinevisible = true
         ),
-        Scatter = (strokewidth = 1.5,),
+        Scatter = (strokewidth = 1.5, strokecolor = :transparent),
         Legend = (framevisible = false, orientation = :horizontal, titlefont = :bold)
     )
 end
@@ -43,6 +49,19 @@ end
 function decade_label(p::Integer)
     p == 0 ? "1" : p == 1 ? "10" :
                    "10" * map(c -> SUPERSCRIPTS[c], string(p))
+end
+
+"""
+    WaitingTimes.stroke_color(color; factor = 0.6)
+
+Darker shade of `color` with the same hue (the red, green and blue components
+scaled by `factor`), opacity kept; the outline colour of a marker drawn in
+`color`.
+"""
+function WaitingTimes.stroke_color(color; factor::Real = 0.6)
+    0 < factor <= 1 || throw(ArgumentError("factor must lie in (0, 1], got $factor"))
+    c = to_color(color)
+    return RGBAf(factor * c.r, factor * c.g, factor * c.b, c.alpha)
 end
 
 """

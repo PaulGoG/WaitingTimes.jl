@@ -80,10 +80,22 @@ function save_figure end
     figure_theme()
 
 Publication theme shared by every figure of the package (Computer Modern
-fonts, boxed axes, no minor ticks, faint dashed grid); provided by the
-CairoMakie extension for use with `with_theme` or `set_theme!`.
+fonts, boxed axes, no minor ticks, faint dashed grid, marker outlines of width
+1.5 drawn only when a stroke colour is given); provided by the CairoMakie
+extension for use with `with_theme` or `set_theme!`.
 """
 function figure_theme end
+
+"""
+    stroke_color(color; factor = 0.6)
+
+Outline colour for a marker drawn in `color`: the same hue, darker, with the
+red, green and blue components scaled by `factor` in (0, 1] and the opacity
+kept. Pass it as `strokecolor`; under [`figure_theme`](@ref) a marker is
+outlined only when a stroke colour is given. Provided by the CairoMakie
+extension.
+"""
+function stroke_color end
 
 """
     decade_ticks(lo::Integer, hi::Integer)
@@ -131,7 +143,7 @@ public support, counts, probabilities, cumulative, survival, nsamples, mean_wait
 public GAP_KINDS, with_step, sampling_step, record_length, observed_mask, segment_lengths,
        segment_table, describe, SeriesDescription, censoring_histogram, source_summary
 public discrete_distribution, plot_series, plot_distribution, plot_values, save_figure,
-       figure_theme, decade_ticks, PACKAGE_ROOT
+       figure_theme, stroke_color, decade_ticks, PACKAGE_ROOT
 public Synthetic, Backends, Provenance, Config, Preprocessing, Storage, Orchestrator
 
 include("precompile.jl")

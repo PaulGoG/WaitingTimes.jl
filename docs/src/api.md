@@ -212,6 +212,7 @@ WaitingTimes.Backends.host_backend
 WaitingTimes.Backends.load_device_packages
 WaitingTimes.Backends.GPU_PACKAGES
 WaitingTimes.figure_theme
+WaitingTimes.stroke_color
 WaitingTimes.decade_ticks
 WaitingTimes.plot_series
 WaitingTimes.plot_distribution

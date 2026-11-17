@@ -91,7 +91,7 @@ page, among them
 | read side of collections | `load_collection`, `thresholds`, `distribution`, `class_counts`, `censoring_histogram`, `source_descriptor`, `source_summary`, `segment_lengths`, `record_length` |
 | series tools | `classify`, `class_totals`, `gap_table`, `observed_mask`, `describe` |
 | accessors of a distribution | `support`, `counts`, `probabilities`, `cumulative`, `survival`, `nsamples`, `ks_distance` |
-| figures (CairoMakie extension) | `figure_theme`, `decade_ticks`, `save_figure`, `plot_series`, `plot_distribution`, `plot_values` |
+| figures (CairoMakie extension) | `figure_theme`, `stroke_color`, `decade_ticks`, `save_figure`, `plot_series`, `plot_distribution`, `plot_values` |
 | provenance | `Provenance.artefact_id`, `content_hash`, `canonical_toml`, `git_state`, `hardware_fingerprint`, `backup_existing!` |
 
 The field layout of [`WaitingTimeDistribution`](@ref) (twelve fields,

@@ -667,6 +667,36 @@ end
     @test WaitingTimes.decade_ticks(-1, 2) ==
           ([0.1, 1.0, 10.0, 100.0], ["10⁻¹", "1", "10", "10²"])
     @test_throws ArgumentError WaitingTimes.decade_ticks(2, 1)
+    # outline colour: same hue and opacity, value scaled by the factor (HSV from Colors)
+    Colors = CairoMakie.Makie.Colors
+    for (c, f) in (("#0072B2", 0.6), ("#E69F00", 0.6), ("#009E73", 0.4))
+        base = CairoMakie.Makie.to_color(c)
+        dark = WaitingTimes.stroke_color(c; factor = f)
+        hb, hd = Colors.HSV(Colors.RGB(base)), Colors.HSV(Colors.RGB(dark))
+        @test hd.h ≈ hb.h atol = 1e-3
+        @test hd.s ≈ hb.s atol = 1e-5
+        @test hd.v ≈ f * hb.v atol = 1e-5
+    end
+    @test WaitingTimes.stroke_color((:red, 0.5)).alpha ≈ 0.5
+    @test WaitingTimes.stroke_color(:black) == CairoMakie.Makie.to_color(:black)
+    @test_throws ArgumentError WaitingTimes.stroke_color(:red; factor = 0)
+    @test_throws ArgumentError WaitingTimes.stroke_color(:red; factor = 1.5)
+    # markers are outlined only on request; the caps of range bars, drawn by Makie as
+    # markers, are not outlined in black
+    CairoMakie.with_theme(WaitingTimes.figure_theme()) do
+        f = CairoMakie.Figure()
+        ax = CairoMakie.Axis(f[1, 1])
+        sc = CairoMakie.scatter!(ax, [1.0], [1.0]; color = :red)
+        @test CairoMakie.Makie.to_color(sc.strokecolor[]).alpha == 0
+        @test sc.strokewidth[] == 1.5
+        own = CairoMakie.scatter!(ax, [1.0], [1.0]; color = :red,
+            strokecolor = WaitingTimes.stroke_color(:red))
+        @test CairoMakie.Makie.to_color(own.strokecolor[]) ==
+              WaitingTimes.stroke_color(:red)
+        rb = CairoMakie.rangebars!(ax, [1.0], [0.0], [2.0]; color = :red, whiskerwidth = 8)
+        caps = only(filter(p -> p isa CairoMakie.Scatter, rb.plots))
+        @test CairoMakie.Makie.to_color(caps.strokecolor[]).alpha == 0
+    end
     fig = WaitingTimes.plot_series(s; quantity_label = "level", unit_label = "cm")
     @test fig isa CairoMakie.Figure
     fig2 = WaitingTimes.plot_distribution(d)
