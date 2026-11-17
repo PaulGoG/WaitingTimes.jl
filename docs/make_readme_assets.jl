@@ -42,11 +42,11 @@ println("collection ", c.id)
 provenance_path = joinpath(ASSETS, "PROVENANCE.toml")
 provenance = isfile(provenance_path) && ONLY !== nothing ? TOML.parsefile(provenance_path) :
              Dict{String, Any}("assets" => Dict{String, Any}())
-merge!(provenance,
-    Dict{String, Any}("collection" => c.id,
-        "series" => c.slug, "generated" => string(now(UTC)),
-        "git" => git_state(dirname(@__DIR__)),
-        "package_version" => string(pkgversion(WaitingTimes))))
+# Each asset records the run that produced it, so regenerating one with --only
+# leaves the record of the others as it was.
+const STAMP = Dict{String, Any}("generated" => string(now(UTC)),
+    "git" => git_state(dirname(@__DIR__)),
+    "package_version" => string(pkgversion(WaitingTimes)))
 
 # --- sweep.gif ------------------------------------------------------------------
 if wanted("sweep")
@@ -79,9 +79,10 @@ if wanted("sweep")
         end
         fig
     end
-    provenance["assets"]["sweep.gif"] = Dict("frames" => length(frames),
-        "delta_first" => format_threshold(frames[1]), "delta_last" =>
-            format_threshold(frames[end]))
+    provenance["assets"]["sweep.gif"] = merge(STAMP,
+        Dict{String, Any}("collection" => c.id, "series" => c.slug,
+            "frames" => length(frames), "delta_first" => format_threshold(frames[1]),
+            "delta_last" => format_threshold(frames[end])))
     println("sweep.gif (", length(frames), " frames)")
 end
 
@@ -386,10 +387,11 @@ if wanted("kernels")
         end
         fig
     end
-    provenance["assets"]["kernels.gif"] = Dict("series" => q, "index" => n0,
-        "deltas" => deltas, "delta_one_pass" => deltas[k1], "packet" => packet,
-        "frames" => length(frames), "framerate" => framerate,
-        "duration_s" => length(ticks) / framerate)
+    provenance["assets"]["kernels.gif"] = merge(STAMP,
+        Dict{String, Any}("series" => q, "index" => n0,
+            "deltas" => deltas, "delta_one_pass" => deltas[k1], "packet" => packet,
+            "frames" => length(frames), "framerate" => framerate,
+            "duration_s" => length(ticks) / framerate))
     println("kernels.gif (", length(frames), " frames, ", length(ticks) / framerate, " s)")
 end
 
@@ -439,8 +441,9 @@ if wanted("timings")
         fig
     end
     save(joinpath(ASSETS, "timings.png"), fig; px_per_unit = 2)
-    provenance["assets"]["timings.png"] = Dict("sizes" => sizes, "deltas" => deltas,
-        "threads" => Threads.nthreads(), "seconds" => timings)
+    provenance["assets"]["timings.png"] = merge(STAMP,
+        Dict{String, Any}("sizes" => sizes, "deltas" => deltas,
+            "threads" => Threads.nthreads(), "seconds" => timings))
     println("timings.png")
 end
 

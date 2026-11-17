@@ -1,8 +1,3 @@
-collection = "collection-geisenheim-wind_speed-f0c740a2"
-generated = "2026-09-27T11:56:26.894"
-git = "v0.1.0-10-gb17fa1a"
-package_version = "0.1.0"
-series = "geisenheim-wind_speed"
 
 [assets."kernels.gif"]
 delta_one_pass = 8
@@ -10,17 +5,28 @@ deltas = [4, 8, 12]
 duration_s = 88.4
 framerate = 5
 frames = 87
+generated = "2026-09-27T11:56:26.894"
+git = "v0.1.0-10-gb17fa1a"
 index = 3
+package_version = "0.1.0"
 packet = 8
 series = [6, 7, 4, 5, 7, 3, 6, 5, 9, 7, 10, 8, 11, 9, 6, 10, 8, 11, 9, 7, 10, 13, 11, 14, 12, 9, 13, 15, 11, 8, 12, 14, 10, 13, 15, 12, 14, 17, 13, 10, 12, 8, 11, 7, 13, 16, 19, 15]
 
 [assets."sweep.gif"]
+collection = "collection-geisenheim-wind_speed-f0c740a2"
 delta_first = "0.0"
 delta_last = "50.0"
 frames = 101
+generated = "2026-09-27T00:47:12.549"
+git = "72ff1bd568af00e3332039b6c2fd8fa214d52f3b-dirty"
+package_version = "0.1.0"
+series = "geisenheim-wind_speed"
 
 [assets."timings.png"]
 deltas = [0.5, 5.0, 50.0]
+generated = "2026-09-27T00:47:12.549"
+git = "72ff1bd568af00e3332039b6c2fd8fa214d52f3b-dirty"
+package_version = "0.1.0"
 sizes = [10000, 100000, 1000000]
 threads = 12
 
