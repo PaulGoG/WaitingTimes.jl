@@ -54,7 +54,8 @@ dn = WaitingTimes.discrete_distribution(d)
 #
 # Survival functions at three thresholds of the collection, in the package
 # theme (`WaitingTimes.figure_theme`) with decade ticks
-# (`WaitingTimes.decade_ticks`).
+# (`WaitingTimes.decade_ticks`) and marker outlines a darker shade of each
+# series colour (`WaitingTimes.stroke_color`).
 
 fig = with_theme(WaitingTimes.figure_theme()) do
     fig = Figure(; size = (900, 600))
@@ -68,7 +69,7 @@ fig = with_theme(WaitingTimes.figure_theme()) do
         S = WaitingTimes.survival(dk)
         keep = S .> 0
         scatter!(ax, k[keep], S[keep]; color = color, marker = marker,
-            strokecolor = :black, label = "δ = " * key)
+            strokecolor = WaitingTimes.stroke_color(color), label = "δ = " * key)
     end
     Legend(fig[0, 1], ax)
     fig
