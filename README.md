@@ -37,7 +37,7 @@ WaitingTimes.jl/
 ├── docs/                         # Documenter site with an executable example
 ├── examples/                     # worked consumers of the two producers
 ├── data/                         # gitignored: raw inputs, collections, logs
-├── CITATION.cff, CHANGELOG.md, LICENSE, .JuliaFormatter.toml
+├── CITATION.cff, CHANGELOG.md, LICENSE, .JuliaFormatter.toml, .gitattributes
 ```
 
 ## Setup
@@ -300,7 +300,7 @@ WaitingTimes.jl/
 │   ├── tick_stream.jl            # MarketTickStreamer.jl: online against batch, session persistence and following, closures, both axes
 │   └── telemetry_run.jl          # DeepSpaceTelemetry.jl run through its adapter → declared gaps → collections on both axes
 ├── .github/, codecov.yml         # CI (tests on Julia min, 1 and pre, producer examples, coverage, docs), Dependabot
-├── CITATION.cff, CHANGELOG.md, LICENSE, .JuliaFormatter.toml
+├── CITATION.cff, CHANGELOG.md, LICENSE, .JuliaFormatter.toml, .gitattributes
 ```
 
 </details>
