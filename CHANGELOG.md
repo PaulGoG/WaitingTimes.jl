@@ -23,7 +23,10 @@ Keep a Changelog and the project adheres to Semantic Versioning.
 ### Fixed
 
 - `docs/make_readme_assets.jl --only` with two or more comma-separated names
-  took the list for the collection directory.
+  took the list for the collection directory; an unknown name now stops the
+  run instead of regenerating nothing, and only the sweep reads a collection.
+  Without a directory argument, several Geisenheim collections under `data/`
+  are refused instead of taking the first by name.
 
 ## [0.6.0] - 2026-11-16
 
