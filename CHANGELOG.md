@@ -20,6 +20,11 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   again from the current Geisenheim collection and is byte-identical to the
   0.1.0 rendering.
 
+### Fixed
+
+- `docs/make_readme_assets.jl --only` with two or more comma-separated names
+  took the list for the collection directory.
+
 ## [0.6.0] - 2026-11-16
 
 The package ends at the distributions: model fitting leaves it for a
