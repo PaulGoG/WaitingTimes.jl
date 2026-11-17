@@ -3,10 +3,16 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
-## [Unreleased]
+## [0.6.1] - 2026-11-17
+
+Marker outlines of the figure theme; housekeeping of the README assets and the
+test fixtures.
 
 ### Added
 
+- `stroke_color(color; factor = 0.6)`: the outline colour of a marker drawn in
+  `color`, the same hue with the red, green and blue components scaled by
+  `factor`, opacity kept.
 - `.gitattributes` turns off line-ending conversion for the test fixtures, so
   a checkout with `core.autocrlf` keeps their bytes, their checksums and the
   identifiers pinned from them.
@@ -22,6 +28,13 @@ Keep a Changelog and the project adheres to Semantic Versioning.
 
 ### Fixed
 
+- `figure_theme()` outlined every scatter marker in black, including the
+  markers that Makie draws inside other recipes: the caps of `errorbars` and
+  `rangebars` came out as black bars instead of in the series colour. The
+  outline keeps its width of 1.5 but has no colour of its own, so a marker is
+  outlined only when a stroke colour is given; the documentation example
+  outlines its markers with `stroke_color`. Figures that relied on the
+  default black outline now draw markers without one.
 - `docs/make_readme_assets.jl --only` with two or more comma-separated names
   took the list for the collection directory; an unknown name now stops the
   run instead of regenerating nothing, and only the sweep reads a collection.
