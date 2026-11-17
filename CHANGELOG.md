@@ -3,6 +3,23 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
+## [Unreleased]
+
+### Added
+
+- `.gitattributes` turns off line-ending conversion for the test fixtures, so
+  a checkout with `core.autocrlf` keeps their bytes, their checksums and the
+  identifiers pinned from them.
+
+### Changed
+
+- `docs/make_readme_assets.jl` records the run that produced each asset
+  (time, commit, version and, for the sweep, the collection) in that asset's
+  entry of `docs/src/assets/PROVENANCE.toml`; a run with `--only` used to
+  overwrite one stamp shared by all assets. The sweep animation is rendered
+  again from the current Geisenheim collection and is byte-identical to the
+  0.1.0 rendering.
+
 ## [0.6.0] - 2026-11-16
 
 The package ends at the distributions: model fitting leaves it for a
