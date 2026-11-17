@@ -19,10 +19,12 @@ Publication theme of the package: Computer Modern fonts, base font size 26,
 boxed axes with inward ticks, no minor ticks, faint dashed grid, data lines of
 width 3, markers of size 14, frameless horizontal legends.
 
-Marker outlines have width 1.5 and no colour of their own: a marker is outlined
-when `strokecolor` is given, for instance `WaitingTimes.stroke_color(color)`.
-Recipes that draw markers internally, such as the caps of `errorbars` and
-`rangebars`, keep the colour of their series.
+Marker outlines have width 1.5 and no colour of their own (`markerstrokewidth`,
+`markerstrokecolor`), for `scatter` and the recipes that draw markers, such as
+`scatterlines`: a marker is outlined when `strokecolor` is given, for instance
+`WaitingTimes.stroke_color(color)`. Markers that recipes draw without a stroke
+colour, such as the caps of `errorbars` and `rangebars`, keep the colour of
+their series.
 """
 function WaitingTimes.figure_theme()
     return Theme(
@@ -32,6 +34,8 @@ function WaitingTimes.figure_theme()
         figure_padding = 10,
         linewidth = 3,
         markersize = 14,
+        markerstrokewidth = 1.5,
+        markerstrokecolor = :transparent,
         Axis = (
             spinewidth = 1.5,
             xticklabelsize = 22, yticklabelsize = 22,
@@ -41,7 +45,6 @@ function WaitingTimes.figure_theme()
             xtickalign = 1, ytickalign = 1,
             topspinevisible = true, rightspinevisible = true
         ),
-        Scatter = (strokewidth = 1.5, strokecolor = :transparent),
         Legend = (framevisible = false, orientation = :horizontal, titlefont = :bold)
     )
 end
@@ -56,11 +59,14 @@ end
 
 Darker shade of `color` with the same hue (the red, green and blue components
 scaled by `factor`), opacity kept; the outline colour of a marker drawn in
-`color`.
+`color`. A vector of colours gives a vector of outline colours.
 """
 function WaitingTimes.stroke_color(color; factor::Real = 0.6)
     0 < factor <= 1 || throw(ArgumentError("factor must lie in (0, 1], got $factor"))
+    color isa AbstractVector &&
+        return [WaitingTimes.stroke_color(c; factor = factor) for c in color]
     c = to_color(color)
+    c isa RGBAf || throw(ArgumentError("stroke_color needs a colour, got $(repr(color))"))
     return RGBAf(factor * c.r, factor * c.g, factor * c.b, c.alpha)
 end
 

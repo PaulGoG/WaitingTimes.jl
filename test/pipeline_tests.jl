@@ -669,7 +669,9 @@ end
     @test_throws ArgumentError WaitingTimes.decade_ticks(2, 1)
     # outline colour: same hue and opacity, value scaled by the factor (HSV from Colors)
     Colors = CairoMakie.Makie.Colors
-    for (c, f) in (("#0072B2", 0.6), ("#E69F00", 0.6), ("#009E73", 0.4))
+    # the last two have no zero channel, so their saturation is below 1 and tested
+    for (c, f) in (("#0072B2", 0.6), ("#E69F00", 0.6), ("#009E73", 0.4),
+        ("#CC79A7", 0.6), ("#56B4E9", 0.5))
         base = CairoMakie.Makie.to_color(c)
         dark = WaitingTimes.stroke_color(c; factor = f)
         hb, hd = Colors.HSV(Colors.RGB(base)), Colors.HSV(Colors.RGB(dark))
@@ -681,6 +683,10 @@ end
     @test WaitingTimes.stroke_color(:black) == CairoMakie.Makie.to_color(:black)
     @test_throws ArgumentError WaitingTimes.stroke_color(:red; factor = 0)
     @test_throws ArgumentError WaitingTimes.stroke_color(:red; factor = 1.5)
+    @test WaitingTimes.stroke_color([:red, :blue]) ==
+          [WaitingTimes.stroke_color(:red), WaitingTimes.stroke_color(:blue)]
+    @test_throws ArgumentError WaitingTimes.stroke_color(0.5)
+    @test_throws ArgumentError WaitingTimes.stroke_color(nothing)
     # markers are outlined only on request; the caps of range bars, drawn by Makie as
     # markers, are not outlined in black
     CairoMakie.with_theme(WaitingTimes.figure_theme()) do
@@ -693,6 +699,8 @@ end
             strokecolor = WaitingTimes.stroke_color(:red))
         @test CairoMakie.Makie.to_color(own.strokecolor[]) ==
               WaitingTimes.stroke_color(:red)
+        sl = CairoMakie.scatterlines!(ax, [1.0, 2.0], [1.0, 2.0]; strokecolor = :red)
+        @test sl.strokewidth[] == 1.5
         rb = CairoMakie.rangebars!(ax, [1.0], [0.0], [2.0]; color = :red, whiskerwidth = 8)
         caps = only(filter(p -> p isa CairoMakie.Scatter, rb.plots))
         @test CairoMakie.Makie.to_color(caps.strokecolor[]).alpha == 0

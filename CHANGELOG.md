@@ -12,7 +12,7 @@ test fixtures.
 
 - `stroke_color(color; factor = 0.6)`: the outline colour of a marker drawn in
   `color`, the same hue with the red, green and blue components scaled by
-  `factor`, opacity kept.
+  `factor`, opacity kept; elementwise for a vector of colours.
 - `.gitattributes` turns off line-ending conversion for the test fixtures, so
   a checkout with `core.autocrlf` keeps their bytes, their checksums and the
   identifiers pinned from them.
@@ -34,7 +34,10 @@ test fixtures.
   outline keeps its width of 1.5 but has no colour of its own, so a marker is
   outlined only when a stroke colour is given; the documentation example
   outlines its markers with `stroke_color`. Figures that relied on the
-  default black outline now draw markers without one.
+  default black outline now draw markers without one. The width is now the
+  theme's `markerstrokewidth`, so `scatterlines` and the other recipes with
+  markers take it too; before, their markers had no outline even when a
+  stroke colour was given.
 - `docs/make_readme_assets.jl --only` with two or more comma-separated names
   took the list for the collection directory; an unknown name now stops the
   run instead of regenerating nothing, and only the sweep reads a collection.

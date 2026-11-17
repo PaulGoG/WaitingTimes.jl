@@ -91,9 +91,9 @@ function figure_theme end
 
 Outline colour for a marker drawn in `color`: the same hue, darker, with the
 red, green and blue components scaled by `factor` in (0, 1] and the opacity
-kept. Pass it as `strokecolor`; under [`figure_theme`](@ref) a marker is
-outlined only when a stroke colour is given. Provided by the CairoMakie
-extension.
+kept; a vector of colours gives a vector. Pass it as `strokecolor`; under
+[`figure_theme`](@ref) a marker is outlined only when a stroke colour is
+given. Provided by the CairoMakie extension.
 """
 function stroke_color end
 
