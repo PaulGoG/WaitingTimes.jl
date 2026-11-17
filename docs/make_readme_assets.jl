@@ -29,7 +29,10 @@ const ONLY = let i = findfirst(==("--only"), ARGS)
 end
 wanted(name) = ONLY === nothing || name in ONLY
 const THEME = WaitingTimes.figure_theme()
-const POSITIONAL = filter(a -> !startswith(a, "--") && (ONLY === nothing || a ∉ ONLY), ARGS)
+const POSITIONAL = let i = findfirst(==("--only"), ARGS)   # skip the value of --only
+    [a
+     for (j, a) in enumerate(ARGS) if !startswith(a, "--") && (i === nothing || j != i + 1)]
+end
 const COLLECTION = isempty(POSITIONAL) ?
                    let root = joinpath(dirname(@__DIR__), "data")
     rows = list_collections(root)
