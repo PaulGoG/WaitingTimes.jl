@@ -57,7 +57,8 @@
     ]
     @test Set(c[2]["op"] for c in cases) == Set(keys(WT.Config.PREPROCESSING_OPS)) ==
           Set(keys(P.STEP_TRANSFORMS))
-    for (series, step, direct) in cases
+    for (k, (series, step, direct)) in enumerate(cases)
+        @test WT.Config.validate_step(step, step["op"], k) === nothing
         @test same(P.apply_steps(series, [step]), direct)
     end
 
@@ -76,8 +77,12 @@
                 "[quantization]\ndigits = 2\n" * rest)
             return path
         end
-        @test_logs (:warn, r"chunk_size") match_mode = :any load_settings(config(
+        # the naive reference kernel uses chunk_size, the device one does not
+        @test_logs load_settings(config(
             linear * "[algorithm]\nsearch = \"fenwick_sweep\"\nchunk_size = 8\n"))
+        @test_logs (:warn, r"chunk_size") match_mode = :any load_settings(config(
+            linear * "[algorithm]\nsearch = \"fenwick_sweep\"\nchunk_size = 8\n" *
+            "reference_kernel = \"device\"\n"))
         @test_logs (:warn, r"backend") match_mode = :any load_settings(config(
             linear * "[algorithm]\nbackend = \"cuda\"\n"))
         @test_logs (:warn, r"cadence") match_mode = :any load_settings(config(
@@ -139,6 +144,20 @@ end
             "op = \"exclude_intervals\"\nintervals = [[1, 2], [3.0, 4]]\n"))).steps) == 1
         @test length(load_settings(config(step(
             "op = \"exclude_intervals\"\nintervals = [[2, 4], [1, 2]]\n"))).steps) == 1
+        # a range that keeps nothing, a dataset without its descriptor, a section that is
+        # not a table, a tick file without its time column
+        @test occursin("from = 10.0 exceeds to = 5.0",
+            message(config(step("op = \"select_range\"\nfrom = 10\nto = 5\n"))))
+        @test length(load_settings(config(step(
+            "op = \"select_range\"\nfrom = 2\nto = 2\n"))).steps) == 1
+        @test occursin("dataset descriptor not found",
+            message(config(""; input = "dataset = \"nowhere\"\n")))
+        scalar_section = joinpath(dir, "scalar.toml")
+        write(scalar_section, "gaps = 3\n" * read(config(""), String))
+        @test occursin("[gaps] must be a table", message(scalar_section))
+        @test occursin("format = \"tick\"",
+            message(config("";
+                input = "format = \"tick\"\ntime_column = \"\"\ntime_unit = \"sample\"\n")))
     end
 end
 
@@ -169,4 +188,27 @@ end
     @test P.time_to_ns("2262-04-11T23:47:16.8000", :second, nothing, 1) ==
           9_223_372_036_800_000_000
     @test_throws ArgumentError P.time_to_ns("2262-04-11T23:47:16.9000", :second, nothing, 1)
+    # a nanosecond stamp written as a float is beyond 2^53 and would be rounded by 21 ns
+    @test P.time_to_ns("1794787200123456789", :nanosecond, nothing, 1) ==
+          1_794_787_200_123_456_789
+    @test_throws ArgumentError P.time_to_ns("1794787200123456789.0", :nanosecond, nothing, 1)
+    @test P.time_to_ns(2.0^53, :nanosecond, nothing, 1) == 2^53
+    @test_throws ArgumentError P.time_to_ns(2.0^53 + 2, :nanosecond, nothing, 1)
+end
+
+@testset "Centred moving average on a long series at a high level" begin
+    P = WT.Preprocessing
+    # reference: every window summed directly in extended precision
+    x = 6e8 .+ cumsum(randn(StableRNG(17), 20_000))
+    window, half, n = 61, 30, length(x)
+    rs = P.RawSeries(Vector{Union{Missing, Float64}}(x), nothing, :sample, nothing,
+        PreparationRecord("level"))
+    residual = Float64.(P.detrend_moving_average(rs; window).values)
+    exact = map(1:n) do k
+        lo, hi = max(1, k - half), min(n, k + half)
+        Float64(big(x[k]) - sum(big, @view x[lo:hi]) / (hi - lo + 1))
+    end
+    # the residual is exact to the spacing of the values themselves, eps(6e8) = 1.2e-7;
+    # the difference of two plain prefix sums near 1.2e13 is off by 6e-5 here
+    @test maximum(abs, residual .- exact) <= 2 * eps(6e8)
 end

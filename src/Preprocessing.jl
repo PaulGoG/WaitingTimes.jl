@@ -121,8 +121,8 @@ function read_series(path::AbstractString; format::Symbol = :auto,
             "time_column" => time_column, "time_unit" => String(time_unit),
             "epoch_unit" => String(epoch_unit), "missing_policy" => String(missing_policy),
             "tie_policy" => String(tie_policy)),
-        Dict{String, Any}("n_rows" => length(values), "n_missing" =>
-            count(ismissing, values)))
+        Dict{String, Any}("n_rows" => length(values),
+            "n_missing" => count(ismissing, values), "bytes" => filesize(path)))
     rs = RawSeries(values, times, time_unit, epoch, record)
     times === nothing && return rs
     return collapse_ties(rs, tie_policy)
@@ -213,6 +213,11 @@ end
 function time_to_ns(v::Real, epoch_unit, _, i)
     v isa Integer || isinteger(v) ||
         throw(ArgumentError("numeric time stamp at row $i is not an integer: $v"))
+    v isa AbstractFloat && abs(v) > maxintfloat(typeof(v)) &&
+        throw(ArgumentError(
+            "floating-point time stamp $v at row $i lies beyond 2^53, where neighbouring " *
+            "integers are not distinguished; write the stamps as integers",
+        ))
     unit = UNIT_NANOSECONDS[epoch_unit]
     bound = typemax(Int64) ÷ unit
     -bound <= v <= bound || throw(ArgumentError(
@@ -584,12 +589,25 @@ function detrend_moving_average(rs::RawSeries; window::Integer)
     idx, x = observed(rs)
     half = window ÷ 2
     n = length(x)
-    prefix = cumsum(x)
+    # Prefix sums with their accumulated rounding error (Neumaier summation): the
+    # difference of two prefix sums alone loses the low digits of a window total on
+    # a long series at a high level.
+    prefix = Vector{Float64}(undef, n)
+    lost = Vector{Float64}(undef, n)
+    sum_k = err_k = 0.0
+    for k in 1:n
+        t = sum_k + x[k]
+        err_k += abs(sum_k) >= abs(x[k]) ? (sum_k - t) + x[k] : (x[k] - t) + sum_k
+        sum_k = t
+        prefix[k] = sum_k
+        lost[k] = err_k
+    end
     values = Vector{Union{Missing, Float64}}(missing, length(rs))
     for k in 1:n
         lo = max(1, k - half)
         hi = min(n, k + half)
-        total = prefix[hi] - (lo > 1 ? prefix[lo - 1] : 0.0)
+        total = lo > 1 ? (prefix[hi] - prefix[lo - 1]) + (lost[hi] - lost[lo - 1]) :
+                prefix[hi] + lost[hi]
         values[idx[k]] = x[k] - total / (hi - lo + 1)
     end
     return with_values(rs, values, :detrend_moving_average, Dict("window" => Int(window)),
@@ -676,7 +694,12 @@ the published results: while more than `1 - fraction` of the rows remain,
 every observation with magnitude at least the current cut is removed, where
 the cut is the integer floor of the largest magnitude on the first pass and
 its floor at `digits` decimals afterwards. The batches remove whole magnitude
-levels at once, so the removed share exceeds `fraction` by up to one level.
+levels at once and the rows counted against `fraction` include the missing
+ones, so the removed share can exceed `fraction` by far: the first pass
+removes every magnitude from the integer part of the largest one upwards, and
+a series whose magnitudes all lie below 1 is refused, since that pass would
+remove every observation. The rule suits the percentage fluctuations it was
+written for; [`clip_quantile`](@ref) removes a stated share.
 `fraction = 0.004` is the rule of the 2024 code, with which the published
 tables were computed; the 0.04 % stated in Rom. J. Phys. 69, 111 (2024),
 §2.3 (doi:10.59277/RomJPhys.2024.69.111), is a misprint of the paper. With

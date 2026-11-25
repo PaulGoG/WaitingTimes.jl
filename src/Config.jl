@@ -5,7 +5,7 @@ Hard errors name the offending key; unknown keys produce warnings.
 module Config
 
 using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
-using ..WaitingTimes: MAX_DIGITS, TIME_UNITS, QuantizedSeries, threshold, check_digits,
+using ..WaitingTimes: MAX_DIGITS, TIME_UNITS, QuantizedSeries, Threshold, check_digits,
                       on_grid
 using ..Provenance: effective_config
 using TOML: TOML
@@ -166,8 +166,10 @@ const PREPROCESSING_OPS = Dict{String, PreprocessingOp}(
     "select_range" => PreprocessingOp(["from", "to"],
         Dict{String, Any}("from" => -Inf, "to" => Inf),
         function (step, where_)
-            haskey(step, "from") && as_float(step["from"], where_, "from")
-            haskey(step, "to") && as_float(step["to"], where_, "to")
+            from = haskey(step, "from") ? as_float(step["from"], where_, "from") : -Inf
+            to = haskey(step, "to") ? as_float(step["to"], where_, "to") : Inf
+            from <= to ||
+                throw(ArgumentError("[$where_] from = $from exceeds to = $to"))
             return nothing
         end,
         step -> "range"),
@@ -341,7 +343,12 @@ function warn_unknown_keys(table::AbstractDict, section::AbstractString)
     return nothing
 end
 
-section(config, name) = get(config, name, Dict{String, Any}())
+function section(config, name)
+    table = get(config, name, Dict{String, Any}())
+    table isa AbstractDict ||
+        throw(ArgumentError("[$name] must be a table, got $(repr(table))"))
+    return table
+end
 
 function require(table, section, key)
     haskey(table, key) ||
@@ -450,6 +457,9 @@ function parse_input(raw, config_dir)
         (:csv, :dat, :arrow, :tick))
     tick = input_format === :tick
     dataset = as_string(get(inp, "dataset", ""), "input", "dataset")
+    descriptor_path = joinpath(config_dir, "datasets", dataset * ".toml")
+    isempty(dataset) || isfile(descriptor_path) ||
+        throw(ArgumentError("[input] dataset descriptor not found: $descriptor_path"))
     source_raw = as_string(get(inp, "source_descriptor", ""), "input", "source_descriptor")
     source_descriptor = isempty(source_raw) ? "" : resolve_path(source_raw, config_dir)
     isempty(source_descriptor) || validate_source_descriptor(source_descriptor)
@@ -466,6 +476,11 @@ function parse_input(raw, config_dir)
     time_column !== nothing && time_unit === :sample &&
         throw(ArgumentError(
             "[input] a time_column requires a time_unit other than \"sample\"",
+        ))
+    tick && time_column === nothing &&
+        throw(ArgumentError(
+            "[input] format = \"tick\" reads the time column of the tick files; omit " *
+            "time_column and time_unit for the defaults (\"time_ns\", \"nanosecond\")",
         ))
     time_axis = as_symbol(get(inp, "time_axis", "elapsed"), "input", "time_axis",
         (:elapsed, :index))
@@ -656,8 +671,10 @@ tables that the active modes ignore.
 """
 function warn_ignored_keys(alg::AbstractDict, gaps::AbstractDict, thr::AbstractDict;
         search::Symbol, reference_kernel::Symbol, gap_detect::Symbol, threshold_mode::Symbol)
+    # the naive and guarded reference kernels use it too
     haskey(alg, "chunk_size") && search ∉ (:naive, :guarded, :segment_tree) &&
-        @warn "[algorithm] chunk_size is ignored under search = \"$search\""
+        reference_kernel === :device &&
+        @warn "[algorithm] chunk_size is ignored under search = \"$search\" and reference_kernel = \"$reference_kernel\""
     haskey(alg, "backend") && alg["backend"] != "none" && search !== :device &&
         reference_kernel !== :device &&
         @warn "[algorithm] backend is ignored under search = \"$search\" and reference_kernel = \"$reference_kernel\""
@@ -730,7 +747,7 @@ function threshold_list(settings::Settings, s::QuantizedSeries)
         push!(ds, round(Int64, settings.threshold_max * scale))
     end
     unique!(sort!(ds))
-    return [threshold(d / scale, s) for d in ds]
+    return [Threshold(d, digits) for d in ds]
 end
 
 end # module
