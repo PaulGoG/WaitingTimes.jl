@@ -212,3 +212,36 @@ end
     # the difference of two plain prefix sums near 1.2e13 is off by 6e-5 here
     @test maximum(abs, residual .- exact) <= 2 * eps(6e8)
 end
+
+@testset "Published treatment: Trieste sea level, 1927 and 1928, against the 2024 generator" begin
+    # the shipped configuration on the first two years of the record, without the
+    # descriptor, whose checksum is that of the whole record
+    raw = effective_config(joinpath(CONFIGS, "trieste_sea_level.toml"))
+    raw["input"]["path"] = joinpath(FIXTURES, "sealevelTrieste_1927_1928.csv")
+    raw["input"]["dataset"] = ""
+    texts = ["0.0", "0.5", "5.0", "20.0"]
+    raw["thresholds"] = Dict{String, Any}("mode" => "explicit",
+        "values" => parse.(Float64, texts))
+    mktempdir() do dir
+        raw["output"]["root"] = joinpath(dir, "collections")
+        path = joinpath(dir, "trieste_1927_1928.toml")
+        open(io -> TOML.print(io, raw), path, "w")
+        p = prepare(load_settings(path))
+        s = p.series
+        # 17 544 hourly rows, 189 without a value, 70 pruned; the pruned slots stay on
+        # the clock. The share is taken of the observed values: of all the rows the loop
+        # runs one pass longer here and removes 73.
+        @test length(s) == 17_285 && s.times[end] == 17_544
+        pruning = p.raw.record.steps[end]
+        @test pruning.op === :clip_extremes && pruning.summary["n_removed"] == 70
+        for text in texts
+            legacy = read_legacy_table(joinpath(FIXTURES, "legacy_trieste",
+                "WTS_slvlTrst_slvlhght_pRAF_deltais$(text).dat"))
+            δ = parse_threshold(text, 1)
+            d = empirical_distribution(waiting_times(s, δ), δ, s)
+            @test WT.support(d) == parse.(Int, legacy["time"])
+            @test WT.probabilities(d) ≈ parse.(Float64, legacy["pdf"]) atol = 1e-12
+            @test WT.cumulative(d) ≈ parse.(Float64, legacy["cdf"]) atol = 1e-12
+        end
+    end
+end

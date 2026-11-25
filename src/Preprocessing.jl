@@ -690,15 +690,16 @@ end
 $(TYPEDSIGNATURES)
 
 The pruning loop of the 2024 analysis code, reproduced for continuity with
-the published results: while more than `1 - fraction` of the rows remain,
-every observation with magnitude at least the current cut is removed, where
-the cut is the integer floor of the largest magnitude on the first pass and
-its floor at `digits` decimals afterwards. The batches remove whole magnitude
-levels at once and the rows counted against `fraction` include the missing
-ones, so the removed share can exceed `fraction` by far: the first pass
-removes every magnitude from the integer part of the largest one upwards, and
-a series whose magnitudes all lie below 1 is refused, since that pass would
-remove every observation. The rule suits the percentage fluctuations it was
+the published results: while more than `1 - fraction` of the observed values
+remain, every observation with magnitude at least the current cut is removed,
+where the cut is the integer floor of the largest magnitude on the first pass
+and its floor at `digits` decimals afterwards. The share is taken of the
+observed values, since that code dropped the rows without a value before it
+counted. The batches remove whole magnitude levels at once, so the removed
+share can exceed `fraction` by far: the first pass removes every magnitude
+from the integer part of the largest one upwards, and a series whose
+magnitudes all lie below 1 is refused, since that pass would remove every
+observation. The rule suits the percentage fluctuations it was
 written for; [`clip_quantile`](@ref) removes a stated share.
 `fraction = 0.004` is the rule of the 2024 code, with which the published
 tables were computed; the 0.04 % stated in Rom. J. Phys. 69, 111 (2024),
@@ -712,7 +713,7 @@ function clip_extremes(rs::RawSeries; fraction::Real = 0.004, digits::Integer,
     check_digits(digits)
     idx, x = observed(rs)
     isempty(x) && throw(ArgumentError("the series has no observed value"))
-    n_initial = length(rs)
+    n_initial = length(x)   # the 2024 code counted after dropping the missing rows
     remove = falses(length(rs))
     alive = trues(length(x))
     remaining = n_initial
