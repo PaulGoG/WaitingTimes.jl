@@ -58,6 +58,11 @@ Keep a Changelog and the project adheres to Semantic Versioning.
 - `scripts/launch_run.jl` starts its run again. Since 0.4.0 it stopped with a
   `MethodError`, because `detach` was applied to the redirected command
   instead of the command.
+- `scripts/crosscheck.jl` runs with KernelAbstractions in its environment
+  (`--env test`) and then includes the device kernel on the CPU. It loaded
+  the package inside the function that went on to build the kernel, where the
+  backend probes defined by the extension are not yet visible, and stopped
+  with an `ArgumentError`.
 
 ### Changed
 

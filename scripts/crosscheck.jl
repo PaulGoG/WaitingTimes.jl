@@ -40,12 +40,15 @@ using WaitingTimes
 using WaitingTimes.Backends: backend_name
 using Printf: @printf
 
-function main(options)
-    # KernelAbstractions, when installed, enables the device kernel on the CPU;
-    # --backend adds its GPU package
-    backend = lowercase(String(options["backend"]))
-    loaded = WaitingTimes.Backends.load_device_packages(Symbol(backend))
+# KernelAbstractions, when installed, enables the device kernel on the CPU;
+# --backend adds its GPU package. Loaded here and not inside main: the extensions
+# define the backend probes, and a function sees only the methods that existed
+# when it was called.
+const BACKEND = lowercase(String(OPTIONS["backend"]))
+const LOADED = WaitingTimes.Backends.load_device_packages(Symbol(BACKEND))
 
+function main(options)
+    backend, loaded = BACKEND, LOADED
     settings = load_settings(abspath(options["config"]))
     prepared = prepare(settings)
     series = prepared.series
