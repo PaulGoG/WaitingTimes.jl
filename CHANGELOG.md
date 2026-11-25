@@ -17,11 +17,13 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   the identity (`format`, `delimiter`, `header`) or another version of the
   preprocessing can give another series under the same identifier: `generate`
   compares the series it prepared with the stored one and stops when they
-  differ.
+  differ, also when the collection has lost its `series.toml`.
 - The index files are rewritten when a session stops on an error or an
   interrupt, not only at the checkpoints, and a partition file that the index
   does not list (left by a killed process) is backed up as `<name>#k.<ext>`
-  before its threshold is written again; it used to be replaced.
+  before its threshold is written again; it used to be replaced. When the
+  index cannot be written, the failure is logged and the error that stopped
+  the session is the one raised.
 - `parse_threshold` refuses a literal beyond the `Int64` grid; `"20000"` with
   15 decimals wrapped around to another threshold.
 - `OnlineWaitingTimes` refuses a sample whose target overflows the value type
@@ -30,7 +32,9 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   of raising. `check_threshold` raises `OverflowError`, not `InexactError`,
   for a threshold beyond the value type of a negative series.
 - Declared gaps of one kind that come to touch when they absorb a detected
-  gap are one gap; they stayed two, and a second merge joined them.
+  gap are one gap; they stayed two, and a second merge joined them. A
+  declared gap across two detected gaps absorbs both; the second stayed a
+  detected gap overlapping it, and `declare_gaps` refused the result.
 - The four-argument `empirical_distribution` leaves the classes it is given
   unchanged when a horizon censors waits.
 - Configuration values that validated and failed later are refused on load:
@@ -38,12 +42,15 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   descriptor file, a section that is not a table, and tick files given an
   empty time column. The `chunk_size` warning is no longer raised while the
   reference kernel uses the key.
-- Floating-point time stamps beyond 2^53 (nanosecond epochs written as
-  `…789.0`) are refused; they were rounded to the nearest representable
-  integer.
-- `detrend_moving_average` sums its windows with compensated prefix sums; on a
-  long series at a high level the residuals carried the rounding error of
-  the prefix sums (4·10⁻⁷ at 10⁶ points near 6·10⁴).
+- Floating-point time stamps from 2^53 on (nanosecond epochs written as
+  `…789.0`), where one float stands for two or more integers, are refused;
+  they were rounded to the nearest representable integer.
+- `detrend_moving_average` sums its windows with compensated partial sums
+  restarted every `window` values, so that the rounding error of a window
+  comes from its neighbourhood alone; on a long series at a high level the
+  residuals carried the rounding error of prefix sums over the whole series
+  (4·10⁻⁷ at 10⁶ points near 6·10⁴), and after a spike or a level drop that
+  of the values before it.
 - The host memory estimate counts the prepared input held through a session
   and both ends of a gap interval, and no longer charges the workspace of a
   GPU kernel to the host.

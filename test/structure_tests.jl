@@ -70,7 +70,20 @@ end
         [(start = 3, stop = 5, kind = "hole", source = "a"),
             (start = 6, stop = 7, kind = "session", source = "b")])
     @test mixed.gaps == [(2, 6), (6, 8)] && mixed.gap_kinds == ["hole", "session"]
-    for merged in (joined, mixed)
+    # one declaration across two detected gaps absorbs both. Across three detected gaps,
+    # two declarations: the space between them goes to the earlier, the first extends
+    # to the start of the first detected gap, the last to the stop of the last
+    two = QuantizedSeries(Int32[1, 2], [1, 20], 0; gaps = [(2, 6), (8, 12)],
+        gap_kinds = ["detected", "detected"])
+    across = declare_gaps(two, [(4, 10)]; kind = "hole")
+    @test across.gaps == [(2, 12)] && across.gap_kinds == ["hole"]
+    three = QuantizedSeries(Int32[1, 2], [1, 20], 0; gaps = [(2, 6), (8, 12), (13, 16)],
+        gap_kinds = ["detected", "detected", "detected"])
+    spread = declare_gaps(three,
+        [(start = 4, stop = 10, kind = "hole", source = "a"),
+            (start = 11, stop = 14, kind = "session", source = "b")])
+    @test spread.gaps == [(2, 11), (11, 16)] && spread.gap_kinds == ["hole", "session"]
+    for merged in (joined, mixed, across, spread)
         @test WT.merge_gaps(WT.gap_entries(merged)) == WT.gap_entries(merged)
     end
     @test_throws ArgumentError declare_gaps(base, [(2, 5)]; kind = "detected")

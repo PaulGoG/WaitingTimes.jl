@@ -852,6 +852,23 @@ function WaitingTimes.waiting_times!(τ::AbstractVector, s::QuantizedSeries, δ:
     return waiting_times!(τ, s, δ, NaiveSearch())
 end
 
+# fails at its second threshold after putting a directory where the index is written
+struct IndexBlockingSearch <: WaitingTimes.AbstractSearch
+    root::String
+end
+WaitingTimes.workspace(::IndexBlockingSearch, ::QuantizedSeries) = nothing
+WaitingTimes.workspace_bytes(::IndexBlockingSearch, ::QuantizedSeries) = 0
+function WaitingTimes.waiting_times!(τ::AbstractVector, s::QuantizedSeries, δ::Threshold,
+        alg::IndexBlockingSearch; workspace = nothing)
+    FAILING_CALLS[] += 1
+    if FAILING_CALLS[] == 2
+        cdir = only(filter(isdir, readdir(alg.root; join = true)))
+        mkdir(joinpath(cdir, "index.toml.tmp"))
+        throw(ErrorException("simulated interruption"))
+    end
+    return waiting_times!(τ, s, δ, NaiveSearch())
+end
+
 struct WrongSearch <: WaitingTimes.AbstractSearch end
 WaitingTimes.workspace(::WrongSearch, ::QuantizedSeries) = nothing
 WaitingTimes.workspace_bytes(::WrongSearch, ::QuantizedSeries) = 0
@@ -943,6 +960,26 @@ end
         end
     end
 
+    @testset "An index that cannot be written does not hide the interruption" begin
+        mktempdir() do dir
+            settings = load_settings(
+                quickstart_variant(dir, "blocked"; checkpoint_seconds = 1_000.0))
+            FAILING_CALLS[] = 0
+            err = try
+                generate(settings;
+                    kernel = IndexBlockingSearch(joinpath(dir, "collections")))
+                nothing
+            catch e
+                e
+            end
+            @test err isa ErrorException && err.msg == "simulated interruption"
+            cdir = only_collection(dir)
+            @test occursin("index files not written", read(joinpath(cdir, "run.log"), String))
+            rm(joinpath(cdir, "index.toml.tmp"))
+            @test length(generate(settings).computed) == 4
+        end
+    end
+
     @testset "A collection is not extended by another series" begin
         mktempdir() do dir
             file = joinpath(dir, "x.csv")
@@ -982,6 +1019,11 @@ end
             # the same series extends the collection as before
             wider = generate(load_settings(config("wider", false, [0.5, 1.0])))
             @test wider.id == first_run.id && wider.computed == ["1.0"]
+            # without series.toml the stored series still guards the distributions
+            rm(joinpath(first_run.dir, "series.toml"))
+            stored = read(joinpath(first_run.dir, "series.csv"))
+            @test_throws ArgumentError generate(short)
+            @test read(joinpath(first_run.dir, "series.csv")) == stored
             # the record names the input as the configuration does, with its size
             record = load_collection(first_run.dir).metadata["series"]["record"]
             @test record["source"] == "x.csv"
@@ -1043,7 +1085,22 @@ end
             @test budget(settings, s, FenwickSweep(), GuardedSearch()).bytes ==
                   budget(settings, s, FenwickSweep(), nothing).bytes +
                   WaitingTimes.workspace_bytes(GuardedSearch(), s)
+            # a device kernel on a GPU (any backend but the CPU of KernelAbstractions)
+            # holds its workspace in device memory, outside the host estimate
+            gpu = DeviceSearch(:gpu_stand_in)
+            @test budget(settings, s, gpu, nothing).bytes ==
+                  budget(settings, s, NaiveSearch(), nothing).bytes -
+                  WaitingTimes.workspace_bytes(NaiveSearch(), s)
+            @test budget(settings, s, NaiveSearch(), gpu).bytes ==
+                  budget(settings, s, NaiveSearch(), nothing).bytes
         end
+        # each gap interval costs its two times
+        plain = QuantizedSeries([1.0, 2.0, 3.0], 0)
+        gapped = QuantizedSeries(Union{Missing, Float64}[1.0, missing, 2.0, missing, 3.0], 0)
+        @test length(gapped) == length(plain) && length(gapped.gaps) == 2
+        @test estimate_memory_bytes(gapped, NaiveSearch()) >=
+              estimate_memory_bytes(plain, NaiveSearch()) +
+              2 * 2 * sizeof(eltype(gapped.times))
         mktempdir() do dir
             path = quickstart_variant(dir, "tight";
                 limits = Dict{String, Any}("max_ram_gb" => 1e-9))

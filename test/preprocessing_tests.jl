@@ -192,25 +192,46 @@ end
     @test P.time_to_ns("1794787200123456789", :nanosecond, nothing, 1) ==
           1_794_787_200_123_456_789
     @test_throws ArgumentError P.time_to_ns("1794787200123456789.0", :nanosecond, nothing, 1)
-    @test P.time_to_ns(2.0^53, :nanosecond, nothing, 1) == 2^53
-    @test_throws ArgumentError P.time_to_ns(2.0^53 + 2, :nanosecond, nothing, 1)
+    @test P.time_to_ns(2.0^53 - 1, :nanosecond, nothing, 1) == 2^53 - 1
+    # from 2^53 on a float stands for two integers: "9007199254740993.0" parses to 2^53
+    @test_throws ArgumentError P.time_to_ns(2.0^53, :nanosecond, nothing, 1)
+    @test_throws ArgumentError P.time_to_ns("9007199254740993.0", :nanosecond, nothing, 1)
 end
 
 @testset "Centred moving average on a long series at a high level" begin
     P = WT.Preprocessing
     # reference: every window summed directly in extended precision
-    x = 6e8 .+ cumsum(randn(StableRNG(17), 20_000))
-    window, half, n = 61, 30, length(x)
-    rs = P.RawSeries(Vector{Union{Missing, Float64}}(x), nothing, :sample, nothing,
-        PreparationRecord("level"))
-    residual = Float64.(P.detrend_moving_average(rs; window).values)
-    exact = map(1:n) do k
-        lo, hi = max(1, k - half), min(n, k + half)
-        Float64(big(x[k]) - sum(big, @view x[lo:hi]) / (hi - lo + 1))
+    function residuals(x, window)
+        rs = P.RawSeries(Vector{Union{Missing, Float64}}(x), nothing, :sample, nothing,
+            PreparationRecord("level"))
+        half, n = window ÷ 2, length(x)
+        exact = map(1:n) do k
+            lo, hi = max(1, k - half), min(n, k + half)
+            Float64(big(x[k]) - sum(big, @view x[lo:hi]) / (hi - lo + 1))
+        end
+        return Float64.(P.detrend_moving_average(rs; window).values), exact
     end
-    # the residual is exact to the spacing of the values themselves, eps(6e8) = 1.2e-7;
-    # the difference of two plain prefix sums near 1.2e13 is off by 6e-5 here
-    @test maximum(abs, residual .- exact) <= 2 * eps(6e8)
+    # Exact to the spacing of the values themselves, eps(6e8) = 1.2e-7: the window
+    # total is two partial sums of at most 61 values, each rounded once, and their
+    # sum, so the mean is off by at most 3 × 0.5 ulp(61 × 6e8) / 61 ≤ 1.6 eps(6e8),
+    # and the division and subtraction add at most 1 eps(6e8). The difference of two
+    # plain prefix sums near 1.2e13 is off by 6e-5 here
+    residual, exact = residuals(6e8 .+ cumsum(randn(StableRNG(17), 20_000)), 61)
+    @test maximum(abs, residual .- exact) <= 3 * eps(6e8)
+    # windows clear of a spike or of a higher level elsewhere in the series are exact
+    # to the spacing of their own values (prefix sums over the whole series are off by
+    # 10^5 and 10^6 of these spacings)
+    residual, exact = residuals(vcat([1e16], fill(0.1, 5_000)), 61)
+    @test maximum(abs, residual[123:end] .- exact[123:end]) <= 2 * eps(0.1)
+    residual, exact = residuals(vcat(fill(1e12 + 1 / 3, 5_000), fill(1e-3, 500)), 61)
+    @test maximum(abs, residual[5_062:end] .- exact[5_062:end]) <= 2 * eps(1e-3)
+    # short series, windows up to beyond the series, values over seven decades
+    x = [sin(1.3k) * 10.0^(k % 7 - 3) for k in 1:157]
+    for window in (1, 3, 61, 157, 159), n in (1, 60, 61, 62, 157)
+
+        residual, exact = residuals(x[1:n], window)
+        @test maximum(abs, residual .- exact) <= 2 * eps(maximum(abs, x[1:n]))
+    end
 end
 
 @testset "Published treatment: Trieste sea level, 1927 and 1928, against the 2024 generator" begin

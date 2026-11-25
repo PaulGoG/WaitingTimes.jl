@@ -172,7 +172,9 @@ $(TYPEDSIGNATURES)
 Host memory estimate in bytes for one threshold of `s` with `alg`: the series
 arrays (values and times) and the result vector, ``N (\\mathrm{sizeof}(T_v) +
 2\\,\\mathrm{sizeof}(T_t))``, and the gap intervals; the workspace of `alg`
-(`workspace_bytes`); and the transients of one threshold
+(`workspace_bytes`), which is device memory for a device kernel on a GPU and
+which `memory_budget` then counts against the device bound instead; and the
+transients of one threshold
 (`transient_bytes`), which include the dense waiting-time table when
 `store_waiting_times` is set.
 """
@@ -727,7 +729,10 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
                 "directory $dir holds a collection with a different identity",
             ))
         isfile(meta_path) || write_toml(meta_path, meta)   # loadable from the first session on
-        if isfile(joinpath(dir, "series.toml"))
+        # a collection with distributions keeps its series, with or without series.toml
+        partitions = joinpath(dir, "distributions")
+        if isfile(joinpath(dir, "series.toml")) ||
+           (isdir(partitions) && !isempty(readdir(partitions)))
             check_stored_series(dir, s)
         else
             @timeit timer "series files" begin
@@ -811,11 +816,20 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
                     n_indexed = length(computed)
                 end
             end
-        finally
+        catch
             # an error or an interrupt between two checkpoints still leaves an index of
-            # every partition written
-            n_indexed == length(computed) || write_index_files(dir, existing, s.digits)
+            # every partition written; failing to write it does not replace the error
+            if n_indexed != length(computed)
+                try
+                    write_index_files(dir, existing, s.digits)
+                catch index_error
+                    @error "index files not written after the session stopped" exception=(
+                        index_error, catch_backtrace())
+                end
+            end
+            rethrow()
         end
+        n_indexed == length(computed) || write_index_files(dir, existing, s.digits)
         finish!(progress)
 
         if reference !== nothing && !isempty(computed)

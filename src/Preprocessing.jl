@@ -213,10 +213,11 @@ end
 function time_to_ns(v::Real, epoch_unit, _, i)
     v isa Integer || isinteger(v) ||
         throw(ArgumentError("numeric time stamp at row $i is not an integer: $v"))
-    v isa AbstractFloat && abs(v) > maxintfloat(typeof(v)) &&
+    # from 2^p on (p the precision) a float also stands for the odd integer above it
+    v isa AbstractFloat && abs(v) >= maxintfloat(typeof(v)) &&
         throw(ArgumentError(
-            "floating-point time stamp $v at row $i lies beyond 2^53, where neighbouring " *
-            "integers are not distinguished; write the stamps as integers",
+            "floating-point time stamp $v at row $i is not below 2^$(precision(v)), " *
+            "where neighbouring integers are not distinguished; write the stamps as integers",
         ))
     unit = UNIT_NANOSECONDS[epoch_unit]
     bound = typemax(Int64) ÷ unit
@@ -582,6 +583,11 @@ $(TYPEDSIGNATURES)
 
 Detrend by subtracting the centred moving average of the observed values over
 an odd `window` (truncated at the ends); the result is the residual.
+
+The window totals come from compensated (Neumaier) partial sums restarted every
+`window` values. A window spans at most two such blocks, so its rounding error
+is set by the values of those blocks alone: a spike or a high level elsewhere
+in the series does not reach it.
 """
 function detrend_moving_average(rs::RawSeries; window::Integer)
     window >= 1 && isodd(window) ||
@@ -589,25 +595,32 @@ function detrend_moving_average(rs::RawSeries; window::Integer)
     idx, x = observed(rs)
     half = window ÷ 2
     n = length(x)
-    # Prefix sums with their accumulated rounding error (Neumaier summation): the
-    # difference of two prefix sums alone loses the low digits of a window total on
-    # a long series at a high level.
+    # partial sums within each block of `window` values, with their rounding error
     prefix = Vector{Float64}(undef, n)
     lost = Vector{Float64}(undef, n)
     sum_k = err_k = 0.0
     for k in 1:n
+        if (k - 1) % window == 0
+            sum_k = err_k = 0.0
+        end
         t = sum_k + x[k]
         err_k += abs(sum_k) >= abs(x[k]) ? (sum_k - t) + x[k] : (x[k] - t) + sum_k
         sum_k = t
         prefix[k] = sum_k
         lost[k] = err_k
     end
+    # total of x[a:b], a and b in one block
+    function block_total(a, b)
+        (a - 1) % window == 0 && return prefix[b] + lost[b]
+        return (prefix[b] - prefix[a - 1]) + (lost[b] - lost[a - 1])
+    end
     values = Vector{Union{Missing, Float64}}(missing, length(rs))
     for k in 1:n
         lo = max(1, k - half)
         hi = min(n, k + half)
-        total = lo > 1 ? (prefix[hi] - prefix[lo - 1]) + (lost[hi] - lost[lo - 1]) :
-                prefix[hi] + lost[hi]
+        block_end = ((lo - 1) ÷ window + 1) * window
+        total = hi <= block_end ? block_total(lo, hi) :
+                block_total(lo, block_end) + block_total(block_end + 1, hi)
         values[idx[k]] = x[k] - total / (hi - lo + 1)
     end
     return with_values(rs, values, :detrend_moving_average, Dict("window" => Int(window)),

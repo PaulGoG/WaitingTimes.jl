@@ -91,11 +91,12 @@ function merge_gaps(entries::AbstractVector{GapEntry{Tt}}) where {Tt}
             push!(spans, e)
         end
     end
+    # The declared gaps are extended in place: the last one that absorbed a detected
+    # gap can still overlap the next detected gap, which it then absorbs as well.
     out = GapEntry{Tt}[]
     i = 1
     for d in spans
         while i <= length(merged) && merged[i].stop <= d.start
-            push!(out, merged[i])
             i += 1
         end
         j = i
@@ -110,11 +111,12 @@ function merge_gaps(entries::AbstractVector{GapEntry{Tt}}) where {Tt}
             g = merged[m]
             start = m == i ? min(g.start, d.start) : g.start
             stop = m == j - 1 ? max(g.stop, d.stop) : merged[m + 1].start
-            push!(out, (start = start, stop = stop, kind = g.kind, source = g.source))
+            merged[m] = (start = start, stop = stop, kind = g.kind, source = g.source)
         end
-        i = j
+        i = j - 1
     end
-    append!(out, @view merged[i:end])
+    append!(out, merged)
+    sort!(out; by = e -> (e.start, e.stop))
     # absorbing a detected gap can leave declared gaps of one kind touching
     joined = GapEntry{Tt}[]
     for e in out
