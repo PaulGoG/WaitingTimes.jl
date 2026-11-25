@@ -32,6 +32,18 @@ provenance; an interrupted run resumes, and reference checks recompute part
 of the grid with the reference kernel ([Pipeline](pipeline.md),
 [Configuration](configuration.md), [Provenance](provenance.md)).
 
+## Installation
+
+The package is not registered; it is added by URL and needs Julia 1.12 or
+later:
+
+```julia
+using Pkg
+Pkg.add(url = "https://github.com/PaulGoG/WaitingTimes.jl")
+```
+
+[Interfacing](interfacing.md) shows the calls a consumer starts from.
+
 ## Contents
 
 ```@contents

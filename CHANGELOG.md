@@ -3,6 +3,96 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
+## [Unreleased]
+
+### Fixed
+
+- `export_legacy` names its files as the 2024 generator did, with the
+  threshold printed as a floating-point value (`…deltais0.005.dat`), so that
+  the tools written against that generator find them; the fixed decimals of
+  the partition names (`…deltais0.0050.dat`) matched only thresholds without
+  trailing zeros. The bytes of the files are unchanged.
+- A session no longer extends a collection with the distributions of another
+  series. The identifiers hash the configuration, and a reader option outside
+  the identity (`format`, `delimiter`, `header`) or another version of the
+  preprocessing can give another series under the same identifier: `generate`
+  compares the series it prepared with the stored one and stops when they
+  differ.
+- The index files are rewritten when a session stops on an error or an
+  interrupt, not only at the checkpoints, and a partition file that the index
+  does not list (left by a killed process) is backed up as `<name>#k.<ext>`
+  before its threshold is written again; it used to be replaced.
+- `parse_threshold` refuses a literal beyond the `Int64` grid; `"20000"` with
+  15 decimals wrapped around to another threshold.
+- `OnlineWaitingTimes` refuses a sample whose target overflows the value type
+  before any threshold has been fed (the first states had already taken it),
+  and under a declared upper bound such a target counts as unreachable instead
+  of raising. `check_threshold` raises `OverflowError`, not `InexactError`,
+  for a threshold beyond the value type of a negative series.
+- Declared gaps of one kind that come to touch when they absorb a detected
+  gap are one gap; they stayed two, and a second merge joined them.
+- The four-argument `empirical_distribution` leaves the classes it is given
+  unchanged when a horizon censors waits.
+- Configuration values that validated and failed later are refused on load:
+  `select_range` with `from > to`, an `[input].dataset` without its
+  descriptor file, a section that is not a table, and tick files given an
+  empty time column. The `chunk_size` warning is no longer raised while the
+  reference kernel uses the key.
+- Floating-point time stamps beyond 2^53 (nanosecond epochs written as
+  `…789.0`) are refused; they were rounded to the nearest representable
+  integer.
+- `detrend_moving_average` sums its windows with compensated prefix sums; on a
+  long series at a high level the residuals carried the rounding error of
+  the prefix sums (4·10⁻⁷ at 10⁶ points near 6·10⁴).
+- The host memory estimate counts the prepared input held through a session
+  and both ends of a gap interval, and no longer charges the workspace of a
+  GPU kernel to the host.
+- `clip_extremes` takes the pruned share of the observed values, as the 2024
+  code did, which dropped the rows without a value before it counted; the
+  share was taken of every row, so that on a series with missing values the
+  loop could run a pass longer and remove one more magnitude level (73 values
+  against 70 on the years 1927 and 1928 of the Trieste record). The series of
+  the shipped configurations are unchanged: on the whole Trieste record both
+  rules stop at the same pass, and the fuel-consumption record has no missing
+  value.
+- `scripts/launch_run.jl` starts its run again. Since 0.4.0 it stopped with a
+  `MethodError`, because `detach` was applied to the redirected command
+  instead of the command.
+
+### Changed
+
+- The preparation record names the input file as the configuration does, not
+  by its absolute path, and records its size in bytes.
+- `threshold_list` builds its thresholds from the grid integers.
+- Documentation: installation by URL in the README and on the home page; the
+  collection layout lists `README.md` and `sessions/<id>.hardware.txt`; the
+  memory bound of a horizon is stated against the largest number of samples
+  within one horizon, and the logarithmic growth of the pending set for
+  independent values at `δ = 0`; declared gaps and `time_original` refer to
+  the clock after the preprocessing steps; the dense verification on the
+  dataset grids is dated (2026-09-26, version 0.1.0); the docstrings of the
+  figure functions are kept with their declarations, so that the API page
+  shows them in full; the README states what each component has been tested
+  on; a broken cross-reference fails the documentation build.
+
+### Added
+
+- Tests: every kernel on one- and two-point series and at the ends of the
+  `Int32` range; the streaming state and the online estimator against the
+  reference kernel on every prefix of a record; the heap bound after a burst;
+  gaps next to the first and the last observation; the four 2024 EUR-USD files
+  by name and by byte through `export_legacy`; a kernel that disagrees in
+  `validate`; the early reference check when the largest threshold exceeds
+  the work bound; an identifier with a float and a step table pinned against
+  `sha256sum`.
+- Test fixture for the published treatment of a pruned series: the first two
+  years of the Trieste record (`test/fixtures/sealevelTrieste_1927_1928.csv`)
+  and four distributions written from them by the 2024 generator with the
+  rolling-average fluctuations and the pruning switched on
+  (`test/fixtures/legacy_trieste/`). The steps of the shipped
+  `trieste_sea_level.toml` reproduce their supports and probabilities;
+  `test/fixtures/README.md` records the origin of every fixture.
+
 ## [0.6.1] - 2026-11-17
 
 Marker outlines of the figure theme; housekeeping of the README assets and the

@@ -15,7 +15,8 @@ comparable with `==` across kernels and backends.
 
 In the cost of the scans, ``m_n`` is the position at which the scan from
 index ``n`` stops: its passage, or the end ``N`` of the record when ``n`` is
-right-censored. On the sample index ``m_n - n = \min(\tau_n, N - n)``.
+right-censored. On a sample index without missing samples
+``m_n - n = \min(\tau_n, N - n)``.
 
 ## Segment tree
 
@@ -50,14 +51,16 @@ joins the heap; the heap contents are the right-censored set so far. A
 incrementally, for embedding in real-time detection pipelines.
 
 After ``t`` samples the heap holds ``E[\min(\tau, t)]`` entries on average:
-``O(\log t)`` for independent values, ``O(\sqrt{t})`` for a random walk,
-``O(t)`` when a fraction ``p_\infty`` of the indices never resolves (downward
-drift, bounded values at thresholds near their range). A declared
+``O(\log t)`` for independent continuous values at ``\delta = 0`` (more at
+``\delta > 0``, by an amount set by the upper tail of the values),
+``O(\sqrt{t})`` for a random walk, ``O(t)`` when a fraction ``p_\infty`` of
+the indices never resolves (downward drift, bounded values at thresholds near
+their range). A declared
 `upper_bound` removes the provably unreachable entries without changing any
 result; a `horizon` ``H`` evicts entries older than ``H`` as censored and
-bounds the heap by twice the samples within one horizon or 1024 entries,
-whichever is larger, at a cost within
-25 % of the unbounded state (random walk, ``10^6`` points).
+bounds the heap by twice the largest number of samples that have fallen within
+one horizon, or 1024 entries, whichever is larger, at a cost within 25 % of
+the unbounded state (random walk, ``10^6`` points).
 
 ## Device kernel
 

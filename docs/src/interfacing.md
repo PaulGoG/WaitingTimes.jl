@@ -121,7 +121,9 @@ between them, and `summary.csv` the per-threshold statistics.
 Tools written against the 2024 generator read one space-delimited file per
 threshold, `WTS_<slug>_deltais<δ>.dat`, with the columns `time pdf cdf`.
 [`export_legacy`](@ref) writes exactly those files from a collection, so an
-existing tool can consume a new collection unchanged:
+existing tool can consume a new collection unchanged. The threshold in a file
+name is printed as that code printed its floating-point value
+(`deltais0.005`), not with the fixed decimals of the partition names:
 
 ```julia
 export_legacy(c, "outputData/ftEURUSD_clsng_raw"; slug = "ftEURUSD_clsng_raw")
@@ -171,8 +173,8 @@ error under `bound_policy = :error` and a missing observation under `:skip`.
 `horizon` evicts indices pending longer than ``H`` and counts them as
 censored, so the distributions are censored at ``H``, carry `horizon = H`,
 and equal `empirical_distribution(τ, δ, s; horizon = H)` of the batch
-evaluation; the heap stays below twice the samples within one horizon or
-1024 entries, whichever is larger.
+evaluation; the heap stays below twice the largest number of samples that
+have fallen within one horizon, or 1024 entries, whichever is larger.
 `status(est)` reports the evicted and unreachable indices per threshold.
 
 The lower-level pieces are a [`StreamingState`](@ref) at one

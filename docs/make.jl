@@ -46,8 +46,7 @@ makedocs(;
         "References" => "references.md"
     ],
     plugins = [BIBLIOGRAPHY],
-    checkdocs = :public,
-    warnonly = [:cross_references]
+    checkdocs = :public
 )
 
 deploydocs(; repo = "github.com/PaulGoG/WaitingTimes.jl", devbranch = "main")

@@ -37,12 +37,20 @@ WaitingTimes.jl/
 ├── docs/                         # Documenter site with an executable example
 ├── examples/                     # worked consumers of the two producers
 ├── data/                         # gitignored: raw inputs, collections, logs
-├── CITATION.cff, CHANGELOG.md, LICENSE, .JuliaFormatter.toml, .gitattributes
+└── CITATION.cff, CHANGELOG.md, LICENSE, .JuliaFormatter.toml, .gitattributes
 ```
 
 ## Setup
 
-Requires Julia 1.12 or later. From a clone:
+Requires Julia 1.12 or later. The package is not registered; as a dependency
+it is added by URL:
+
+```julia
+using Pkg
+Pkg.add(url = "https://github.com/PaulGoG/WaitingTimes.jl")
+```
+
+From a clone:
 
 ```
 julia activate.jl        # instantiate the package environment
@@ -74,27 +82,23 @@ julia -e 'using Pkg; Pkg.activate("JuliaFormatter"; shared = true); Pkg.add("Jul
 
 Raw inputs are expected under `data/raw/` (gitignored); the configurations in
 `configs/` reference them relative to the configuration file. A run writes a
-collection directory `data/<collection id>/` (provenance schema 4) with a
-`README.md` describing its own files. Provenance is kept in `config.toml`,
-`metadata.toml`, `hardware.txt`, the resolved manifest and `sessions/`, with
-a record, configuration snapshot and manifest per session. Each threshold is
-one partition under `distributions/`, its counts split into exact and
-gap-crossing waits, with its censoring histogram under `censoring/`. The
-prepared series is stored with its gaps by kind (`gaps.csv`) and the
-segments between them (`segments.csv`). `index.toml`
-and `summary.csv` are rewritten at every checkpoint of a session and at its
-end, so an interrupted run leaves a collection that loads and resumes.
+collection directory `data/<collection id>/`: one distribution per threshold,
+the prepared series with its gaps, and the provenance of every session. Its
+`README.md` describes the files, and the
+[Pipeline](https://PaulGoG.github.io/WaitingTimes.jl/stable/pipeline/) page
+lists them. Rerunning with a wider threshold grid adds partitions and appends
+a session, and an interrupted run resumes from the partitions already
+written. Existing partitions are rewritten only when
+`[output].overwrite = true`, and are backed up first.
 
-When `[input].source_descriptor` names the identity file of the program that
-produced the input (a DeepSpaceTelemetry.jl run's `descriptor.toml`, a
-MarketTickStreamer.jl session sidecar), the collection keeps a verbatim copy
-as `source.toml` and records it in `metadata.toml` with the producer's code
-identity. `[input].time_axis = "index"` places the series on the row ordinal
-of the input instead of its clock; for a tick stream that is the trade count,
-and exchange closures add no time to a wait.
-Rerunning with a wider threshold grid adds partitions and appends a session.
-Existing partitions are rewritten only when `[output].overwrite = true`, and
-are backed up first.
+`[input].source_descriptor` records with the collection the identity file of
+the program that produced the input (a DeepSpaceTelemetry.jl run's
+`descriptor.toml`, a MarketTickStreamer.jl session sidecar).
+`[input].time_axis = "index"` places the series on the row ordinal of the
+input instead of its clock; for a tick stream that is the trade count, and
+exchange closures add no time to a wait. Both are described on the
+[Configuration](https://PaulGoG.github.io/WaitingTimes.jl/stable/configuration/)
+page.
 
 Library use, in memory:
 
@@ -125,26 +129,13 @@ push!(est, t_ns, price)                        # one sample; snapshot(est) gives
 
 | Component | State |
 |---|---|
-| Decimal grid, thresholds, series with gaps | done |
-| Naive reference kernel and guarded scan (multithreaded) | done |
-| Gap classification and class accounting | done |
-| Empirical distribution | done |
-| Legacy fixture regression (EUR-USD) | done, exact |
-| Kernels against exact first-passage laws | done; closed-form counts and the Sparre Andersen law in the tests |
-| Segment-tree, Fenwick and streaming kernels | done, equal to the reference kernel on the 7 124 dataset thresholds and on 4·10⁶ synthetic points |
-| Synthetic generators, benchmarks | done |
-| Configuration, storage, provenance, preprocessing, scripts | done; quickstart end to end in the tests |
-| Distributions.jl and CairoMakie extensions | done |
-| KernelAbstractions device kernel | done, a package extension (`using KernelAbstractions`), tested on the CPU by default and with oneAPI on an Intel Arc GPU |
-| Preprocessing (published treatment, `clip_sigma`, log returns, log levels) | done |
-| Automatic choice of `digits` | done |
-| Collection read side, legacy export, per-collection README | done |
-| Source identity of a collection, code identity of every session | done; DeepSpaceTelemetry.jl run descriptors and MarketTickStreamer.jl session sidecars |
-| Gap kinds and sources, record structure (segments, record length), index time axis | done |
-| Online estimator for live streams (`OnlineWaitingTimes`) | done; equal to the batch result on every prefix; memory bounded by a horizon |
-| Worked consumers of MarketTickStreamer.jl and DeepSpaceTelemetry.jl | done, `examples/`; the consumers assert the collection contract in CI |
-| Precompile workload | done; first result below 0.1 s after `using WaitingTimes` |
-| Documentation site | done |
+| Kernels: naive (the reference), guarded, segment tree, Fenwick sweep, streaming | equal index by index in the test suite and checked there against exact first-passage laws; equal on the 7 124 thresholds of the six dataset configurations in the run of 2026-09-26 (version 0.1.0) |
+| Device kernel (KernelAbstractions extension) | CPU backend in the test suite; oneAPI on an Intel Arc GPU through the opt-in tests in `test/device/`; the CUDA, AMDGPU and Metal backends have not been run on a device |
+| Gaps, classification, empirical distribution | in the test suite; the EUR-USD files of the 2024 generator are reproduced exactly |
+| Online estimator (`OnlineWaitingTimes`) | equal to the batch result on every prefix of a record; memory bounded by a horizon |
+| Pipeline: configuration, preprocessing, automatic `digits`, storage, provenance, resume | quickstart end to end in the tests; the published treatment of the Trieste series reproduces the files of the 2024 generator on the first two years of the record; writes provenance schema 4 and reads schemas 2 and 3 |
+| Consumers of MarketTickStreamer.jl and DeepSpaceTelemetry.jl | `examples/`, run in CI against the pinned producer versions |
+| Distributions.jl, CairoMakie and UnicodePlots extensions | in the test suite |
 
 ## Formulation
 
@@ -174,9 +165,9 @@ or GPU through the KernelAbstractions extension (`using KernelAbstractions`).
 ![How each kernel resolves the waiting times of one index on a 48-sample
 series](docs/src/assets/kernels.gif)
 
-On the full threshold grids of the six datasets shipped as configurations
-(7 124 thresholds, up to 10⁶ points), no kernel differs from the reference at
-a single index.
+On the full threshold grids of the six dataset configurations (7 124
+thresholds, up to 10⁶ points), no kernel differed from the reference at a
+single index in the run of 2026-09-26 (version 0.1.0).
 
 ![Wall time per threshold of every kernel on synthetic random walks of 10⁴
 to 10⁶ points at three thresholds](docs/src/assets/timings.png)
@@ -288,7 +279,7 @@ WaitingTimes.jl/
 │   ├── structure_tests.jl        # gap kinds, record structure, time axes, partitions, round trip
 │   ├── contract_tests.jl         # schema-2 read, dense files, limit guards, reference kernels, gap absorption
 │   ├── device/                   # opt-in oneAPI tests on an Intel GPU (own environment)
-│   └── fixtures/                 # EUR-USD input and legacy outputs for regression
+│   └── fixtures/                 # EUR-USD and Trieste (1927–1928) inputs with outputs of the 2024 generator; README.md
 │       ├── schema2/              # hand-written schema-2 collection
 │       └── schema3/              # schema-3 collection written by 0.4.0
 ├── docs/
@@ -300,7 +291,7 @@ WaitingTimes.jl/
 │   ├── tick_stream.jl            # MarketTickStreamer.jl: online against batch, session persistence and following, closures, both axes
 │   └── telemetry_run.jl          # DeepSpaceTelemetry.jl run through its adapter → declared gaps → collections on both axes
 ├── .github/, codecov.yml         # CI (tests on Julia min, 1 and pre, producer examples, coverage, docs), Dependabot
-├── CITATION.cff, CHANGELOG.md, LICENSE, .JuliaFormatter.toml, .gitattributes
+└── CITATION.cff, CHANGELOG.md, LICENSE, .JuliaFormatter.toml, .gitattributes
 ```
 
 </details>

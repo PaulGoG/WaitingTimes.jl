@@ -4,9 +4,11 @@ One TOML file per run, parsed and validated by [`load_settings`](@ref) into
 an immutable [`Settings`](@ref). Relative paths resolve against the file's
 directory. A top-level `base_config = "file.toml"` merges the file onto a
 base (one level), so dataset files can share defaults with
-`configs/quickstart.toml`. Unknown keys, and keys the active mode ignores
-(`chunk_size` under the Fenwick sweep, `backend` without the device kernel),
-produce warnings; unusable values raise errors naming the key.
+`configs/quickstart.toml`; relative paths of the base resolve against the
+directory of the file that names it. Unknown keys, and keys the active mode
+ignores (`chunk_size` when neither the kernel nor the reference kernel is a
+threaded scan, `backend` without the device kernel), produce warnings;
+unusable values raise errors naming the key.
 
 ```toml
 [input]
@@ -79,7 +81,9 @@ checkpoint_seconds = 10.0         # seconds between resume checkpoints; 0 = afte
 For `format = "tick"`, the processed day files of MarketTickStreamer.jl, the
 defaults are `time_column = "time_ns"`, `time_unit = "nanosecond"` and
 `epoch_unit = "nanosecond"`; `epoch_unit` admits no other value for tick
-files.
+files. Numeric time stamps are integers in `epoch_unit`. Textual stamps
+without a `time_format` are ISO 8601 date-times with up to nine fractional
+digits, read as UTC; a stamp with a zone designator or an offset is refused.
 
 ## Time axis
 
@@ -100,7 +104,8 @@ shorter by its length. For the three kinds of input this is
 | DeepSpaceTelemetry.jl payload | mission time on the payload grid | the payload row, when the hole rows are written as missing values (`examples/telemetry_run.jl`) |
 
 The original clock is kept: `series.<ext>` carries the row ordinal (`row`)
-and the original time (`time_original`) of every observation, so the
+and the time on the elapsed axis (`time_original`, the clock of the input
+after the preprocessing steps) of every observation, so the
 collection can be rebuilt on the other axis, and on the index axis the gaps
 of the original clock are written to `gaps_original.csv`. The time axis
 enters the series identity only when it is `index`.
@@ -133,6 +138,9 @@ producer's kind. Declarations of one kind that overlap or touch merge;
 touching declarations of different kinds stay separate gaps; overlapping
 ones of different kinds merge, with the kinds joined by `+` (`session+hole`).
 A declared interval must lie inside the record and contain no observation.
+It refers to the clock of the series after the preprocessing steps: a step
+with `splice = true` moves the later times back, and a declaration has to
+follow.
 
 ## Choosing `digits`
 
@@ -177,7 +185,7 @@ are read in any letter case.
 
 | `op` | Parameters | Effect |
 |---|---|---|
-| `select_range` | `from`, `to` | keep the rows with time (or index) in `[from, to]` |
+| `select_range` | `from`, `to` | keep the rows with time (or index) in `[from, to]`, `from <= to` |
 | `exclude_intervals` | `intervals = [[a, b], ...]`, `splice = true` | remove the rows in `[a, b)`, with integers `a < b` in the time unit of the series and intervals that may touch but not overlap; with `splice` the time axis closes over the cut, otherwise the rows become missing (a recorded gap) |
 | `round` | `digits` | round the values to `digits` decimals (the original analysis rounded before detrending) |
 | `trailing_mean_fluctuations` | `window`, `denominator = "mean"`, `offset = "none"`, `on_nonpositive = "error"` | deviation from the mean of the previous `window` observations. `denominator = "mean"` gives the percentage fluctuation of the papers, `"scale"` divides by the standard deviation of the deviations, `"none"` keeps data units. `offset = "auto"` shifts a series whose minimum is below 1 so that its minimum becomes 1 before a `"mean"` computation (the papers' rule) and leaves any other series unchanged; a number is added as given. `on_nonpositive = "missing"` records a non-positive trailing mean as a missing observation instead of aborting |
@@ -186,7 +194,7 @@ are read in any letter case.
 | `differences` | | `x_k - x_{k-1}` |
 | `detrend_moving_average` | `window` (odd) | subtract the centred moving average and keep the residual |
 | `clip_quantile` | `q`, `splice = false` | prune the observations with magnitude above the `q` quantile of the magnitudes (`q = 0.9996`: the extreme 0.04 % of both signs) |
-| `clip_extremes` | `fraction = 0.004`, `digits`, `splice = false` | the pruning loop of the 2024 code: remove whole magnitude levels from the top until at most `1 - fraction` of the rows remain |
+| `clip_extremes` | `fraction = 0.004`, `digits`, `splice = false` | the pruning loop of the 2024 code: remove whole magnitude levels from the top until at most `1 - fraction` of the observed values remain. Written for percentage fluctuations: the first level is the integer part of the largest magnitude, so the removed share can exceed `fraction` by far and a series with all magnitudes below 1 is refused |
 | `clip_sigma` | `k = 3`, `center = "mean"`, `scale = "std"`, `splice = false` | prune the observations farther than `k` scale units from the centre; `"median"` with `"mad"` is the robust pair |
 | `collapse_ties` | `policy` | resolve equal time stamps (`"error"`, `"first"`, `"last"`, `"mean"`) |
 
@@ -212,7 +220,8 @@ automatic shift, and `clip_extremes` with `fraction = 0.004`. Rom. J. Phys.
 states the pruned share as 0.04 % of both signs; that figure is a misprint.
 The published tables were computed with the 0.4 % rule of the
 code, in whole magnitude levels. The shipped `trieste_sea_level.toml` and
-`trustee_fuel.toml` carry this treatment.
+`trustee_fuel.toml` carry this treatment, and the test suite compares it on
+the first two years of the Trieste record with the output of the 2024 code.
 
 Thresholds are generated on the grid: a linear grid from `min` to `max` by
 `step`; a logarithmic grid with `points_per_decade` between `min > 0` and
@@ -224,7 +233,8 @@ Thresholds are generated on the grid: a linear grid from `min` to `max` by
 `configs/datasets/<slug>.toml` records the source, retrieval date, licence,
 citation, quantity, unit, sampling and SHA-256 of a raw file. When
 `[input].dataset` names one, the checksum is verified before the run and the
-descriptor is copied into the collection's metadata.
+descriptor is copied into the collection's metadata; a name without a
+descriptor file is refused when the configuration is loaded.
 
 ## Source descriptors
 

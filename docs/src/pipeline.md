@@ -27,6 +27,7 @@ leaves room for. The collection directory (provenance schema
 
 ```
 data/<collection id>/
+├── README.md                   what the collection is and how to load it, rewritten by every session
 ├── config.toml                 effective configuration of the first session
 ├── metadata.toml               identity, series, dataset, source, producer, environment, sessions
 ├── source.toml                 the source descriptor of the input, when configured
@@ -35,6 +36,7 @@ data/<collection id>/
 ├── sessions/<id>.toml          per-session record: kernel, backend, code identity, timings, reference checks
 ├── sessions/<id>.config.toml   effective configuration of that session
 ├── sessions/<id>.manifest.toml resolved manifest of that session
+├── sessions/<id>.hardware.txt  hardware fingerprint of that session
 ├── series.<csv|arrow>          values, times, row, time_original
 ├── series.toml                 description of the series and its preparation record
 ├── gaps.csv                    start, stop, kind, source
@@ -62,10 +64,21 @@ grid of 1000 thresholds writes some 25 to 40 GB.
 
 Rerunning with a wider threshold grid adds partitions and appends a session;
 existing partitions are skipped unless `[output].overwrite = true`, in which
-case they are backed up as `<name>#k.<ext>` first. `index.toml` and
-`summary.csv` are rewritten at every checkpoint (`[run].checkpoint_seconds`,
-10 s by default) and at the end of the session, so an
-interrupted run resumes from the partitions already written. With reference
+case they are backed up as `<name>#k.<ext>` first. Before it extends a
+collection, a session compares the series it prepared with the stored one and
+stops if they differ: the identifiers hash the configuration, and a reader
+option outside the identity (`format`, `delimiter`, `header`) or another
+version of the preprocessing can give another series under the same
+identifier.
+
+`index.toml` and `summary.csv` are rewritten at every checkpoint
+(`[run].checkpoint_seconds`, 10 s by default), at the end of the session, and
+when the session stops on an error or an interrupt, so an interrupted run
+resumes from the partitions already written. Only a killed process leaves
+partitions out of the index; the next run computes those again and backs up
+the files it finds in their place. `metadata.toml` lists the sessions that
+completed; an interrupted one is known by its record under `sessions/`, still
+at `status = "running"`, and by the index entries that name it. With reference
 checks enabled the kernel is first compared with the reference kernel on the
 largest pending threshold whose reference work is within
 `[limits].max_reference_work`, before any partition is written.
@@ -94,7 +107,8 @@ julia scripts/lineage.jl data/<collection id>
 
 Every script activates the scripts environment itself
 (`scripts/activate.jl`). `launch_run.jl` starts the pipeline as a detached
-process with a console log under `data/logs/`. `run_pipeline.jl` loads
+process with a console log and a job record (`run_<timestamp>.toml`: process
+identifier, command, start time) under `data/logs/`. `run_pipeline.jl` loads
 KernelAbstractions and the GPU package named by `[algorithm].backend` when
 the configuration uses the device kernel and they are installed, which
 activates the corresponding extensions. `crosscheck.jl` compares every kernel

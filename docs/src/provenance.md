@@ -12,10 +12,14 @@ serialisation of its identity fields (keys sorted, values only).
 | `series` | dataset identifier, time unit and epoch unit, missing and tie policies, preprocessing steps, digits, gap declaration and detection settings, the time format when one is set, and the time axis when it is `index` |
 | `collection` | series identifier, distribution mode |
 
-Identity is mathematical: which kernel, backend, machine or commit produced
-the numbers is recorded in the session, never hashed, because every kernel
-must produce the same result. Thresholds are not part of a collection's
-identity, so a collection can be extended with more thresholds later.
+The identity covers what determines the series, as the configuration states
+it. Kernel, backend, machine and commit are recorded in the session and not
+hashed, since every kernel must give the same result; the thresholds are left
+out too, so that a collection can be extended later. The reader options
+`format`, `delimiter` and `header` are not hashed, and neither is the version
+of the preprocessing code: a session that extends a collection therefore
+compares the series it prepared with the stored one and stops when they
+differ ([Pipeline](pipeline.md)).
 
 ## Files
 
@@ -23,9 +27,12 @@ identity, so a collection can be extended with more thresholds later.
 version, the `[artefact]` section (identifier, kind, creation time, parents),
 the `[identity]`, the `[series]` section, the `[dataset]` section with the
 descriptor, the `[source]` section when `[input].source_descriptor` is set,
-`[producer]`, `[environment]` and the `[[sessions]]` list.
+`[producer]`, `[environment]` and the `[[sessions]]` list of the sessions
+that completed.
 
-- `[series]`: the full preparation record, digits and value type, the time
+- `[series]`: the full preparation record (the input file as the
+  configuration names it, with its size and SHA-256, and every step), digits
+  and value type, the time
   axis (`elapsed` or `index`) with the time unit of the series and the time
   unit and epoch of the input's clock (`time_unit_original`,
   `epoch_original`), the number of observations and gaps, the gaps by kind,
@@ -54,8 +61,8 @@ fingerprint: host, CPU, cores, memory, BLAS threads and a GPU backend's
 device report. Its `status` is `"running"` while the session
 computes and `"completed"` once the record is final; a session file still at
 `"running"` belongs to an interrupted run, whose partitions `index.toml`
-already lists. `hardware.txt` carries
-`versioninfo` and the device report. Arrow partitions also carry the
+lists up to its last rewrite. `sessions/<id>.hardware.txt`, and `hardware.txt`
+for the latest session, carry `versioninfo` and the device report. Arrow partitions also carry the
 collection identifier, threshold and session in their schema metadata; CSV
 partitions carry none. A collection of schema 2 (WaitingTimes 0.2) is read
 with time axis `elapsed`, gaps of kind `unknown`, and without class counts
