@@ -37,8 +37,11 @@ include("DeviceKernels.jl")
 """
     discrete_distribution(d::WaitingTimeDistribution)
 
-`Distributions.DiscreteNonParametric` view of a distribution; provided by the
-Distributions extension (`using Distributions`).
+`Distributions.DiscreteNonParametric` over the support of `d` with its
+probability masses, so that the standard `cdf`, `ccdf`, `quantile`, `mean` and
+`rand` methods apply; `DiscreteNonParametric(d)` is the same. An empty
+distribution raises an `ArgumentError`. Provided by the Distributions
+extension (`using Distributions`).
 """
 function discrete_distribution end
 
@@ -46,16 +49,22 @@ function discrete_distribution end
     plot_series(s::QuantizedSeries; quantity_label = "", unit_label = "",
                 max_points = 5_000, size = (900, 600))
 
-Figure of a series against time with gaps shaded; provided by the CairoMakie
-extension (`using CairoMakie`).
+Figure of the series against time, in data units, with its gaps shaded. The
+series is decimated with the stride `max(1, N ÷ max_points)`, so fewer than
+`2 max_points` samples are drawn. When there are gaps, a legend on top names
+the series and states their number and their share of the record. Provided by
+the CairoMakie extension (`using CairoMakie`).
 """
 function plot_series end
 
 """
     plot_distribution(d::WaitingTimeDistribution; size = (1200, 600))
 
-Figure of a distribution (probability mass and survival function on
-logarithmic axes); provided by the CairoMakie extension.
+Figure of a distribution: the probability mass (left, markers) and the
+survival function (right, staircase) on logarithmic axes that share the
+waiting-time axis, with the threshold, the number of waiting times and the
+right-censored count annotated. An empty distribution raises an
+`ArgumentError`. Provided by the CairoMakie extension.
 """
 function plot_distribution end
 
@@ -63,26 +72,36 @@ function plot_distribution end
     plot_values(s::QuantizedSeries; quantity_label = "", unit_label = "",
                 bins = :auto, size = (900, 600))
 
-Histogram of the values of a series, in data units; provided by the
-CairoMakie extension.
+Histogram of the values of `s` in data units. With `bins = :auto` the bin
+width is the Freedman–Diaconis width rounded up to a whole number of grid
+steps ``10^{-\\mathrm{digits}}``, so that every grid value falls inside one
+bin, with at most 200 bins; an integer gives that many bins. The number of
+observations and the median are stated in the axis. Provided by the CairoMakie
+extension.
 """
 function plot_values end
 
 """
     save_figure(path, fig; sidecar, px_per_unit = 4) -> path
 
-Save a figure with a TOML sidecar of descriptor metadata; provided by the
-CairoMakie extension.
+Save `fig` to `path` and write the `sidecar` dictionary, the provenance of the
+figure, to `path * ".toml"`. Provided by the CairoMakie extension.
 """
 function save_figure end
 
 """
     figure_theme()
 
-Publication theme shared by every figure of the package (Computer Modern
-fonts, boxed axes, no minor ticks, faint dashed grid, marker outlines of width
-1.5 drawn only when a stroke colour is given); provided by the CairoMakie
-extension for use with `with_theme` or `set_theme!`.
+Publication theme of the figures of the package, for `with_theme` or
+`set_theme!`: Computer Modern fonts, base font size 26, boxed axes with inward
+ticks, no minor ticks, a faint dashed grid, data lines of width 3, markers of
+size 14, frameless horizontal legends. Marker outlines have width 1.5 and no
+colour of their own (`markerstrokewidth`, `markerstrokecolor`), for `scatter`
+and for the recipes that draw markers, such as `scatterlines`: a marker is
+outlined when `strokecolor` is given, for instance
+[`stroke_color`](@ref)`(color)`, and the markers that recipes draw without a
+stroke colour, such as the caps of `errorbars` and `rangebars`, keep the colour
+of their series. Provided by the CairoMakie extension.
 """
 function figure_theme end
 
@@ -100,9 +119,9 @@ function stroke_color end
 """
     decade_ticks(lo::Integer, hi::Integer)
 
-Tick positions and labels at the decades `10^lo` to `10^hi` for logarithmic
-axes, rendering `10^0` as `1` and `10^1` as `10`; provided by the CairoMakie
-extension.
+Tick positions `10^lo, …, 10^hi` with the labels `1`, `10`, `10²`, … for a
+logarithmic axis (`10^0` as `1`, `10^1` as `10`); pass the result as `xticks`
+or `yticks`. Provided by the CairoMakie extension.
 """
 function decade_ticks end
 

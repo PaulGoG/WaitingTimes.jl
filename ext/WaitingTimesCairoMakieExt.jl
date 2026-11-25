@@ -1,3 +1,5 @@
+# Figure functions of the package: the methods of the functions declared and
+# documented in src/WaitingTimes.jl.
 module WaitingTimesCairoMakieExt
 
 using CairoMakie: CairoMakie, Axis, Figure, Legend, LineElement, PolyElement, Theme, hist!,
@@ -12,20 +14,6 @@ using WaitingTimes.Provenance: write_toml
 const SUPERSCRIPTS = Dict('-' => '⁻', '0' => '⁰', '1' => '¹', '2' => '²', '3' => '³',
     '4' => '⁴', '5' => '⁵', '6' => '⁶', '7' => '⁷', '8' => '⁸', '9' => '⁹')
 
-"""
-    WaitingTimes.figure_theme()
-
-Publication theme of the package: Computer Modern fonts, base font size 26,
-boxed axes with inward ticks, no minor ticks, faint dashed grid, data lines of
-width 3, markers of size 14, frameless horizontal legends.
-
-Marker outlines have width 1.5 and no colour of their own (`markerstrokewidth`,
-`markerstrokecolor`), for `scatter` and the recipes that draw markers, such as
-`scatterlines`: a marker is outlined when `strokecolor` is given, for instance
-`WaitingTimes.stroke_color(color)`. Markers that recipes draw without a stroke
-colour, such as the caps of `errorbars` and `rangebars`, keep the colour of
-their series.
-"""
 function WaitingTimes.figure_theme()
     return Theme(
         fonts = (;
@@ -54,13 +42,6 @@ function decade_label(p::Integer)
                    "10" * map(c -> SUPERSCRIPTS[c], string(p))
 end
 
-"""
-    WaitingTimes.stroke_color(color; factor = 0.6)
-
-Darker shade of `color` with the same hue (the red, green and blue components
-scaled by `factor`), opacity kept; the outline colour of a marker drawn in
-`color`. A vector of colours gives a vector of outline colours.
-"""
 function WaitingTimes.stroke_color(color; factor::Real = 0.6)
     0 < factor <= 1 || throw(ArgumentError("factor must lie in (0, 1], got $factor"))
     darker(c::RGBAf) = RGBAf(factor * c.r, factor * c.g, factor * c.b, c.alpha)
@@ -70,12 +51,6 @@ function WaitingTimes.stroke_color(color; factor::Real = 0.6)
     throw(ArgumentError("stroke_color needs a colour, got $(repr(color))"))
 end
 
-"""
-    WaitingTimes.decade_ticks(lo::Integer, hi::Integer)
-
-Tick positions `10^lo, …, 10^hi` with labels `1`, `10`, `10²`, … for a
-logarithmic axis; pass the result as `xticks` or `yticks`.
-"""
 function WaitingTimes.decade_ticks(lo::Integer, hi::Integer)
     lo <= hi || throw(ArgumentError("decade range is empty: $lo > $hi"))
     return (10.0 .^ (lo:hi), [decade_label(p) for p in lo:hi])
@@ -93,15 +68,6 @@ function integer_ticks(values)
     return [replace(string(round(Int, v)), r"(?<=\d)(?=(\d{3})+$)" => " ") for v in values]
 end
 
-"""
-    WaitingTimes.plot_series(s::QuantizedSeries; quantity_label = "", unit_label = "",
-                             max_points = 5_000, size = (900, 600))
-
-Series against time, decimated with the stride `max(1, N ÷ max_points)` (fewer
-than `2 max_points` samples), with the gaps shaded. When gaps exist, a legend
-on top names the series and states the gap count and their share of the
-record. The value axis is in data units.
-"""
 function WaitingTimes.plot_series(s::QuantizedSeries; quantity_label::AbstractString = "",
         unit_label::AbstractString = "", max_points::Integer = 5_000, size = (900, 600))
     N = length(s)
@@ -131,16 +97,6 @@ function WaitingTimes.plot_series(s::QuantizedSeries; quantity_label::AbstractSt
     return fig
 end
 
-"""
-    WaitingTimes.plot_values(s::QuantizedSeries; quantity_label = "", unit_label = "",
-                             bins = :auto, size = (900, 600))
-
-Histogram of the values of `s` in data units. With `bins = :auto` the bin
-width is the Freedman–Diaconis width rounded up to a whole number of grid
-steps ``10^{-\\mathrm{digits}}``, so that every grid value falls inside one
-bin, with at most 200 bins; an integer gives that many bins. The number of
-observations and the median are stated in the axis.
-"""
 function WaitingTimes.plot_values(s::QuantizedSeries; quantity_label::AbstractString = "",
         unit_label::AbstractString = "", bins = :auto, size = (900, 600))
     scale = 10.0^s.digits
@@ -170,13 +126,6 @@ function WaitingTimes.plot_values(s::QuantizedSeries; quantity_label::AbstractSt
     end
 end
 
-"""
-    WaitingTimes.plot_distribution(d::WaitingTimeDistribution; size = (1200, 600))
-
-Probability mass (left, markers) and survival function (right, staircase) on
-logarithmic axes sharing the waiting-time axis, with the threshold, the number
-of waiting times and the right-censored count annotated.
-"""
 function WaitingTimes.plot_distribution(d::WaitingTimeDistribution; size = (1200, 600))
     nsamples(d) > 0 || throw(ArgumentError("the distribution is empty"))
     k = Float64.(support(d))
@@ -208,11 +157,6 @@ function WaitingTimes.plot_distribution(d::WaitingTimeDistribution; size = (1200
     return fig
 end
 
-"""
-    WaitingTimes.save_figure(path, fig; sidecar, px_per_unit = 4)
-
-Save `fig` to `path` and write `path * ".toml"` with the `sidecar` descriptor.
-"""
 function WaitingTimes.save_figure(path::AbstractString, fig; sidecar::AbstractDict,
         px_per_unit::Real = 4)
     mkpath(dirname(path))
