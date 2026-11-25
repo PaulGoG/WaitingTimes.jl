@@ -119,9 +119,13 @@ function parse_threshold(text::AbstractString, digits::Integer)
         "$(repr(text)) carries $(length(frac)) decimals but the grid has $digits",
     ))
     frac_padded = rpad(frac, digits, '0')
-    d = parse(Int64, whole) * Int64(10)^digits +
-        (digits == 0 ? 0 : parse(Int64, frac_padded))
-    return Threshold(d, digits)
+    whole_int = tryparse(Int128, whole)
+    d = whole_int === nothing || whole_int > typemax(Int64) ? nothing :
+        whole_int * Int128(10)^digits + (digits == 0 ? 0 : parse(Int128, frac_padded))
+    (d === nothing || d > typemax(Int64)) && throw(ArgumentError(
+        "$(repr(text)) overflows the integer grid of $digits decimals",
+    ))
+    return Threshold(Int64(d), digits)
 end
 
 function Base.show(io::IO, δ::Threshold)
@@ -137,7 +141,9 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Real value of the threshold, for labels only (never for arithmetic or names).
+Real value of the threshold, for labels and for the file names of
+[`export_legacy`](@ref), which follow the 2024 code; never for arithmetic, nor
+for the names and identifiers of a collection.
 """
 Base.float(δ::Threshold) = δ.d / 10.0^δ.digits
 
@@ -182,6 +188,8 @@ Narrow a vector of grid integers to `Int32` when every magnitude is below
 `INT32_NARROWING_LIMIT`; otherwise return an `Int64` copy.
 """
 function narrow_integer(q::AbstractVector{Int64})
-    (isempty(q) || maximum(abs, q) < INT32_NARROWING_LIMIT) && return Int32.(q)
+    isempty(q) && return Int32[]
+    lo, hi = extrema(q)
+    -INT32_NARROWING_LIMIT < lo && hi < INT32_NARROWING_LIMIT && return Int32.(q)
     return Vector{Int64}(q)
 end

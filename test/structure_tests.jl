@@ -58,6 +58,21 @@ end
           overlapping.gap_sources == ["a;b"]
     same = declare_gaps(base, [(2, 5), (5, 10)]; kind = "hole")
     @test same.gaps == [(2, 10)] && same.gap_kinds == ["hole"]
+    # two holes inside one detected gap [2, 8): absorbed, they touch and are one gap of
+    # their kind; holes of two kinds stay two gaps. Merging again changes neither
+    wide = QuantizedSeries(
+        Union{Missing, Float64}[1.0, missing, missing, missing, missing, missing, missing,
+            2.0], 0)
+    @test wide.gaps == [(2, 8)] && wide.gap_kinds == ["detected"]
+    joined = declare_gaps(wide, [(3, 5), (6, 7)]; kind = "hole")
+    @test joined.gaps == [(2, 8)] && joined.gap_kinds == ["hole"]
+    mixed = declare_gaps(wide,
+        [(start = 3, stop = 5, kind = "hole", source = "a"),
+            (start = 6, stop = 7, kind = "session", source = "b")])
+    @test mixed.gaps == [(2, 6), (6, 8)] && mixed.gap_kinds == ["hole", "session"]
+    for merged in (joined, mixed)
+        @test WT.merge_gaps(WT.gap_entries(merged)) == WT.gap_entries(merged)
+    end
     @test_throws ArgumentError declare_gaps(base, [(2, 5)]; kind = "detected")
     @test_throws ArgumentError declare_gaps(base, [(2, 5)]; kind = "outage")
     @test_throws ArgumentError declare_gaps(base, [(0, 5)])

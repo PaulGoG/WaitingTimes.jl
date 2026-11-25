@@ -5,7 +5,7 @@
 """
     SegmentTreeSearch(; chunk_size = 4096)
 
-Default fast kernel. A maximum segment tree over the positions of the series
+The default kernel. A maximum segment tree over the positions of the series
 answers, for each index, the leftmost later position whose value reaches the
 target in ``O(\\log N)``: climb to the first right sibling whose maximum
 qualifies, then descend to its leftmost qualifying leaf. The tree is built
@@ -64,7 +64,7 @@ Leftmost position `>= lo` whose value is at least `target`, or `0`.
     i = lo + P - 1
     @inbounds tree[i] >= target && return lo
     @inbounds while true
-        while isodd(i)                   # right child: climb until we are a left child
+        while isodd(i)                   # right child: climb to the first left child
             i >>= 1
             i == 0 && return 0
         end

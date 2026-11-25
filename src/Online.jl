@@ -122,6 +122,13 @@ function Base.push!(est::OnlineWaitingTimes{Tv, Tt}, t::Integer, x::Real) where 
         est.n_above_bound += 1
         return 0
     end
+    # without a bound an overflowing target is an error: raise it before any state is fed
+    if ub === nothing
+        d_max = Tv(maximum(δ -> δ.d, est.thresholds))
+        q <= typemax(Tv) - d_max || throw(OverflowError(
+            "value $x plus the largest threshold overflows the value type $Tv",
+        ))
+    end
     resolved = 0
     for (state, acc) in zip(est.states, est.accumulators)
         resolved += update!(acc, state, Tt(t), q)

@@ -19,7 +19,8 @@ Direct evaluation of the definition: for each index scan forward until the
 first value at least `δ` above it. Cost ``O(\\sum_n (m_n - n))`` element
 comparisons, where ``m_n`` is the position at which the scan from index ``n``
 stops: its passage, or the end ``N`` of the record when it is right-censored
-(on the sample index, ``m_n - n = \\min(\\tau_n, N - n)``); worst case
+(on a sample index without missing samples,
+``m_n - n = \\min(\\tau_n, N - n)``); worst case
 ``O(N^2)``. It is the reference kernel every other kernel is checked
 against.
 Indices are processed in chunks of `chunk_size` under dynamic scheduling,
@@ -114,15 +115,16 @@ threshold(δ::Union{Real, AbstractString}, s::QuantizedSeries) = threshold(δ, s
 """
 $(TYPEDSIGNATURES)
 
-Verify that `δ` lives on the grid of `s` and that `q_n + d` cannot overflow the
-value type; return `d` as the value type of `s`.
+Verify that `δ` lives on the grid of `s` and that neither `d` nor `q_n + d` can
+overflow the value type (`OverflowError` otherwise); return `d` as the value type
+of `s`.
 """
 function check_threshold(s::QuantizedSeries{Tv}, δ::Threshold) where {Tv}
     δ.digits == s.digits || throw(ArgumentError(
         "threshold has $(δ.digits) digits, series has $(s.digits)",
     ))
     headroom = Int128(typemax(Tv)) - Int128(maximum(s.values))
-    Int128(δ.d) <= headroom || throw(OverflowError(
+    Int128(δ.d) <= min(headroom, Int128(typemax(Tv))) || throw(OverflowError(
         "threshold $(format_threshold(δ)) exceeds the headroom of $Tv values; rebuild the " *
         "series with narrow = false",
     ))

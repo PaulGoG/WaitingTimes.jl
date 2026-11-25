@@ -1,7 +1,7 @@
 # Streaming search: pending indices wait in a heap keyed by their target value;
 # every arriving sample resolves all pending indices whose target it reaches.
 # One pass, no lookahead, so it is the kernel for live pipelines and, replayed
-# over a stored record, a third independent batch kernel.
+# over a stored record, a batch kernel independent of the two trees.
 
 """
     StreamingSearch()
@@ -32,19 +32,20 @@ Mutable state of an online evaluation at one threshold. Feed samples with
 [`update!`](@ref); pending indices are those not yet resolved.
 
 Without options the pending set grows as ``E[\\min(\\tau, t)]`` after ``t``
-samples: logarithmically for independent values, as ``\\sqrt{t}`` for a random
-walk, and linearly when a fraction of the indices never resolves (a downward
-drift, or bounded values at a threshold near their range). `upper_bound`
-declares the largest attainable value on the grid: an index whose target
-exceeds it cannot resolve and is counted as censored on arrival instead of
-being stored, which leaves every result unchanged as long as the data respect
-the bound. It bounds the pending set in the second case only: under a drift
-the unreached targets lie below any bound. `horizon` is the longest wait, in
-time units, kept pending, and bounds the pending set in either case: an index
-older than the horizon is evicted and counted as censored,
-so resolved waits satisfy ``\\tau \\le H`` and the heap stays below twice the
-number of samples within one horizon, or `MIN_COMPACTION` entries, whichever
-is larger.
+samples: logarithmically for independent continuous values at ``\\delta = 0``
+(faster at ``\\delta > 0``, by an amount set by their upper tail), as
+``\\sqrt{t}`` for a random walk, and linearly when a fraction of the indices
+never resolves (a downward drift, or bounded values at a threshold near their
+range). `upper_bound` declares the largest attainable value on the grid: an
+index whose target exceeds it cannot resolve and is counted as censored on
+arrival instead of being stored, which leaves every result unchanged as long
+as the data respect the bound. It bounds the pending set in the second case
+only: under a drift the unreached targets lie below any bound. `horizon` is
+the longest wait, in time units, kept pending, and bounds the pending set in
+either case: an index older than the horizon is evicted and counted as
+censored, so resolved waits satisfy ``\\tau \\le H`` and the heap stays below
+twice the largest number of samples that have fallen within one horizon, or
+`MIN_COMPACTION` entries, whichever is larger.
 
 $(TYPEDFIELDS)
 """
@@ -143,12 +144,15 @@ function update!(f, state::StreamingState{Tv, Tt}, t::Tt, q::Tv) where {Tv, Tt}
             "times must strictly increase; got $t after $(state.last_time)",
         ))
     d = Tv(state.delta.d)   # fits by construction
-    q <= typemax(Tv) - d || throw(OverflowError(
-        "value $q plus threshold $(format_threshold(state.delta)) overflows $Tv",
-    ))
     ub, H = state.upper_bound, state.horizon
     ub === nothing || q <= ub ||
         throw(ArgumentError("value $q exceeds the declared upper bound $ub"))
+    # a target beyond the value type lies above any declared bound
+    target, overflowed = Base.Checked.add_with_overflow(q, d)
+    overflowed && ub === nothing &&
+        throw(OverflowError(
+            "value $q plus threshold $(format_threshold(state.delta)) overflows $Tv",
+        ))
     heap = state.pending
     resolved = 0
     while !isempty(heap) && first(heap)[1] <= q
@@ -163,8 +167,8 @@ function update!(f, state::StreamingState{Tv, Tt}, t::Tt, q::Tv) where {Tv, Tt}
     state.n_seen += 1
     state.last_time = t
     state.n_resolved += resolved
-    if ub === nothing || q + d <= ub
-        push!(heap, (q + d, state.n_seen, t))
+    if !overflowed && (ub === nothing || target <= ub)
+        push!(heap, (target, state.n_seen, t))
     else
         state.n_unreachable += 1
     end

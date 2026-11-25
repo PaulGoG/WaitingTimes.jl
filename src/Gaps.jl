@@ -58,8 +58,10 @@ their kinds differ the kinds are joined (`"session+hole"`), whereas touching
 entries of different kinds stay separate gaps. A detected entry (a gap found
 from the spacing of the time stamps) that overlaps declared gaps is absorbed
 into them: the first extends to its start, the last to its stop, and the
-space between consecutive ones inside it is given to the earlier. Detected
-entries overlapping no declaration remain detected gaps.
+space between consecutive ones inside it is given to the earlier; declared
+gaps of one kind that touch after this are merged, so the result does not
+change when it is merged again. Detected entries overlapping no declaration
+remain detected gaps.
 """
 function merge_gaps(entries::AbstractVector{GapEntry{Tt}}) where {Tt}
     declared = sort!(filter(e -> e.kind != "detected", entries); by = e -> (
@@ -113,7 +115,18 @@ function merge_gaps(entries::AbstractVector{GapEntry{Tt}}) where {Tt}
         i = j
     end
     append!(out, @view merged[i:end])
-    return out
+    # absorbing a detected gap can leave declared gaps of one kind touching
+    joined = GapEntry{Tt}[]
+    for e in out
+        if !isempty(joined) && e.kind == joined[end].kind && e.start <= joined[end].stop
+            g = joined[end]
+            joined[end] = (start = g.start, stop = max(g.stop, e.stop), kind = g.kind,
+                source = join_sources(g.source, e.source))
+        else
+            push!(joined, e)
+        end
+    end
+    return joined
 end
 
 "entries of the gap list of `s`"

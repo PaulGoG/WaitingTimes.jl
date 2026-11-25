@@ -94,6 +94,12 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         @test_throws ArgumentError quantize([1.0], 16)
         @test eltype(WT.narrow_integer(Int64[1, 2, -3])) == Int32
         @test eltype(WT.narrow_integer(Int64[2 ^ 31])) == Int64
+        # the narrowing limit itself, and a magnitude that abs cannot represent
+        @test eltype(WT.narrow_integer(Int64[2 ^ 30 - 1, -(2 ^ 30 - 1)])) == Int32
+        @test eltype(WT.narrow_integer(Int64[2 ^ 30])) == Int64
+        @test eltype(WT.narrow_integer(Int64[-(2 ^ 30)])) == Int64
+        @test WT.narrow_integer(Int64[typemin(Int64)]) == [typemin(Int64)]
+        @test isempty(WT.narrow_integer(Int64[]))
 
         @test threshold(0.0005, 4) == Threshold(5, 4)
         @test threshold(25000, 0) == Threshold(25000, 0)
@@ -108,6 +114,11 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         @test parse_threshold("7", 2) == Threshold(700, 2)
         @test_throws ArgumentError parse_threshold("0.00055", 4)
         @test_throws ArgumentError parse_threshold("-1", 1)
+        # a literal beyond the Int64 grid is refused, not wrapped around
+        @test parse_threshold("9223372036854775807", 0).d == typemax(Int64)
+        @test_throws ArgumentError parse_threshold("9223372036854775808", 0)
+        @test_throws ArgumentError parse_threshold("20000", 15)
+        @test_throws ArgumentError parse_threshold("9" ^ 40, 0)
         for (d, digits) in ((0, 0), (5, 4), (325, 1), (123456789, 3))
             δ = Threshold(d, digits)
             @test parse_threshold(format_threshold(δ), digits) == δ
@@ -343,6 +354,20 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         @test WT.support(d_elapsed) == [1, 4, 5] && WT.counts(d_elapsed) == [1, 1, 1]
         @test WT.support(d_exact) == [1] && WT.counts(d_exact) == [1]
         @test d_elapsed.n_gap_crossing == 2 && d_exact.n_gap_crossing == 2
+        # gaps that begin right after the first observation and end at the last:
+        # times 1 | gap [2, 4) | 4 5 | gap [6, 7) | 7 ; A = 1 | 3 2 | 5
+        ends = QuantizedSeries([1.0, missing, missing, 3.0, 2.0, missing, 5.0], 0)
+        @test ends.times == [1, 4, 5, 7] && ends.gaps == [(2, 4), (6, 7)]
+        τ_ends = waiting_times(ends, 1)
+        @test τ_ends == [3, 3, 2, 0]
+        class, lower, upper = classify(τ_ends, ends)
+        @test class ==
+              [WT.CLASS_GAP_CROSSING, WT.CLASS_GAP_CROSSING, WT.CLASS_GAP_CROSSING,
+            WT.CLASS_RIGHT_CENSORED]
+        @test lower == [0, 1, 0, 0] && upper == [3, 3, 2, 0]
+        class, lower, upper = classify(waiting_times(ends, 10), ends)
+        @test all(==(WT.CLASS_RIGHT_CENSORED), class) && lower == [0, 1, 0, 0]
+        @test upper == [typemax(Int64), typemax(Int64), typemax(Int64), 0]
     end
 
     @testset "Empirical distribution" begin
@@ -365,6 +390,12 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         @test occursin("0.10", sprint(show, threshold(0.1, 2)))
         empty = empirical_distribution(zeros(Int64, length(s)), δ, s)
         @test WT.nsamples(empty) == 0 && isnan(mean(empty))
+        # the classes handed in are left as they were when a horizon censors waits
+        class, _, _ = classify(τ, s)
+        before = copy(class)
+        cut = empirical_distribution(τ, δ, s, class; horizon = 10)
+        @test class == before && cut.n_right_censored > d.n_right_censored
+        @test cut == empirical_distribution(τ, δ, s; horizon = 10)
     end
 
     @testset "Fast kernels equal the reference kernel" begin
@@ -414,11 +445,28 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
                       references
             end
         end
-        # segment tree on the smallest series
-        s = QuantizedSeries([3.0], 0)
-        @test waiting_times(s, 0, SegmentTreeSearch()) == [0]
+        # the smallest series and the ends of the Int32 range, every kernel; the
+        # expected vectors follow from the definition by hand
+        M = 2^30 - 1
+        edge = QuantizedSeries(Float64[-M, 0, M], 0)
+        negative = QuantizedSeries([-10.0, -5.0], 0)
+        @test eltype(edge.values) == Int32 == eltype(negative.values)
+        for alg in (NaiveSearch(), GuardedSearch(), SegmentTreeSearch(), FenwickSweep(),
+            StreamingSearch(), DeviceSearch())
+            @test waiting_times(QuantizedSeries([3.0], 0), 0, alg) == [0]
+            @test waiting_times(QuantizedSeries([3.0, 3.0], 0), 0, alg) == [1, 0]
+            @test waiting_times(QuantizedSeries([3.0, 3.0], 0), 1, alg) == [0, 0]
+            @test waiting_times(QuantizedSeries([3.0, 2.0], 0), 0, alg) == [0, 0]
+            @test waiting_times(edge, Threshold(M, 0), alg) == [1, 1, 0]
+            @test waiting_times(edge, Threshold(M + 1, 0), alg) == [2, 0, 0]
+            # q_n + d would leave Int32 at the largest value
+            @test_throws OverflowError waiting_times(edge, Threshold(M + 2, 0), alg)
+            # d itself leaves Int32 although the values are negative
+            @test waiting_times(negative, Threshold(typemax(Int32), 0), alg) == [0, 0]
+            @test_throws OverflowError waiting_times(
+                negative, Threshold(Int64(typemax(Int32)) + 1, 0), alg)
+        end
         s = QuantizedSeries([3.0, 3.0], 0)
-        @test waiting_times(s, 0, SegmentTreeSearch()) == [1, 0]
         @test WT.first_at_least(WT.workspace(SegmentTreeSearch(), s), 3, Int32(0)) == 0
         @test_throws DimensionMismatch waiting_times!(
             [zeros(Int, 2)], s, [Threshold(0, 0), Threshold(1, 0)], FenwickSweep())
@@ -457,6 +505,32 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
             end
         end
         @test partial == waiting_times(s, δ, NaiveSearch())
+        # every prefix of a short record with missing runs, at three thresholds: after
+        # m samples the state and the estimator hold the reference result on those m
+        short = QuantizedSeries(
+            insert_missing(StableRNG(32), random_walk(StableRNG(33), 300), 6), 1)
+        grid = [0.0, 0.5, 4.0]
+        online = OnlineWaitingTimes(grid, 1)
+        states = [StreamingState(short, threshold(g, short)) for g in grid]
+        seen = [zeros(Int64, length(short)) for _ in grid]
+        waits_agree = Bool[]
+        snapshots_agree = Bool[]
+        for m in 1:length(short)
+            push!(online, short.times[m], Float64(short.values[m]) / 10)
+            prefix = QuantizedSeries(short.values[1:m], short.times[1:m], 1)
+            for (k, g) in enumerate(grid)
+                thr = threshold(g, short)
+                for (n, τ_n) in WT.update!(states[k], short.times[m], short.values[m])
+                    seen[k][n] = τ_n
+                end
+                τ_prefix = waiting_times(prefix, thr, NaiveSearch())
+                push!(waits_agree, seen[k][1:m] == τ_prefix)
+                push!(snapshots_agree,
+                    snapshot(online)[k] == empirical_distribution(τ_prefix, thr, prefix))
+            end
+        end
+        @test length(waits_agree) == 3 * length(short) && all(waits_agree)
+        @test all(snapshots_agree)
         # accumulator form of update!, argument checks, overflow guard of a narrow state
         state2 = StreamingState(s, δ)
         acc2 = DistributionAccumulator{Int64}()
@@ -470,6 +544,12 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         @test_throws OverflowError WT.update!(narrow, 1, typemax(Int32))
         @test isempty(WT.update!(narrow, 1, Int32(1)))
         @test only(WT.update!(narrow, 2, Int32(6))) == (1, 1)
+        # under a declared bound a target beyond the value type is unreachable, not an error
+        capped = StreamingState{Int8, Int64}(Threshold(10, 0); upper_bound = 120)
+        @test isempty(WT.update!(capped, 1, Int8(119)))
+        @test capped.n_unreachable == 1 && pending(capped) == 0 && capped.n_seen == 1
+        @test_throws OverflowError WT.update!(
+            StreamingState{Int8, Int64}(Threshold(10, 0)), 1, Int8(119))
     end
 
     @testset "Online estimation at several thresholds" begin
@@ -520,6 +600,11 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         @test_throws ArgumentError OnlineWaitingTimes([0.5], 2; time_unit = :fortnight)
         @test_throws ArgumentError push!(OnlineWaitingTimes([1.0], 0), NaN)
         @test_throws OverflowError push!(OnlineWaitingTimes([1.0], 0; value_type = Int8), 1000.0)
+        # a sample whose target overflows at one threshold is refused before any state is fed
+        tiny = OnlineWaitingTimes([1.0, 10.0], 0; value_type = Int8)
+        @test_throws OverflowError push!(tiny, 120.0)
+        @test tiny.n_seen == 0 && all(state -> state.n_seen == 0, tiny.states)
+        @test push!(tiny, 100.0) == 0 && tiny.n_seen == 1 && pending(tiny) == [1, 1]
         @test_throws ArgumentError OnlineWaitingTimes([0.25], 1)
     end
 
@@ -571,6 +656,34 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         @test occursin("horizon = 200", sprint(show, d_batch))
         @test_throws ArgumentError StreamingState(s, δ; horizon = 0)
         @test_throws ArgumentError empirical_distribution(τ, δ, s; horizon = 0)
+        # a burst followed by sparse samples: the heap is bounded by twice the largest
+        # number of samples that fell within one horizon, not by the current rate
+        burst = StreamingState{Int64, Int64}(Threshold(100, 0); horizon = 1_000)
+        arrivals = vcat(1:2_000, 4_000:2_000:50_000)
+        window_peak = heap_peak = 0
+        for (m, time) in enumerate(arrivals)
+            WT.update!(burst, time, 0)
+            window_peak = max(window_peak,
+                count(u -> time - u <= 1_000, @view arrivals[1:m]))
+            heap_peak = max(heap_peak, length(burst.pending))
+        end
+        @test window_peak == 1_001
+        @test WT.MIN_COMPACTION < heap_peak <= 2 * window_peak
+        @test pending(burst) == 1 && burst.n_evicted == length(arrivals) - 1
+        # the horizon on an irregular clock equals the batch evaluation
+        clock = irregular_times(StableRNG(54), 5_000; mean_interval = 7.0)
+        si = QuantizedSeries(random_walk(StableRNG(55), 5_000; drift = -0.2), 2;
+            times = clock, time_unit = :second)
+        δi = threshold(0.5, si)
+        timed = StreamingState(si, δi; horizon = 500)
+        acc_i = DistributionAccumulator{Int64}()
+        for m in eachindex(si.values)
+            WT.update!(acc_i, timed, si.times[m], si.values[m])
+        end
+        d_timed = empirical_distribution(
+            waiting_times(si, δi, NaiveSearch()), δi, si; horizon = 500)
+        @test empirical_distribution(acc_i, timed; time_unit = :second) == d_timed
+        @test 0 < d_timed.n_right_censored < length(si) - 1
         # bounded values: targets above the declared maximum never resolve
         u = iid_series(rng, 5_000; distribution = :uniform)
         su = QuantizedSeries(u, 2)
