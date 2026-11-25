@@ -14,7 +14,8 @@ using TimerOutputs: TimerOutputs, TimerOutput, @timeit, ncalls
 using ..WaitingTimes: WaitingTimes, AbstractSearch, DeviceSearch, FenwickSweep, GapEntry,
                       GuardedSearch, INT32_NARROWING_LIMIT,
                       NaiveSearch,
-                      QuantizedSeries, SegmentTreeSearch, StreamingSearch, Threshold,
+                      PreparationRecord, QuantizedSeries, SegmentTreeSearch,
+                      StreamingSearch, Threshold,
                       WaitingTimeDistribution, censoring_counts, class_columns, classify,
                       empirical_distribution, format_threshold, gap_entries, nsamples,
                       parse_threshold, record_length, sampling_step, scan_work,
@@ -29,7 +30,8 @@ using ..Provenance: SourceSummary, active_manifest, artefact_id, backup_existing
 using ..Preprocessing: RawSeries, apply_steps, index_series, quantized_series,
                        read_gap_intervals, read_series, resolution_digits, suggest_digits
 using ..Storage: MANIFEST_FILE, SOURCE_FILE, censoring_path, partition_path, read_index,
-                 write_censoring, write_collection_readme, write_distribution,
+                 read_series_files, write_censoring, write_collection_readme,
+                 write_distribution,
                  write_index, write_series_files, write_summary, write_waiting_times
 using ..Monitoring: run_progress, with_run_logging
 using ..Backends: backend_name, device_fingerprint, host_backend, reclaim_device_memory!
@@ -169,7 +171,7 @@ $(TYPEDSIGNATURES)
 
 Host memory estimate in bytes for one threshold of `s` with `alg`: the series
 arrays (values and times) and the result vector, ``N (\\mathrm{sizeof}(T_v) +
-2\\,\\mathrm{sizeof}(T_t))``, and 8 bytes per gap; the workspace of `alg`
+2\\,\\mathrm{sizeof}(T_t))``, and the gap intervals; the workspace of `alg`
 (`workspace_bytes`); and the transients of one threshold
 (`transient_bytes`), which include the dense waiting-time table when
 `store_waiting_times` is set.
@@ -177,7 +179,7 @@ arrays (values and times) and the result vector, ``N (\\mathrm{sizeof}(T_v) +
 function estimate_memory_bytes(s::QuantizedSeries{Tv, Tt}, alg::AbstractSearch;
         store_waiting_times::Bool = false) where {Tv, Tt}
     N = length(s)
-    base = N * (sizeof(Tv) + 2 * sizeof(Tt)) + 8 * length(s.gaps)
+    base = N * (sizeof(Tv) + 2 * sizeof(Tt)) + 2 * sizeof(Tt) * length(s.gaps)
     return base + workspace_bytes(alg, s) +
            transient_bytes(s; store_waiting_times = store_waiting_times)
 end
@@ -270,6 +272,10 @@ function prepare(settings::Settings)
         epoch_unit = settings.epoch_unit, delimiter = settings.delimiter,
         header = settings.header, missing_policy = settings.missing_policy,
         tie_policy = settings.tie_policy)
+    # the record names the input as the configuration does, not by its place on this machine
+    rs = RawSeries(rs.values, rs.times, rs.time_unit, rs.epoch,
+        PreparationRecord(String(settings.raw["input"]["path"]), rs.record.source_sha256,
+            rs.record.steps))
     if descriptor !== nothing && haskey(descriptor, "sha256") &&
        !isempty(descriptor["sha256"])
         descriptor["sha256"] == rs.record.source_sha256 || throw(ArgumentError(
@@ -492,20 +498,21 @@ end
 $(TYPEDSIGNATURES)
 
 Memory budget of a session: the host estimate of `alg` on `s`, with the
-workspace of a host `reference`, against `[limits].max_ram_gb`, the bound in
+workspace of a host `reference` and the `held_bytes` the caller keeps beside
+the series, against `[limits].max_ram_gb`, the bound in
 bytes, and the device kernels among `alg` and `reference`, those on a GPU each
 checked against `[limits].max_vram_gb` with its backend logged. Throws
 `ArgumentError` above either bound.
 """
 function memory_budget(settings::Settings, s::QuantizedSeries, alg::AbstractSearch,
-        reference::Union{Nothing, AbstractSearch})
-    bytes = estimate_memory_bytes(s, alg;
+        reference::Union{Nothing, AbstractSearch}; held_bytes::Integer = 0)
+    on_host(k) = !(k isa DeviceSearch) || host_backend(k.backend)
+    bytes = held_bytes + estimate_memory_bytes(s, alg;
         store_waiting_times = settings.store_waiting_times)
-    # the reference workspace is held through the session, on the host unless a GPU kernel
-    if reference !== nothing &&
-       (!(reference isa DeviceSearch) || host_backend(reference.backend))
-        bytes += workspace_bytes(reference, s)
-    end
+    # the workspace of a GPU kernel is device memory, checked below
+    on_host(alg) || (bytes -= workspace_bytes(alg, s))
+    # the reference workspace is held through the session
+    reference !== nothing && on_host(reference) && (bytes += workspace_bytes(reference, s))
     limit = settings.max_ram_gb * 2^30
     bytes <= limit || throw(ArgumentError(
         "estimated memory $(round(bytes / 2^30; digits = 2)) GiB exceeds [limits] max_ram_gb = $(settings.max_ram_gb)",
@@ -527,8 +534,8 @@ $(TYPEDSIGNATURES)
 
 Classify the waiting times `τ` of threshold `δ`, build the distribution in the
 configured mode, write the partition, its censoring histogram and, under
-`[output].store_waiting_times`, the dense file (existing files backed up under
-`[output].overwrite`), and return the index entry with the censoring file and
+`[output].store_waiting_times`, the dense file (a file found in the place of any
+of them is backed up first), and return the index entry with the censoring file and
 its checksum. `search_seconds` is the search time attributed to the threshold.
 """
 function write_partition!(timer, dir, id, session, δ::Threshold, τ, s::QuantizedSeries,
@@ -543,10 +550,10 @@ function write_partition!(timer, dir, id, session, δ::Threshold, τ, s::Quantiz
     end
     path = partition_path(dir, δ, settings.output_format)
     cens_path = censoring_path(dir, δ, settings.output_format)
-    if settings.overwrite
-        backup_existing!(path)
-        backup_existing!(cens_path)
-    end
+    # a file already here is a partition rewritten under [output].overwrite, or one an
+    # interrupted session left out of the index; neither is overwritten
+    backup_existing!(path)
+    backup_existing!(cens_path)
     metadata = Dict("schema" => SCHEMA, "collection" => id, "delta" => key,
         "session" => session, "mode" => String(settings.mode))
     sha = @timeit timer "write" write_distribution(path, d,
@@ -558,7 +565,7 @@ function write_partition!(timer, dir, id, session, δ::Threshold, τ, s::Quantiz
         wt_path = joinpath(dir, "waiting_times",
             "delta=" * key * "." *
             (settings.output_format === :arrow ? "arrow" : "csv"))
-        settings.overwrite && backup_existing!(wt_path)
+        backup_existing!(wt_path)
         @timeit timer "write" write_waiting_times(
             wt_path, τ, class, lower, upper,
             settings.output_format; metadata = metadata)
@@ -624,6 +631,29 @@ end
 """
 $(TYPEDSIGNATURES)
 
+Refuse to extend the collection in `dir` when the series `s` prepared in this
+session differs from the one stored there in values, times or gap intervals.
+The identifiers hash the configuration, not the series: a reader option
+outside the identity, or a change of the preprocessing code between two
+sessions, can give another series under the same identifier, and its
+distributions must not join those already written. Throws `ArgumentError`.
+"""
+function check_stored_series(dir::AbstractString, s::QuantizedSeries)
+    stored = read_series_files(dir, s.digits, s.time_unit)
+    (stored.values == s.values && stored.times == s.times && stored.gaps == s.gaps) ||
+        throw(ArgumentError(
+            "the series prepared from this configuration differs from the one stored in " *
+            "$dir ($(length(s)) against $(length(stored)) observations, " *
+            "$(length(s.gaps)) against $(length(stored.gaps)) gaps): the collection was " *
+            "written from another input or by another version of the preprocessing; " *
+            "move it aside to generate it again",
+        ))
+    return nothing
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Identifier of a new session of the collection in `dir`: the candidate `stamp`
 (a [`session_id`](@ref)), or `stamp` with the suffix `-2`, `-3`, … when a
 session started within the same UTC second holds it, so that no session
@@ -653,9 +683,11 @@ Returns a [`CollectionHandle`](@ref).
 
 The session is resumable: `index.toml` and `summary.csv` are rewritten after a
 chunk of thresholds once `[run].checkpoint_seconds` have passed since the
-previous rewrite (after every chunk when it is 0), so an interrupted run leaves
-an index of every partition written up to its last checkpoint, and the next
-run computes the rest. The session record is written with `status = "running"`
+previous rewrite (after every chunk when it is 0), and once more when the
+session ends by an error or an interrupt, so that only a killed process leaves
+partitions out of the index. The next run computes what the index does not
+list, and backs up a file it finds in the place of a partition before writing
+it. The session record is written with `status = "running"`
 before the first threshold and rewritten with `status = "completed"` at the
 end. With `[algorithm].reference_checks > 0` the kernel is compared with the
 reference kernel on the largest pending threshold within
@@ -695,11 +727,15 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
                 "directory $dir holds a collection with a different identity",
             ))
         isfile(meta_path) || write_toml(meta_path, meta)   # loadable from the first session on
-        isfile(joinpath(dir, "series.toml")) || @timeit timer "series files" begin
-            write_series_files(dir, s, settings.output_format; rows = p.rows,
-                time_original = p.time_original,
-                gaps_original = p.time_axis === :index ? p.gaps_original : nothing)
-            write_toml(joinpath(dir, "series.toml"), series_summary(p))
+        if isfile(joinpath(dir, "series.toml"))
+            check_stored_series(dir, s)
+        else
+            @timeit timer "series files" begin
+                write_series_files(dir, s, settings.output_format; rows = p.rows,
+                    time_original = p.time_original,
+                    gaps_original = p.time_axis === :index ? p.gaps_original : nothing)
+                write_toml(joinpath(dir, "series.toml"), series_summary(p))
+            end
         end
 
         alg = kernel
@@ -717,7 +753,9 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
         end
         reference = settings.reference_checks > 0 && !isempty(todo) ?
                     make_reference_kernel(settings) : nothing
-        budget = memory_budget(settings, s, alg, reference)
+        # the prepared input stays referenced until the session ends
+        budget = memory_budget(settings, s, alg, reference;
+            held_bytes = Base.summarysize(p) - Base.summarysize(s))
         @info "thresholds" total=length(thresholds) existing=length(existing) kernel=kernel_name(alg) memory_gib=round(
             budget.bytes/2^30; digits = 3)
         ws = @timeit timer "workspace" workspace(alg, s)
@@ -745,29 +783,38 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
         progress = run_progress(length(thresholds))
         foreach(_ -> next!(progress), skipped)
         last_checkpoint = time()
-        for chunk in Iterators.partition(todo, batch)
-            outs = τs[1:length(chunk)]
-            search_seconds = @elapsed @timeit timer "search" begin
-                if alg isa FenwickSweep
-                    waiting_times!(outs, s, collect(chunk), alg; workspace = ws)
-                else
-                    waiting_times!(only(outs), s, only(chunk), alg; workspace = ws)
+        n_indexed = 0   # partitions of this session that the index files already list
+        try
+            for chunk in Iterators.partition(todo, batch)
+                outs = τs[1:length(chunk)]
+                search_seconds = @elapsed @timeit timer "search" begin
+                    if alg isa FenwickSweep
+                        waiting_times!(outs, s, collect(chunk), alg; workspace = ws)
+                    else
+                        waiting_times!(only(outs), s, only(chunk), alg; workspace = ws)
+                    end
+                end
+                for (δ, τ) in zip(chunk, outs)
+                    entry = write_partition!(
+                        timer, dir, id, session, δ, τ, s, settings, alg,
+                        search_seconds / length(chunk))
+                    key = entry["delta"]
+                    existing[key] = entry
+                    push!(computed, key)
+                    next!(progress)
+                end
+                # resume checkpoint: the index files are rewritten with every
+                # partition written so far, at most every [run].checkpoint_seconds
+                if time() - last_checkpoint >= settings.checkpoint_seconds
+                    @timeit timer "write" write_index_files(dir, existing, s.digits)
+                    last_checkpoint = time()
+                    n_indexed = length(computed)
                 end
             end
-            for (δ, τ) in zip(chunk, outs)
-                entry = write_partition!(timer, dir, id, session, δ, τ, s, settings, alg,
-                    search_seconds / length(chunk))
-                key = entry["delta"]
-                existing[key] = entry
-                push!(computed, key)
-                next!(progress)
-            end
-            # resume checkpoint: the index files are rewritten with every
-            # partition written so far, at most every [run].checkpoint_seconds
-            if time() - last_checkpoint >= settings.checkpoint_seconds
-                @timeit timer "write" write_index_files(dir, existing, s.digits)
-                last_checkpoint = time()
-            end
+        finally
+            # an error or an interrupt between two checkpoints still leaves an index of
+            # every partition written
+            n_indexed == length(computed) || write_index_files(dir, existing, s.digits)
         end
         finish!(progress)
 
@@ -881,7 +928,8 @@ whose scan work lies within `[limits].max_reference_work`, before any
 partition is written. Under `NaiveSearch` the unguarded work does not decrease
 with the threshold (a higher target moves a passage to the right or censors
 the index), so that threshold is found by bisection over the sorted
-thresholds in ``\\lceil \\log_2 |todo| \\rceil + 1`` runs of `alg`; under
+thresholds in at most ``\\lfloor \\log_2 |todo| \\rfloor + 1`` runs of `alg`,
+with one more for the comparison; under
 another reference kernel the work is not monotone and the thresholds are
 tried from the largest down. Returns the check record (with `early = true`),
 or `nothing` with a warning when no threshold is within the bound; a
@@ -1026,8 +1074,8 @@ end
 $(TYPEDSIGNATURES)
 
 Compare kernels with the reference kernel (`[algorithm].reference_kernel`) on
-the series of `settings`, through `compare_with_reference` with the work
-bound `[limits].max_reference_work`. `deltas` are the thresholds compared
+the series of `settings`, within the work bound
+`[limits].max_reference_work`. `deltas` are the thresholds compared
 (`Threshold`s, real values or decimal strings on the grid of the series); by
 default the largest configured threshold and `reference_checks - 1` random
 ones (`reference_thresholds`). `kernels` is a vector of `name => alg`

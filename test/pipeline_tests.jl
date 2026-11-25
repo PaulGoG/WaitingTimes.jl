@@ -41,6 +41,19 @@ end
     @test canonical_toml(a) == canonical_toml(b)
     @test content_hash(a) == content_hash(b)
     @test content_hash(Dict("b" => 2)) != content_hash(Dict("b" => 1))
+    # forty keys do not iterate in sorted order; the serialisation lists them sorted
+    wide = Dict(string("key", k) => k for k in 40:-1:1)
+    @test collect(keys(wide)) != sort!(collect(keys(wide)))
+    @test [first(split(line, " = ")) for line in split(chomp(canonical_toml(wide)), '\n')] ==
+          sort!(collect(keys(wide)))
+    # an identity with a float and a step table, serialised by hand: the identifier is
+    # the first eight digits of `printf '<text>' | sha256sum`
+    steps = Dict{String, Any}("digits" => 1,
+        "steps" => [Dict{String, Any}("op" => "clip_extremes", "fraction" => 0.004,
+            "digits" => 1)])
+    @test canonical_toml(steps) ==
+          "digits = 1\n\n[[steps]]\ndigits = 1\nfraction = 0.004\nop = \"clip_extremes\"\n"
+    @test artefact_id("series", "x", steps) == "series-x-641e418e"
     @test toml_ready((x = 1, y = :z)) == Dict("x" => 1, "y" => "z")
     @test toml_ready((1, 2)) == [1, 2]
     @test slugify("geisenheim wind speed (km/h)") == "geisenheim_wind_speed_km_h"
@@ -849,7 +862,7 @@ end
 
 "quickstart configuration in `dir` with explicit thresholds, reference checks and limits"
 function quickstart_variant(dir, name; values = [0.0005, 0.001, 0.0015, 0.002],
-        reference_checks = 0, limits = Dict{String, Any}())
+        reference_checks = 0, limits = Dict{String, Any}(), checkpoint_seconds = 0.0)
     isdir(joinpath(dir, "datasets")) ||
         cp(joinpath(CONFIGS, "datasets"), joinpath(dir, "datasets"))
     base = TOML.parsefile(joinpath(CONFIGS, "quickstart.toml"))
@@ -857,7 +870,7 @@ function quickstart_variant(dir, name; values = [0.0005, 0.001, 0.0015, 0.002],
     base["thresholds"] = Dict{String, Any}("mode" => "explicit", "values" => values)
     base["algorithm"]["reference_checks"] = reference_checks
     merge!(base["limits"], limits)
-    base["run"]["checkpoint_seconds"] = 0.0   # checkpoint after every chunk
+    base["run"]["checkpoint_seconds"] = checkpoint_seconds   # 0: after every chunk
     base["output"]["root"] = joinpath(dir, "collections")
     path = joinpath(dir, name * ".toml")
     open(io -> TOML.print(io, base), path, "w")
@@ -901,12 +914,113 @@ end
         end
     end
 
+    @testset "Interruption between checkpoints, files outside the index" begin
+        mktempdir() do dir
+            settings = load_settings(
+                quickstart_variant(dir, "sparse"; checkpoint_seconds = 1_000.0))
+            FAILING_CALLS[] = 0
+            @test_throws ErrorException generate(settings; kernel = FailingSearch(2))
+            cdir = only_collection(dir)
+            # no checkpoint was due: the index is written as the session stops
+            @test [e["delta"] for e in read_index(cdir)] == ["0.0005", "0.0010"]
+            # a partition file the index does not list, as a killed process leaves it,
+            # is backed up by the session that computes its threshold
+            orphan = joinpath(cdir, "distributions", "delta=0.0015.csv")
+            write(orphan, "left by a killed session\n")
+            handle = generate(settings)
+            @test handle.computed == ["0.0015", "0.0020"] && length(handle.skipped) == 2
+            partitions = readdir(joinpath(cdir, "distributions"))
+            @test filter(contains("#"), partitions) == ["delta=0.0015#1.csv"]
+            @test read(joinpath(cdir, "distributions", "delta=0.0015#1.csv"), String) ==
+                  "left by a killed session\n"
+            c = load_collection(cdir)
+            series = load_series(c)
+            δ = Threshold(15, 4)
+            @test distribution(c, δ) ==
+                  empirical_distribution(waiting_times(series, δ, NaiveSearch()), δ, series)
+            # the interrupted session has its record, the completed one is in the metadata
+            @test length(c.metadata["sessions"]) == 1
+        end
+    end
+
+    @testset "A collection is not extended by another series" begin
+        mktempdir() do dir
+            file = joinpath(dir, "x.csv")
+            write(file, "1.0\n2.0\n3.0\n4.0\n")
+            function config(name, header, values)
+                path = joinpath(dir, name * ".toml")
+                open(path, "w") do io
+                    TOML.print(io,
+                        Dict{String, Any}(
+                            "input" => Dict{String, Any}("path" => "x.csv",
+                                "format" => "csv", "value_column" => 1, "header" =>
+                                    header),
+                            "quantization" => Dict{String, Any}("digits" => 1),
+                            "thresholds" => Dict{String, Any}("mode" => "explicit",
+                                "values" => values),
+                            "algorithm" => Dict{String, Any}("reference_checks" => 0),
+                            "output" => Dict{String, Any}("root" => "collections",
+                                "format" => "csv")))
+                end
+                return path
+            end
+            # header = true takes the first row for the column name: another series
+            # under the same identifiers, since the reader options are not hashed
+            whole = load_settings(config("whole", false, [0.5]))
+            short = load_settings(config("short", true, [0.5, 1.0]))
+            @test prepare(whole).series_id == prepare(short).series_id
+            @test length(prepare(whole).series) == 4 && length(prepare(short).series) == 3
+            first_run = generate(whole)
+            err = try
+                generate(short)
+                nothing
+            catch e
+                e
+            end
+            @test err isa ArgumentError && occursin("differs from the one stored", err.msg)
+            @test [e["delta"] for e in read_index(first_run.dir)] == ["0.5"]
+            # the same series extends the collection as before
+            wider = generate(load_settings(config("wider", false, [0.5, 1.0])))
+            @test wider.id == first_run.id && wider.computed == ["1.0"]
+            # the record names the input as the configuration does, with its size
+            record = load_collection(first_run.dir).metadata["series"]["record"]
+            @test record["source"] == "x.csv"
+            @test record["steps"][1]["summary"]["bytes"] == filesize(file)
+        end
+    end
+
+    @testset "Legacy export: the names and bytes of the 2024 files" begin
+        mktempdir() do dir
+            handle = run_pipeline(
+                quickstart_variant(dir, "legacy"; values = [0.0005, 0.005, 0.05, 0.5]))
+            paths = export_legacy(load_collection(handle.dir), joinpath(dir, "out");
+                slug = "ftEURUSD_clsng_raw")
+            legacy = joinpath(FIXTURES, "legacy")
+            @test sort(basename.(paths)) == sort(readdir(legacy))
+            @test all(p -> read(p) == read(joinpath(legacy, basename(p))), paths)
+        end
+    end
+
     @testset "Early reference check" begin
         mktempdir() do dir
             settings = load_settings(quickstart_variant(dir, "wrong"; reference_checks = 1))
             @test_throws ErrorException generate(settings; kernel = WrongSearch())
             partitions = joinpath(only_collection(dir), "distributions")
             @test !isdir(partitions) || isempty(readdir(partitions))
+        end
+        # the largest threshold beyond the work bound, a smaller one within it: the
+        # bisection takes the largest that fits, and the scan work grows with the threshold
+        mktempdir() do dir
+            series = prepare(load_settings(quickstart_variant(dir, "probe"))).series
+            works = [WT.scan_work(waiting_times(series, Threshold(k, 4), NaiveSearch()),
+                         series) for k in (5, 10, 15, 20)]
+            @test issorted(works) && works[2] < works[3]
+            handle = run_pipeline(quickstart_variant(dir, "bounded"; reference_checks = 1,
+                limits = Dict{String, Any}(
+                    "max_reference_work" => (works[2] + works[3]) / 2)))
+            early, late = handle.reference_checks
+            @test early["early"] == true && early["delta"] == "0.0010" && early["equal"]
+            @test late["delta"] == "0.0020" && late["skipped"]
         end
     end
 
@@ -920,6 +1034,15 @@ end
                   WaitingTimes.workspace_bytes(alg, s) +
                   length(s) * (sizeof(Tv) + 2 * sizeof(Tt))
             @test estimate_memory_bytes(s, alg; store_waiting_times = true) > bytes
+        end
+        let settings = load_settings(joinpath(CONFIGS, "quickstart.toml")),
+            budget = WaitingTimes.Orchestrator.memory_budget
+
+            @test budget(settings, s, NaiveSearch(), nothing; held_bytes = 10^6).bytes ==
+                  budget(settings, s, NaiveSearch(), nothing).bytes + 10^6
+            @test budget(settings, s, FenwickSweep(), GuardedSearch()).bytes ==
+                  budget(settings, s, FenwickSweep(), nothing).bytes +
+                  WaitingTimes.workspace_bytes(GuardedSearch(), s)
         end
         mktempdir() do dir
             path = quickstart_variant(dir, "tight";
@@ -942,6 +1065,14 @@ end
             @test length(report.kernels) == 2
             @test all(k -> k.equal && k.n_checked == 2, report.kernels)
             @test report.all_equal && length(report.results) == 4
+            # a kernel whose results are wrong is reported, not thrown
+            δ = Threshold(5, 4)
+            wrong = validate(settings; deltas = [δ],
+                kernels = ["tree" => SegmentTreeSearch(), "wrong" => WrongSearch()])
+            series = prepare(settings).series
+            @test !wrong.all_equal && [k.equal for k in wrong.kernels] == [true, false]
+            @test wrong.kernels[2].n_differences ==
+                  count(!=(0), waiting_times(series, δ, NaiveSearch()))
         end
     end
 

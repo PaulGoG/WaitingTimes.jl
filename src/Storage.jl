@@ -637,7 +637,9 @@ $(TYPEDSIGNATURES)
 
 Write the distributions of the collection in the format of the original
 analysis: one space-delimited file `WTS_<slug>_deltais<δ>.dat` per threshold
-under `out_dir`, with the header `time pdf cdf` and CRLF line ends, where
+under `out_dir`, `δ` printed as that code printed its floating-point value
+(`0.005`, `1.0`, not the fixed decimals of the partition names), with the
+header `time pdf cdf` and CRLF line ends, where
 `time` is the waiting time, `pdf` its probability mass and `cdf` the
 cumulative distribution. Thresholds without an observed wait are skipped.
 `slug` defaults to the series slug. Returns the paths written.
@@ -648,7 +650,7 @@ function export_legacy(c::Collection, out_dir::AbstractString; slug::AbstractStr
     for δ in thresholds(c)
         d = distribution(c, δ)
         nsamples(d) == 0 && continue
-        path = joinpath(out_dir, "WTS_" * slug * "_deltais" * format_threshold(δ) * ".dat")
+        path = joinpath(out_dir, "WTS_" * slug * "_deltais" * string(float(δ)) * ".dat")
         K = nsamples(d)
         cumulative_counts = cumsum(counts(d))
         open(path, "w") do io
