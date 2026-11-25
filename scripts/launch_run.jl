@@ -19,15 +19,9 @@ timestamp = Dates.format(now(), "yyyymmdd_HHMMSS")
 console_log = joinpath(LOG_DIR, "run_$(timestamp).log")
 record_path = joinpath(LOG_DIR, "run_$(timestamp).toml")
 
-println("=" ^ 78)
-println("  Launching WaitingTimes pipeline run (detached)")
-println("=" ^ 78)
-println("  project root : $PROJECT_ROOT")
-println("  console log  : $console_log")
-
 cmd = `$(Base.julia_cmd()) --threads=auto $PIPELINE_SCRIPT $ARGS`
 io = open(console_log, "w")
-process = run(detach(pipeline(cmd; stdout = io, stderr = io)); wait = false)
+process = run(pipeline(detach(cmd); stdout = io, stderr = io); wait = false)
 close(io)   # the child holds its own descriptor
 
 record = Dict{String, Any}("pid" => getpid(process), "command" => join(cmd.exec, " "),
@@ -38,7 +32,7 @@ config_index === nothing || config_index == length(ARGS) ||
     (record["config"] = abspath(ARGS[config_index + 1]))
 open(io -> TOML.print(io, record; sorted = true), record_path, "w")
 
-println("  status       : RUNNING (PID $(getpid(process)))")
-println("  job record   : $record_path")
-println("  monitor with : tail -f $console_log")
-println("=" ^ 78)
+println("detached pipeline run, process ", getpid(process))
+println("  console log  ", console_log)
+println("  job record   ", record_path)
+println("  follow with  tail -f ", console_log)
