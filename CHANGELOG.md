@@ -75,7 +75,8 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   within one horizon, and the logarithmic growth of the pending set for
   independent values at `δ = 0`; declared gaps and `time_original` refer to
   the clock after the preprocessing steps; the dense verification on the
-  dataset grids is dated (2026-09-26, version 0.1.0); the docstrings of the
+  dataset grids is dated, and was repeated on this code on 2026-11-25 with
+  zero differing indices on all 7 124 thresholds; the docstrings of the
   figure functions are kept with their declarations, so that the API page
   shows them in full; the README states what each component has been tested
   on; a broken cross-reference fails the documentation build.

@@ -129,7 +129,7 @@ push!(est, t_ns, price)                        # one sample; snapshot(est) gives
 
 | Component | State |
 |---|---|
-| Kernels: naive (the reference), guarded, segment tree, Fenwick sweep, streaming | equal index by index in the test suite and checked there against exact first-passage laws; equal on the 7 124 thresholds of the six dataset configurations in the run of 2026-09-26 (version 0.1.0) |
+| Kernels: naive (the reference), guarded, segment tree, Fenwick sweep, streaming | equal index by index in the test suite and checked there against exact first-passage laws; equal on the 7 124 thresholds of the six dataset configurations in the runs of 2026-09-26 (version 0.1.0) and 2026-11-25 (commit `8b506cb`) |
 | Device kernel (KernelAbstractions extension) | CPU backend in the test suite; oneAPI on an Intel Arc GPU through the opt-in tests in `test/device/`; the CUDA, AMDGPU and Metal backends have not been run on a device |
 | Gaps, classification, empirical distribution | in the test suite; the EUR-USD files of the 2024 generator are reproduced exactly |
 | Online estimator (`OnlineWaitingTimes`) | equal to the batch result on every prefix of a record; memory bounded by a horizon |
@@ -166,8 +166,10 @@ or GPU through the KernelAbstractions extension (`using KernelAbstractions`).
 series](docs/src/assets/kernels.gif)
 
 On the full threshold grids of the six dataset configurations (7 124
-thresholds, up to 10⁶ points), no kernel differed from the reference at a
-single index in the run of 2026-09-26 (version 0.1.0).
+thresholds, up to 10⁶ points), no kernel, the device kernel on the CPU
+backend included, differed from the reference at a single index in the run of
+2026-11-25 (commit `8b506cb`), as in the earlier run of 2026-09-26 (version
+0.1.0).
 
 ![Wall time per threshold of every kernel on synthetic random walks of 10⁴
 to 10⁶ points at three thresholds](docs/src/assets/timings.png)
