@@ -1,7 +1,7 @@
 # Source identity of package code: git tree hashes, manifest resolution and the
 # fallback from git work tree to installed copy to bare directory.
 
-using WaitingTimes.Provenance: active_manifest, manifest_entry, package_identity,
+using WaitingTimes.Provenance: active_manifest, git_state, manifest_entry, package_identity,
                                source_identity, tree_hash
 using TOML: TOML
 
@@ -119,6 +119,9 @@ end
             @test id["identity_source"] == "directory"
             @test id["git_commit"] == ""
             @test id["git_tree_sha1"] == identity_git(repo, "rev-parse", "HEAD:src")
+            # nor has it a git state of its own (a package inside a depot under git)
+            @test startswith(head, git_state(repo))
+            @test git_state(joinpath(repo, "src")) == "unknown"
 
             # the same content without .git
             bare = cp(repo, joinpath(root, "bare"))

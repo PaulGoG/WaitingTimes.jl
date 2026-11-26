@@ -17,8 +17,16 @@ using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
 using OhMyThreads: tforeach
 using Statistics: Statistics
 
-"package directory, the parent of `src/`; the root hashed for the code identity"
+"""
+Package directory at precompilation, the parent of `src/`. A depot moved after
+precompilation keeps the compiled code and leaves this constant at the old
+location; `pkgdir(WaitingTimes)` is the directory of the loaded code, which the
+code identity hashes.
+"""
 const PACKAGE_ROOT = normpath(joinpath(@__DIR__, ".."))
+
+# the directory of the loaded code, also after the depot has been moved
+package_root() = something(pkgdir(@__MODULE__), PACKAGE_ROOT)
 
 include("Quantization.jl")
 include("Series.jl")

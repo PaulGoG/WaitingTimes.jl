@@ -70,6 +70,19 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   the package inside the function that went on to build the kernel, where the
   backend probes defined by the extension are not yet visible, and stopped
   with an `ArgumentError`.
+- `StreamingState` and `OnlineWaitingTimes` refuse a time more than
+  `typemax` of the time type after the first sample, with an
+  `OverflowError` before any state changes. With a narrow `time_type` the
+  waiting time wrapped around: `update!` of a state returned it negative, and
+  the estimator raised only after the pending index had left the heap.
+- `detrend_moving_average` takes an unsigned `window` as the same signed one;
+  the index arithmetic wrapped around (`BoundsError`).
+- The code identity of a session is read from the directory of the loaded
+  code, so a depot moved after precompilation still records it; the
+  precompiled `PACKAGE_ROOT` named the old location, and `generate` stopped
+  with an `ArgumentError`. `git_state` of a package inside another
+  repository (a depot under version control) is `"unknown"`, not the state of
+  that repository.
 
 ### Changed
 
@@ -86,7 +99,12 @@ Keep a Changelog and the project adheres to Semantic Versioning.
   zero differing indices on all 7 124 thresholds; the docstrings of the
   figure functions are kept with their declarations, so that the API page
   shows them in full; the README states what each component has been tested
-  on; a broken cross-reference fails the documentation build.
+  on; a broken cross-reference fails the documentation build; the timing
+  figure of the README and the timings on the Kernels page come from one
+  measurement on an idle machine.
+- Dependabot also watches the environments of `test/device`, `bench`,
+  `scripts` and `examples`, except the two producers, whose pinned commits
+  are moved by hand.
 
 ### Added
 

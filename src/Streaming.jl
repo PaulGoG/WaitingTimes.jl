@@ -47,6 +47,10 @@ censored, so resolved waits satisfy ``\\tau \\le H`` and the heap stays below
 twice the largest number of samples that have fallen within one horizon, or
 `MIN_COMPACTION` entries, whichever is larger.
 
+Waiting times are differences of times of type `Tt`, so the times of one
+stream span at most `typemax(Tt)`: a time farther from the first sample raises
+an `OverflowError` before the state changes.
+
 $(TYPEDFIELDS)
 """
 mutable struct StreamingState{Tv <: Integer, Tt <: Integer}
@@ -62,6 +66,8 @@ mutable struct StreamingState{Tv <: Integer, Tt <: Integer}
     n_seen::Int
     "time of the last sample"
     last_time::Tt
+    "time of the first sample"
+    first_time::Tt
     "indices resolved so far"
     n_resolved::Int
     "indices whose target exceeds `upper_bound`, censored on arrival"
@@ -91,7 +97,7 @@ function StreamingState{Tv, Tt}(
     ub = upper_bound === nothing ? nothing : Tv(upper_bound)
     H = horizon === nothing ? nothing : Tt(horizon)
     return StreamingState{Tv, Tt}(δ, ub, H,
-        BinaryMinHeap{Tuple{Tv, Int, Tt}}(), 0, zero(Tt), 0, 0, 0, MIN_COMPACTION)
+        BinaryMinHeap{Tuple{Tv, Int, Tt}}(), 0, zero(Tt), zero(Tt), 0, 0, 0, MIN_COMPACTION)
 end
 function StreamingState(s::QuantizedSeries{Tv, Tt}, δ::Threshold; kwargs...) where {Tv, Tt}
     StreamingState{Tv, Tt}(δ; kwargs...)
@@ -143,6 +149,12 @@ function update!(f, state::StreamingState{Tv, Tt}, t::Tt, q::Tv) where {Tv, Tt}
         throw(ArgumentError(
             "times must strictly increase; got $t after $(state.last_time)",
         ))
+    # every pending time lies at or after the first one, so no elapsed time below wraps
+    state.n_seen > 0 && Base.Checked.sub_with_overflow(t, state.first_time)[2] &&
+        throw(OverflowError(
+            "time $t lies more than typemax($Tt) after the first time " *
+            "$(state.first_time); its waiting times do not fit $Tt",
+        ))
     d = Tv(state.delta.d)   # fits by construction
     ub, H = state.upper_bound, state.horizon
     ub === nothing || q <= ub ||
@@ -164,6 +176,7 @@ function update!(f, state::StreamingState{Tv, Tt}, t::Tt, q::Tv) where {Tv, Tt}
             state.n_evicted += 1
         end
     end
+    state.n_seen == 0 && (state.first_time = t)
     state.n_seen += 1
     state.last_time = t
     state.n_resolved += resolved

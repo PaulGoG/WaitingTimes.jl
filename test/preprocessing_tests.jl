@@ -235,6 +235,12 @@ end
         residual, exact = residuals(x[1:n], window)
         @test maximum(abs, residual .- exact) <= 2 * eps(maximum(abs, x[1:n]))
     end
+    # an unsigned window is the same window
+    _, exact = residuals(x[1:62], 5)
+    rs = P.RawSeries(Vector{Union{Missing, Float64}}(x[1:62]), nothing, :sample, nothing,
+        PreparationRecord("level"))
+    residual = Float64.(P.detrend_moving_average(rs; window = UInt(5)).values)
+    @test maximum(abs, residual .- exact) <= 2 * eps(maximum(abs, x[1:62]))
 end
 
 @testset "Published treatment: Trieste sea level, 1927 and 1928, against the 2024 generator" begin

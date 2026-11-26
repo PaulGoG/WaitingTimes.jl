@@ -33,7 +33,9 @@ missing observation (on a sample-indexed stream it keeps its index).
 Feed with `push!(est, t, x)` with the time of every observation, or on a
 sample-indexed stream with `push!(est, x)` and `push!(est, missing)` for a
 missing sample, which advances the index so that time passes through it.
-Read with [`snapshot`](@ref) (the distributions so far), [`pending`](@ref) and
+Waiting times are of `time_type`, so the times of a stream span at most
+`typemax(time_type)`: a time farther from the first sample raises an
+`OverflowError` and leaves the estimator unchanged. Read with [`snapshot`](@ref) (the distributions so far), [`pending`](@ref) and
 [`status`](@ref).
 
 $(TYPEDFIELDS)
@@ -129,6 +131,9 @@ function Base.push!(est::OnlineWaitingTimes{Tv, Tt}, t::Integer, x::Real) where 
             "value $x plus the largest threshold overflows the value type $Tv",
         ))
     end
+    # the states have seen the same samples, so a time too far from the first one
+    # (`OverflowError`) or beyond the time type (`InexactError`) stops the first
+    # state before any is fed
     resolved = 0
     for (state, acc) in zip(est.states, est.accumulators)
         resolved += update!(acc, state, Tt(t), q)

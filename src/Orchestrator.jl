@@ -703,7 +703,7 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
     dir = joinpath(settings.output_root, id)
     mkpath(joinpath(dir, "distributions"))
     mkpath(joinpath(dir, "sessions"))
-    git = git_state(WaitingTimes.PACKAGE_ROOT)
+    git = git_state(WaitingTimes.package_root())
     identity = package_identity()
     code = isempty(identity["git_commit"]) ? identity["git_tree_sha1"] :
            identity["git_commit"]

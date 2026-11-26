@@ -592,6 +592,7 @@ in the series does not reach it.
 function detrend_moving_average(rs::RawSeries; window::Integer)
     window >= 1 && isodd(window) ||
         throw(ArgumentError("window must be odd and positive, got $window"))
+    window = Int(window)   # an unsigned window would wrap the index arithmetic below
     idx, x = observed(rs)
     half = window ÷ 2
     n = length(x)

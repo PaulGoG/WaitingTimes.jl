@@ -550,6 +550,13 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         @test capped.n_unreachable == 1 && pending(capped) == 0 && capped.n_seen == 1
         @test_throws OverflowError WT.update!(
             StreamingState{Int8, Int64}(Threshold(10, 0)), 1, Int8(119))
+        # a narrow time type: a time more than typemax(Int32) after the first sample
+        # is refused before the state changes; one exactly typemax(Int32) after resolves
+        clock = StreamingState{Int64, Int32}(Threshold(0, 0))
+        @test isempty(WT.update!(clock, Int32(-2_000_000_000), 0))
+        @test_throws OverflowError WT.update!(clock, Int32(2_000_000_000), 1)
+        @test clock.n_seen == 1 && pending(clock) == 1 && clock.last_time == -2_000_000_000
+        @test only(WT.update!(clock, Int32(147_483_647), 1)) == (1, typemax(Int32))
     end
 
     @testset "Online estimation at several thresholds" begin
@@ -605,6 +612,15 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         @test_throws OverflowError push!(tiny, 120.0)
         @test tiny.n_seen == 0 && all(state -> state.n_seen == 0, tiny.states)
         @test push!(tiny, 100.0) == 0 && tiny.n_seen == 1 && pending(tiny) == [1, 1]
+        # times of a narrow time type more than typemax(Int32) apart, or beyond Int32,
+        # are refused before any state is fed
+        clock = OnlineWaitingTimes([0.0, 5.0], 0; time_type = Int32)
+        @test push!(clock, -2_000_000_000, 0.0) == 0
+        @test_throws OverflowError push!(clock, 2_000_000_000, 1.0)
+        @test_throws InexactError push!(clock, 3_000_000_000, 1.0)
+        @test clock.n_seen == 1 && pending(clock) == [1, 1]
+        @test push!(clock, 147_483_647, 1.0) == 1
+        @test WT.support(first(snapshot(clock))) == [typemax(Int32)]
         @test_throws ArgumentError OnlineWaitingTimes([0.25], 1)
     end
 

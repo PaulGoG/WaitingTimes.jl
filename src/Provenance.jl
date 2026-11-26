@@ -11,7 +11,7 @@ using InteractiveUtils: versioninfo
 using LinearAlgebra: BLAS
 using SHA: SHA1_CTX, digest!, sha1, sha256, update!
 using TOML: TOML
-using ..WaitingTimes: PACKAGE_ROOT, PreparationRecord, PreparationStep
+using ..WaitingTimes: package_root, PreparationRecord, PreparationStep
 using ..Backends: cpu_model
 
 export effective_config, canonical_toml, content_hash, artefact_id, slugify, git_state,
@@ -120,10 +120,14 @@ file_sha256(path::AbstractString) = open(io -> bytes2hex(sha256(io)), path)
 """
 $(TYPEDSIGNATURES)
 
-`git describe --tags --always --dirty` of the repository at `root`, or
-`"unknown"` outside a repository or without git.
+`git describe --tags --always --dirty` of the repository whose top level is
+`root`, or `"unknown"` without git, outside a repository, or when `root` lies
+inside a repository with another top level (a depot under version control),
+whose state is not that of `root`.
 """
 function git_state(root::AbstractString)
+    top = git_output(root, "rev-parse", "--show-toplevel")
+    (top === nothing || !isdir(top) || !samefile(top, root)) && return "unknown"
     desc = git_output(root, "describe", "--tags", "--always", "--dirty")
     return desc === nothing || isempty(desc) ? "unknown" : String(desc)
 end
@@ -426,10 +430,11 @@ $(TYPEDSIGNATURES)
 active manifest by the package UUID.
 """
 function package_identity()
-    project = parse_toml_or_empty(joinpath(PACKAGE_ROOT, "Project.toml"))
+    root = package_root()
+    project = parse_toml_or_empty(joinpath(root, "Project.toml"))
     id = get(project, "uuid", nothing)
     uuid = id isa AbstractString ? tryparse(Base.UUID, id) : nothing
-    return source_identity(PACKAGE_ROOT; uuid)
+    return source_identity(root; uuid)
 end
 
 """
