@@ -3,7 +3,11 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
-## [Unreleased]
+## [0.6.2] - 2026-11-26
+
+Fixes found in an audit of the whole package, among them the pruned share of
+`clip_extremes` on a series with missing values, now tested against the 2024
+generator on the Trieste record; timings measured again.
 
 ### Fixed
 
