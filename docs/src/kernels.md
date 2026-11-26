@@ -24,9 +24,10 @@ A maximum segment tree over the positions finds, for each index, the
 leftmost later position whose value reaches the target: climb to the first
 right sibling whose maximum qualifies, then descend to its leftmost
 qualifying leaf, ``O(\log N)``. The tree is built once per series and is
-read-only during queries. With 22 threads it takes 33 ms per threshold on a
-synthetic random walk of ``4 \cdot 10^6`` points at large ``\delta``; the
-naive scan needs about 7 s at ``10^6`` points.
+read-only during queries. On the synthetic random walk of ``10^6`` points of
+the timing figure in the README, with 12 threads, it takes 2 to 7 ms per
+threshold for ``\delta`` from 0.5 to 50, where the naive scan takes 0.06 to
+1.9 s (2026-11-26, version 0.6.1 at commit `17875dc`).
 
 ## Fenwick sweep
 
