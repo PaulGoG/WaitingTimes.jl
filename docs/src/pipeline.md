@@ -74,9 +74,10 @@ identifier.
 `index.toml` and `summary.csv` are rewritten at every checkpoint
 (`[run].checkpoint_seconds`, 10 s by default), at the end of the session, and
 when the session stops on an error or an interrupt, so an interrupted run
-resumes from the partitions already written. Only a killed process leaves
-partitions out of the index; the next run computes those again and backs up
-the files it finds in their place. `metadata.toml` lists the sessions that
+resumes from the partitions already written. A threshold enters the index once
+all its files are written, so a killed process, or an error while the files of
+one threshold are written, leaves those files out of the index; the next run
+computes that threshold again and backs up the files it finds in their place. `metadata.toml` lists the sessions that
 completed; an interrupted one is known by its record under `sessions/`, still
 at `status = "running"`, and by the index entries that name it. With reference
 checks enabled the kernel is first compared with the reference kernel on the

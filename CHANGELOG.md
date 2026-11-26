@@ -29,7 +29,8 @@ generator on the Trieste record; timings measured again.
   index cannot be written, the failure is logged and the error that stopped
   the session is the one raised.
 - `parse_threshold` refuses a literal beyond the `Int64` grid; `"20000"` with
-  15 decimals wrapped around to another threshold.
+  15 decimals wrapped around to another threshold. `narrow_integer` accepts
+  `typemin(Int64)`, where `abs` failed.
 - `OnlineWaitingTimes` refuses a sample whose target overflows the value type
   before any threshold has been fed (the first states had already taken it),
   and under a declared upper bound such a target counts as unreachable instead
@@ -39,8 +40,6 @@ generator on the Trieste record; timings measured again.
   gap are one gap; they stayed two, and a second merge joined them. A
   declared gap across two detected gaps absorbs both; the second stayed a
   detected gap overlapping it, and `declare_gaps` refused the result.
-- The four-argument `empirical_distribution` leaves the classes it is given
-  unchanged when a horizon censors waits.
 - Configuration values that validated and failed later are refused on load:
   `select_range` with `from > to`, an `[input].dataset` without its
   descriptor file, a section that is not a table, and tick files given an
@@ -74,11 +73,14 @@ generator on the Trieste record; timings measured again.
   the package inside the function that went on to build the kernel, where the
   backend probes defined by the extension are not yet visible, and stopped
   with an `ArgumentError`.
-- `StreamingState` and `OnlineWaitingTimes` refuse a time more than
-  `typemax` of the time type after the first sample, with an
-  `OverflowError` before any state changes. With a narrow `time_type` the
-  waiting time wrapped around: `update!` of a state returned it negative, and
-  the estimator raised only after the pending index had left the heap.
+- Waiting times beyond `typemax` of the time type, possible with a narrow
+  `time_type`, wrapped around in `StreamingState` and `OnlineWaitingTimes`:
+  `update!` of a state returned them negative, compaction under a horizon
+  kept the index, and the estimator raised only after the pending index had
+  left the heap. Under a horizon such an index is now evicted; without one, a
+  sample that would resolve it raises an `OverflowError` before any state
+  changes. `StreamingState` records the time of its first sample
+  (`first_time`, a new field).
 - `detrend_moving_average` takes an unsigned `window` as the same signed one;
   the index arithmetic wrapped around (`BoundsError`).
 - The code identity of a session is read from the directory of the loaded
@@ -99,8 +101,8 @@ generator on the Trieste record; timings measured again.
   within one horizon, and the logarithmic growth of the pending set for
   independent values at `δ = 0`; declared gaps and `time_original` refer to
   the clock after the preprocessing steps; the dense verification on the
-  dataset grids is dated, and was repeated on this code on 2026-11-25 with
-  zero differing indices on all 7 124 thresholds; the docstrings of the
+  dataset grids is dated, and was repeated on 2026-11-25 at commit `8b506cb`
+  with zero differing indices on all 7 124 thresholds; the docstrings of the
   figure functions are kept with their declarations, so that the API page
   shows them in full; the README states what each component has been tested
   on; a broken cross-reference fails the documentation build; the timing

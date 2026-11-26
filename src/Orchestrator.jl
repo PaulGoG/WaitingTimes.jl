@@ -686,10 +686,11 @@ Returns a [`CollectionHandle`](@ref).
 The session is resumable: `index.toml` and `summary.csv` are rewritten after a
 chunk of thresholds once `[run].checkpoint_seconds` have passed since the
 previous rewrite (after every chunk when it is 0), and once more when the
-session ends by an error or an interrupt, so that only a killed process leaves
-partitions out of the index. The next run computes what the index does not
-list, and backs up a file it finds in the place of a partition before writing
-it. The session record is written with `status = "running"`
+session ends by an error or an interrupt. A threshold enters the index once all
+its files are written, so a killed process, or an error while the files of one
+threshold are written, leaves those files out of the index. The next run
+computes what the index does not list, and backs up a file it finds in the
+place of a partition before writing it. The session record is written with `status = "running"`
 before the first threshold and rewritten with `status = "completed"` at the
 end. With `[algorithm].reference_checks > 0` the kernel is compared with the
 reference kernel on the largest pending threshold within
@@ -717,24 +718,25 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
     checks = Dict{String, Any}[]
     with_run_logging(joinpath(dir, "run.log"); level = settings.log_level) do
         @info "collection" id dir session series=p.series_id observations=length(s) gaps=length(s.gaps)
-        config_snapshot = joinpath(dir, "config.toml")
-        isfile(config_snapshot) || write_toml(config_snapshot, settings.raw)
-        write_toml(joinpath(dir, "sessions", session * ".config.toml"), settings.raw)
-        p.source === nothing || isfile(joinpath(dir, SOURCE_FILE)) ||
-            cp(p.source.path, joinpath(dir, SOURCE_FILE))
+        # identity and series are checked before the session writes anything
         meta_path = joinpath(dir, "metadata.toml")
         meta = isfile(meta_path) ? read_toml(meta_path) : initial_metadata(id, p, settings)
         toml_ready(meta["identity"]) == toml_ready(collection_identity(p, settings)) ||
             throw(ArgumentError(
                 "directory $dir holds a collection with a different identity",
             ))
-        isfile(meta_path) || write_toml(meta_path, meta)   # loadable from the first session on
         # a collection with distributions keeps its series, with or without series.toml
         partitions = joinpath(dir, "distributions")
-        if isfile(joinpath(dir, "series.toml")) ||
-           (isdir(partitions) && !isempty(readdir(partitions)))
-            check_stored_series(dir, s)
-        else
+        stored = isfile(joinpath(dir, "series.toml")) ||
+                 (isdir(partitions) && !isempty(readdir(partitions)))
+        stored && check_stored_series(dir, s)
+        config_snapshot = joinpath(dir, "config.toml")
+        isfile(config_snapshot) || write_toml(config_snapshot, settings.raw)
+        write_toml(joinpath(dir, "sessions", session * ".config.toml"), settings.raw)
+        p.source === nothing || isfile(joinpath(dir, SOURCE_FILE)) ||
+            cp(p.source.path, joinpath(dir, SOURCE_FILE))
+        isfile(meta_path) || write_toml(meta_path, meta)   # loadable from the first session on
+        if !stored
             @timeit timer "series files" begin
                 write_series_files(dir, s, settings.output_format; rows = p.rows,
                     time_original = p.time_original,

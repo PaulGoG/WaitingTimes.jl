@@ -47,9 +47,10 @@ censored, so resolved waits satisfy ``\\tau \\le H`` and the heap stays below
 twice the largest number of samples that have fallen within one horizon, or
 `MIN_COMPACTION` entries, whichever is larger.
 
-Waiting times are differences of times of type `Tt`, so the times of one
-stream span at most `typemax(Tt)`: a time farther from the first sample raises
-an `OverflowError` before the state changes.
+Waiting times are differences of times of type `Tt`. A pending index whose wait
+would exceed `typemax(Tt)` lies beyond any horizon and is evicted; without a
+horizon, a sample that would resolve such an index raises an `OverflowError`
+and leaves the state as it was.
 
 $(TYPEDFIELDS)
 """
@@ -129,7 +130,7 @@ function compact!(state::StreamingState{Tv, Tt}) where {Tv, Tt}
     entries = extract_all!(state.pending)
     n_before = length(entries)
     t = state.last_time
-    filter!(e -> t - e[3] <= H, entries)
+    filter!(e -> within_horizon(t, e[3], H), entries)
     state.n_evicted += n_before - length(entries)
     state.pending = BinaryMinHeap{Tuple{Tv, Int, Tt}}(entries)
     state.compact_at = max(2 * length(entries), MIN_COMPACTION)
@@ -149,12 +150,6 @@ function update!(f, state::StreamingState{Tv, Tt}, t::Tt, q::Tv) where {Tv, Tt}
         throw(ArgumentError(
             "times must strictly increase; got $t after $(state.last_time)",
         ))
-    # every pending time lies at or after the first one, so no elapsed time below wraps
-    state.n_seen > 0 && Base.Checked.sub_with_overflow(t, state.first_time)[2] &&
-        throw(OverflowError(
-            "time $t lies more than typemax($Tt) after the first time " *
-            "$(state.first_time); its waiting times do not fit $Tt",
-        ))
     d = Tv(state.delta.d)   # fits by construction
     ub, H = state.upper_bound, state.horizon
     ub === nothing || q <= ub ||
@@ -165,11 +160,12 @@ function update!(f, state::StreamingState{Tv, Tt}, t::Tt, q::Tv) where {Tv, Tt}
         throw(OverflowError(
             "value $q plus threshold $(format_threshold(state.delta)) overflows $Tv",
         ))
+    check_waits(state, t, q)
     heap = state.pending
     resolved = 0
     while !isempty(heap) && first(heap)[1] <= q
         _, n, t_n = pop!(heap)
-        if H === nothing || t - t_n <= H
+        if H === nothing || within_horizon(t, t_n, H)
             f(n, t - t_n)
             resolved += 1
         else
@@ -187,6 +183,39 @@ function update!(f, state::StreamingState{Tv, Tt}, t::Tt, q::Tv) where {Tv, Tt}
     end
     H === nothing || length(heap) < state.compact_at || compact!(state)
     return resolved
+end
+
+# a wait t - t_n beyond typemax(Tt) is also beyond any horizon H::Tt
+function within_horizon(t::Tt, t_n::Tt, H::Tt) where {Tt}
+    τ, wrapped = Base.Checked.sub_with_overflow(t, t_n)
+    return !wrapped && τ <= H
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Without a horizon, raise an `OverflowError` when the sample `(t, q)` would
+resolve a pending index whose waiting time does not fit `Tt`; the state is left
+as it was. Under a horizon such an index is evicted instead, and nothing is
+checked.
+"""
+function check_waits(state::StreamingState{Tv, Tt}, t::Tt, q::Tv) where {Tv, Tt}
+    state.horizon === nothing && state.n_seen > 0 || return nothing
+    # every pending time lies at or after the first, so within typemax(Tt) of it no
+    # wait wraps; beyond, the indices this sample resolves are looked at
+    Base.Checked.sub_with_overflow(t, state.first_time)[2] || return nothing
+    heap = state.pending
+    resolvable = Tuple{Tv, Int, Tt}[]
+    while !isempty(heap) && first(heap)[1] <= q
+        push!(resolvable, pop!(heap))
+    end
+    foreach(e -> push!(heap, e), resolvable)
+    for (_, n, t_n) in resolvable
+        Base.Checked.sub_with_overflow(t, t_n)[2] && throw(OverflowError(
+            "the waiting time of index $n from time $t_n to $t does not fit $Tt",
+        ))
+    end
+    return nothing
 end
 
 """

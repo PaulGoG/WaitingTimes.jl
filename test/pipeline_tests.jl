@@ -1016,6 +1016,9 @@ end
             end
             @test err isa ArgumentError && occursin("differs from the one stored", err.msg)
             @test [e["delta"] for e in read_index(first_run.dir)] == ["0.5"]
+            # the refused session leaves no configuration of its own in the collection
+            sessions = readdir(joinpath(first_run.dir, "sessions"))
+            @test count(endswith(".config.toml"), sessions) == 1
             # the same series extends the collection as before
             wider = generate(load_settings(config("wider", false, [0.5, 1.0])))
             @test wider.id == first_run.id && wider.computed == ["1.0"]
