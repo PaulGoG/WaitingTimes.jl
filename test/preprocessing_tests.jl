@@ -212,9 +212,12 @@ end
         return Float64.(P.detrend_moving_average(rs; window).values), exact
     end
     # Exact to the spacing of the values themselves, eps(6e8) = 1.2e-7: the window
-    # total is two partial sums of at most 61 values, each rounded once, and their
-    # sum, so the mean is off by at most 3 × 0.5 ulp(61 × 6e8) / 61 ≤ 1.6 eps(6e8),
-    # and the division and subtraction add at most 1 eps(6e8). The difference of two
+    # total is at most two block parts, one beginning inside a block (a difference of
+    # partial sums plus the difference of their compensations, two roundings) and one
+    # at a block start (one rounding), and their sum (one rounding). To first order
+    # each rounding is at most u |T| ≤ u L max|x| for a window of L values (u = 2^-53),
+    # so the mean is off by at most 4 u max|x| ≤ 2.3 eps(6e8); the division adds
+    # 0.5 eps(6e8), and the subtraction is exact (Sterbenz). The difference of two
     # plain prefix sums near 1.2e13 is off by 6e-5 here
     residual, exact = residuals(6e8 .+ cumsum(randn(StableRNG(17), 20_000)), 61)
     @test maximum(abs, residual .- exact) <= 3 * eps(6e8)

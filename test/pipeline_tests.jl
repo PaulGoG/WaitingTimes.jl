@@ -1094,13 +1094,14 @@ end
             @test budget(settings, s, NaiveSearch(), gpu).bytes ==
                   budget(settings, s, NaiveSearch(), nothing).bytes
         end
-        # each gap interval costs its two times
+        # each gap interval costs its two times in the series and its start in
+        # `classify` (8 bytes)
         plain = QuantizedSeries([1.0, 2.0, 3.0], 0)
         gapped = QuantizedSeries(Union{Missing, Float64}[1.0, missing, 2.0, missing, 3.0], 0)
         @test length(gapped) == length(plain) && length(gapped.gaps) == 2
-        @test estimate_memory_bytes(gapped, NaiveSearch()) >=
-              estimate_memory_bytes(plain, NaiveSearch()) +
-              2 * 2 * sizeof(eltype(gapped.times))
+        @test estimate_memory_bytes(gapped, NaiveSearch()) -
+              estimate_memory_bytes(plain, NaiveSearch()) ==
+              length(gapped.gaps) * (2 * sizeof(eltype(gapped.times)) + 8)
         mktempdir() do dir
             path = quickstart_variant(dir, "tight";
                 limits = Dict{String, Any}("max_ram_gb" => 1e-9))
