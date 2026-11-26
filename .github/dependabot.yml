@@ -14,12 +14,19 @@ updates:
       - "/"
       - "/docs"
       - "/test"
+      - "/test/device"
+      - "/bench"
+      - "/scripts"
+      - "/examples"
     schedule:
       interval: "weekly"
     # JET releases follow the Julia minor versions; the test environment
-    # resolves it unconstrained
+    # resolves it unconstrained. The producers of the examples are pinned to
+    # commits and moved by hand.
     ignore:
       - dependency-name: "JET"
+      - dependency-name: "DeepSpaceTelemetry"
+      - dependency-name: "MarketTickStreamer"
     groups:
       julia-dependencies:
         patterns:
