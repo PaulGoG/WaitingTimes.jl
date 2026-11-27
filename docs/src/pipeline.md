@@ -75,12 +75,13 @@ identifier.
 (`[run].checkpoint_seconds`, 10 s by default), at the end of the session, and
 when the session stops on an error or an interrupt, so an interrupted run
 resumes from the partitions already written. A threshold enters the index once
-all its files are written, and one rewritten under `[output].overwrite` leaves
-it before its files are backed up, so a killed process, or an error while the
+all its files are written, and the thresholds rewritten under
+`[output].overwrite` leave the index files before the first of them is written
+again, so a killed process, or an error while the
 files of one threshold are written, leaves those files out of the index; the
 next run computes that threshold again and backs up the files it finds in their
 place. The identity, the stored series and the memory bound are checked before
-a session writes anything but its log. `metadata.toml` lists the sessions that
+a session writes any file but its log. `metadata.toml` lists the sessions that
 completed; an interrupted one is known by its record under `sessions/`, still
 at `status = "running"`, and by the index entries that name it. With reference
 checks enabled the kernel is first compared with the reference kernel on the

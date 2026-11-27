@@ -886,6 +886,22 @@ function WaitingTimes.waiting_times!(τ::AbstractVector, s::QuantizedSeries, δ:
     return waiting_times!(τ, s, δ, NaiveSearch())
 end
 
+# records the threshold and session of every entry of the index files on disk when it
+# is called for threshold `key`
+struct IndexProbeSearch <: WaitingTimes.AbstractSearch
+    root::String
+    key::String
+    seen::Vector{Any}
+end
+WaitingTimes.workspace(::IndexProbeSearch, ::QuantizedSeries) = nothing
+WaitingTimes.workspace_bytes(::IndexProbeSearch, ::QuantizedSeries) = 0
+function WaitingTimes.waiting_times!(τ::AbstractVector, s::QuantizedSeries, δ::Threshold,
+        alg::IndexProbeSearch; workspace = nothing)
+    format_threshold(δ) == alg.key &&
+        append!(alg.seen, [(e["delta"], e["session"]) for e in read_index(alg.root)])
+    return waiting_times!(τ, s, δ, NaiveSearch())
+end
+
 # the reference kernel's result with one index off at the threshold of grid integer `d`
 struct WrongAtSearch <: WaitingTimes.AbstractSearch
     d::Int64
@@ -1010,7 +1026,7 @@ end
         end
     end
 
-    @testset "A threshold rewritten under overwrite leaves the index first" begin
+    @testset "Thresholds rewritten under overwrite leave the index first" begin
         mktempdir() do dir
             settings = load_settings(quickstart_variant(dir, "first"))
             generate(settings)
@@ -1019,17 +1035,30 @@ end
             raw["output"]["overwrite"] = true
             again = joinpath(dir, "again.toml")
             open(io -> TOML.print(io, raw), again, "w")
+            rewrite = load_settings(again)
+            # the index files on disk while 0.0015 is computed, as a killed process
+            # would leave them: the thresholds written again, none still to be written
+            probe = IndexProbeSearch(cdir, "0.0015", Any[])
+            handle = generate(rewrite; kernel = probe)
+            @test probe.seen == [("0.0005", handle.session), ("0.0010", handle.session)]
             # the censoring file of 0.0010 cannot be written once its partition has been
             # backed up and written again
-            @test_throws Exception generate(load_settings(again);
-                kernel = CensoringBlockingSearch(cdir, "0.0010"))
+            err = try
+                generate(rewrite; kernel = CensoringBlockingSearch(cdir, "0.0010"))
+                nothing
+            catch e
+                e
+            end
+            @test err isa Union{Base.IOError, SystemError}
             index = read_index(cdir)
-            @test [e["delta"] for e in index] == ["0.0005", "0.0015", "0.0020"]
+            @test [e["delta"] for e in index] == ["0.0005"]
+            sha(file) = WaitingTimes.Provenance.file_sha256(joinpath(cdir, file))
             @test all(
-                e -> WaitingTimes.Provenance.file_sha256(joinpath(cdir, e["file"])) ==
-                     e["sha256"], index)
+                e -> sha(e["file"]) == e["sha256"] &&
+                     sha(e["censoring_file"]) == e["censoring_sha256"],
+                index)
             rm(joinpath(cdir, "censoring", "delta=0.0010.csv"))
-            @test generate(settings).computed == ["0.0010"]
+            @test generate(settings).computed == ["0.0010", "0.0015", "0.0020"]
         end
     end
 

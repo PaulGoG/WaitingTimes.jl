@@ -687,12 +687,13 @@ The session is resumable: `index.toml` and `summary.csv` are rewritten after a
 chunk of thresholds once `[run].checkpoint_seconds` have passed since the
 previous rewrite (after every chunk when it is 0), and once more when the
 session ends by an error or an interrupt. A threshold enters the index once all
-its files are written, and a threshold rewritten under `[output].overwrite`
-leaves it before its files are backed up, so a killed process, or an error while
-the files of one threshold are written, leaves those files out of the index. The
+its files are written, and the thresholds rewritten under `[output].overwrite`
+leave the index files before the first of them is written again, so a killed
+process, or an error while the files of one threshold are written, leaves those
+files out of the index. The
 next run computes what the index does not list, and backs up a file it finds in
 the place of a partition before writing it. The identity, the stored series and
-the memory bound are checked before the session writes anything but its log. The
+the memory bound are checked before the session writes any file but its log. The
 session record is written with `status = "running"` before the first threshold
 and rewritten with `status = "completed"` at the end. With
 `[algorithm].reference_checks > 0` the kernel is compared with the reference
@@ -797,6 +798,14 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
         progress = run_progress(length(thresholds))
         foreach(_ -> next!(progress), skipped)
         last_checkpoint = time()
+        # the thresholds rewritten under [output].overwrite leave the index files before
+        # any of their files is backed up, so that no process, killed or not, leaves an
+        # entry naming a file moved aside or partly written
+        rewritten = filter(key -> haskey(existing, key), format_threshold.(todo))
+        if !isempty(rewritten)
+            foreach(key -> delete!(existing, key), rewritten)
+            @timeit timer "write" write_index_files(dir, existing, s.digits)
+        end
         unindexed = false   # whether `existing` differs from the index files
         try
             for chunk in Iterators.partition(todo, batch)
@@ -809,13 +818,10 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
                     end
                 end
                 for (δ, τ) in zip(chunk, outs)
-                    # a threshold rewritten under [output].overwrite leaves the index
-                    # before its files are backed up
-                    key = format_threshold(δ)
-                    haskey(existing, key) && (delete!(existing, key); unindexed = true)
                     entry = write_partition!(
                         timer, dir, id, session, δ, τ, s, settings, alg,
                         search_seconds / length(chunk))
+                    key = entry["delta"]
                     existing[key] = entry
                     unindexed = true
                     push!(computed, key)
@@ -1039,8 +1045,9 @@ $(TYPEDSIGNATURES)
 
 Remove the thresholds `computed` in a session from the index entries `existing` and
 rewrite the index files of `dir`, after the session's kernel disagreed with the
-reference kernel: a later session computes them again instead of keeping partitions
-of a kernel shown wrong. A failure to write the index is logged.
+reference kernel: a later session computes them again instead of keeping the
+partitions this session wrote with a kernel shown wrong. Partitions of earlier
+sessions stay indexed. A failure to write the index is logged.
 """
 function unindex_session!(dir::AbstractString, existing::AbstractDict,
         computed::AbstractVector, digits::Integer)

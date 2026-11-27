@@ -23,17 +23,18 @@ generator on the Trieste record; timings measured again.
   compares the series it prepared with the stored one and stops when they
   differ, also when the collection has lost its `series.toml`. A session
   refused by the identity, the stored series or the memory bound writes
-  nothing into the collection but its log; it used to leave its configuration
+  no file into the collection but its log; it used to leave its configuration
   snapshot, and on a new collection the metadata and the series files.
 - The index files are rewritten when a session stops on an error or an
   interrupt, not only at the checkpoints, and a partition file that the index
   does not list (left by a killed process) is backed up as `<name>#k.<ext>`
   before its threshold is written again; it used to be replaced. When the
   index cannot be written, the failure is logged and the error that stopped
-  the session is the one raised. Under `[output].overwrite` a threshold leaves
-  the index before its files are backed up and written again; after an error
-  while they were written, the index named a file that had been moved aside,
-  and the next session skipped the threshold. A disagreement of a reference
+  the session is the one raised. Under `[output].overwrite` the thresholds to
+  rewrite leave the index files before the first of them is written again;
+  after an error, or a killed process, while their files were written, the
+  index named a file that had been moved aside or rewritten under the old
+  checksum, and the next session skipped the threshold. A disagreement of a reference
   check after the last threshold removes every threshold of the session from
   the index, so that the next session computes them again; those indexed at a
   checkpoint were kept.
@@ -56,8 +57,10 @@ generator on the Trieste record; timings measured again.
   (`time_ns`, nanoseconds) in its place while the identity recorded the time
   unit `sample`; omit both keys for the defaults. The `chunk_size` warning is
   no longer raised while the reference kernel uses the key.
-- Floating-point time stamps from 2^53 on (nanosecond epochs written as
-  `…789.0`), where one float stands for two or more integers, are refused;
+- Floating-point time stamps from `maxintfloat` of their type on (2^53 for
+  `Float64`, nanosecond epochs written as `…789.0`; 2^24 for a `Float32`
+  column of an Arrow file), where one float stands for two or more integers,
+  are refused;
   they were rounded to the nearest representable integer. The refusal holds
   for every such stamp, also one that happens to be exact (whole seconds in
   nanoseconds); write these stamps as integers.
