@@ -80,7 +80,9 @@ all its files are written, and the thresholds rewritten under
 again, so a killed process, or an error while the
 files of one threshold are written, leaves those files out of the index; the
 next run computes that threshold again and backs up the files it finds in their
-place. The identity, the stored series and the memory bound are checked before
+place. An overwrite session that stops also leaves out the thresholds it has
+not written again yet: their old files stay, and the next run computes them
+and backs the files up. The identity, the stored series and the memory bound are checked before
 a session writes any file but its log. `metadata.toml` lists the sessions that
 completed; an interrupted one is known by its record under `sessions/`, still
 at `status = "running"`, and by the index entries that name it. With reference

@@ -690,7 +690,8 @@ session ends by an error or an interrupt. A threshold enters the index once all
 its files are written, and the thresholds rewritten under `[output].overwrite`
 leave the index files before the first of them is written again, so a killed
 process, or an error while the files of one threshold are written, leaves those
-files out of the index. The
+files out of the index. An overwrite session that stops also leaves out the
+thresholds it has not written again yet; their old files stay in place. The
 next run computes what the index does not list, and backs up a file it finds in
 the place of a partition before writing it. The identity, the stored series and
 the memory bound are checked before the session writes any file but its log. The
@@ -1046,8 +1047,9 @@ $(TYPEDSIGNATURES)
 Remove the thresholds `computed` in a session from the index entries `existing` and
 rewrite the index files of `dir`, after the session's kernel disagreed with the
 reference kernel: a later session computes them again instead of keeping the
-partitions this session wrote with a kernel shown wrong. Partitions of earlier
-sessions stay indexed. A failure to write the index is logged.
+partitions this session wrote with a kernel shown wrong. Entries of earlier
+sessions at thresholds this session did not compute stay indexed. A failure to
+write the index is logged.
 """
 function unindex_session!(dir::AbstractString, existing::AbstractDict,
         computed::AbstractVector, digits::Integer)

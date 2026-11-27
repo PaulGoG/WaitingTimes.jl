@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
-## [0.6.2] - 2026-11-26
+## [0.6.2] - 2026-11-27
 
 Fixes found in an audit of the whole package, among them the pruned share of
 `clip_extremes` on a series with missing values, now tested against the 2024
@@ -34,7 +34,9 @@ generator on the Trieste record; timings measured again.
   rewrite leave the index files before the first of them is written again;
   after an error, or a killed process, while their files were written, the
   index named a file that had been moved aside or rewritten under the old
-  checksum, and the next session skipped the threshold. A disagreement of a reference
+  checksum, and the next session skipped the threshold. An overwrite session
+  that stops thus leaves out of the index the thresholds it has not written
+  again yet; their old files stay in place. A disagreement of a reference
   check after the last threshold removes every threshold of the session from
   the index, so that the next session computes them again; those indexed at a
   checkpoint were kept.

@@ -1052,13 +1052,42 @@ end
             @test err isa Union{Base.IOError, SystemError}
             index = read_index(cdir)
             @test [e["delta"] for e in index] == ["0.0005"]
+            # the entry is that of the failed session, still at status = "running"
+            records = [TOML.parsefile(joinpath(cdir, "sessions", f))
+                       for f in readdir(joinpath(cdir, "sessions"))
+                       if endswith(f, ".toml") && count('.', f) == 1]
+            failed = only(r["id"] for r in records if r["status"] == "running")
+            @test only(index)["session"] == failed
             sha(file) = WaitingTimes.Provenance.file_sha256(joinpath(cdir, file))
-            @test all(
+            consistent(index) = all(
                 e -> sha(e["file"]) == e["sha256"] &&
                      sha(e["censoring_file"]) == e["censoring_sha256"],
                 index)
+            @test consistent(index)
             rm(joinpath(cdir, "censoring", "delta=0.0010.csv"))
             @test generate(settings).computed == ["0.0010", "0.0015", "0.0020"]
+
+            # the Fenwick sweep writes the four thresholds of one batch: the error at
+            # 0.0010 leaves 0.0005, written in the same batch, as the only entry
+            blocked = joinpath(cdir, "censoring", "delta=0.0010.csv")
+            rm(blocked)
+            mkdir(blocked)
+            @test_throws Union{Base.IOError, SystemError} generate(rewrite;
+                kernel = FenwickSweep())
+            index = read_index(cdir)
+            @test [e["delta"] for e in index] == ["0.0005"] && consistent(index)
+            rm(joinpath(cdir, "censoring", "delta=0.0010.csv"))
+            @test generate(settings).computed == ["0.0010", "0.0015", "0.0020"]
+
+            # an early reference check that fails leaves the index as it was
+            before = [(e["delta"], e["session"], e["sha256"]) for e in read_index(cdir)]
+            raw["algorithm"]["reference_checks"] = 1
+            checked = joinpath(dir, "checked.toml")
+            open(io -> TOML.print(io, raw), checked, "w")
+            @test_throws ErrorException generate(load_settings(checked);
+                kernel = WrongSearch())
+            @test [(e["delta"], e["session"], e["sha256"]) for e in read_index(cdir)] ==
+                  before
         end
     end
 
