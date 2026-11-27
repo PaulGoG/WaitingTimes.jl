@@ -81,7 +81,9 @@ explicit list of data gaps. Gaps are intervals `[start, stop)` of the time
 axis that contain no observation; they are diagnostics for the analyst and
 never alter a waiting time (elapsed-time semantics, as in the original
 analysis). Every gap carries its kind (one of [`GAP_KINDS`](@ref), or several
-joined by `+`) and the source it was declared from.
+joined by `+`) and the source it was declared from. Times strictly increase, and
+the record spans at most `typemax(Tt)`, so that every waiting time fits the time
+type; a series outside either rule is refused with an `ArgumentError`.
 
 $(TYPEDFIELDS)
 """

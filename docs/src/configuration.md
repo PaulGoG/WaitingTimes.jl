@@ -108,7 +108,7 @@ and the time on the elapsed axis (`time_original`, the clock of the input
 after the preprocessing steps) of every observation, so the
 collection can be rebuilt on the other axis, and on the index axis the gaps
 of the original clock are written to `gaps_original.csv`. The time axis
-enters the series identity only when it is `index`.
+enters the series identity.
 
 ## Gap kinds
 
@@ -179,9 +179,11 @@ The rationale follows the statistical theory of quantisation
 ## Preprocessing steps
 
 Each entry of `steps` is a table with an `op` key; parameters are validated
-when the configuration is loaded. A step table is hashed and used as written,
-so its choices are lower case as listed, whereas the choices of the sections
-are read in any letter case.
+when the configuration is loaded. A step is applied, and hashed into the series
+identity, with the default of every key it omits and without the keys its
+operation does not accept ([`resolved_step`](@ref WaitingTimes.Config.resolved_step));
+its values are taken as written, so its choices are lower case as listed,
+whereas the choices of the sections are read in any letter case.
 
 | `op` | Parameters | Effect |
 |---|---|---|

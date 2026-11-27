@@ -7,7 +7,9 @@ Keep a Changelog and the project adheres to Semantic Versioning.
 
 The identifiers name the series they stand for: the reader options and the
 defaults of the preprocessing steps enter the identity, so every identifier
-changes. Collections of 0.6 load as before; generate them again to extend them.
+changes. Collections of 0.6 load as before (except one whose record spans more
+than `typemax` of its time type, see below); generate them again to extend
+them. Every entry under Changed and Removed is breaking.
 
 ### Changed
 
@@ -18,21 +20,26 @@ changes. Collections of 0.6 load as before; generate them again to extend them.
   every preprocessing step with the default of each key it omits and without
   the keys its operation ignores (`Config.resolved_step`, the form in which
   the step is applied): a step written with or without its defaults names the
-  same series, and a later change of a default names another. Every dataset,
-  series and collection identifier changes.
+  same series, and a later change of a default names another. Values are
+  hashed as written, so `k = 3` and `k = 3.0`, or a reader option a format
+  does not use, still give one series two identifiers; two series never share
+  one. Every dataset, series and collection identifier changes.
 - The four-argument `empirical_distribution` leaves `class` unchanged. Under a
   `horizon` it used to mark the waits it censors in `class`, so that
-  `censoring_counts(class, lower)` counted them with their observed waiting
-  time as bound instead of the horizon; the result's `n_right_censored`
-  counts them, censored at the horizon.
+  `censoring_counts(class, lower)` counted them at their lower bound (the
+  observed waiting time of an exact wait, the time to the last observation
+  before the first gap of a gap-crossing one) instead of the horizon; the
+  result's `n_right_censored` counts them, censored at the horizon.
 - The preparation record names the input file by its path relative to
   `[output].root`, the directory that holds the collection, instead of the
   path written in the configuration, which was relative to a configuration
-  directory that is not recorded.
+  directory that is not recorded. When the two share no directory below the
+  filesystem root, it names the file alone. The schema string is unchanged.
 - A `QuantizedSeries` whose record spans more than `typemax` of its time type
-  is refused. Every batch kernel wrapped `t_m − t_n` around on such a series
-  (possible with `Int32` times built directly), while the streaming kernel
-  raised.
+  is refused. Every batch kernel wrapped `t_m − t_n` around on such a series,
+  while the streaming kernel raised. It arises with `Int32` times built
+  directly, or from a configuration with nanosecond times over more than 292
+  years; a collection of 0.6 holding such a series no longer loads.
 
 ### Removed
 
@@ -43,10 +50,12 @@ changes. Collections of 0.6 load as before; generate them again to extend them.
 ### Added
 
 - `Config.resolved_step`.
-- Tests: reader options in the dataset identity; a step with and without its
-  defaults and with an ignored key names one series; for every operation, the
-  resolved step gives the series the configured step gives; the record span
-  against the time type.
+- Tests: reader options in the dataset identity; the quickstart identity
+  written out by hand and its identifiers pinned against `sha256sum`; a step
+  with and without its defaults and with an ignored key names one series; for
+  every operation, the resolved step gives the series the configured step
+  gives; the record span against the time type; the horizon on a gapped series
+  in both modes.
 
 ## [0.6.2] - 2026-11-27
 

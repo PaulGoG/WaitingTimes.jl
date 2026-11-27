@@ -318,14 +318,26 @@ step_tag(step::AbstractDict) = PREPROCESSING_OPS[String(step["op"])].tag(step)
 """
 $(TYPEDSIGNATURES)
 
-The preprocessing step table `step` as it is applied and as it enters the series
-identity: its operation, every key the operation accepts with the configured
-value or else the default, and no other key. A step written with or without its
-defaults, or with a key the operation ignores, names the same series; a change
-of a default would name another.
+The preprocessing step table `step` (a dictionary with an `op` key naming one
+of [`PREPROCESSING_OPS`](@ref)) as it is applied and as it enters the series
+identity. Returns a new `Dict{String, Any}` with `op`, every key the operation
+accepts with the configured value or else the default, and no other key. A step
+written with or without its defaults, or with a key the operation ignores,
+names the same series; a change of a default would name another. Values are
+kept as written (`3` and `3.0` stay distinct). Throws `ArgumentError` for a
+missing or unknown `op`.
+
+```julia
+resolved_step(Dict("op" => "clip_sigma", "k" => 2))
+# Dict("op" => "clip_sigma", "k" => 2, "center" => "mean", "scale" => "std", "splice" => false)
+```
 """
 function resolved_step(step::AbstractDict)
+    haskey(step, "op") || throw(ArgumentError("preprocessing step without an op key"))
     name = String(step["op"])
+    haskey(PREPROCESSING_OPS, name) || throw(ArgumentError(
+        "preprocessing op $(repr(name)) is not one of $(join(sort(collect(keys(PREPROCESSING_OPS))), ", "))",
+    ))
     op = PREPROCESSING_OPS[name]
     out = Dict{String, Any}("op" => name)
     for key in op.keys

@@ -818,9 +818,31 @@ end
         "sha256" => "f4238c5d29f2867ba536ab51db8360f7a1e4561e87e3ffb16202418efcabfcac",
         "value_column" => "Data", "time_column" => "", "format" => "dat",
         "delimiter" => "", "header" => true)
-    @test quick.dataset_id ==
-          "dataset-eur_usd-closing_rate-" * first(content_hash(quick.dataset_identity), 8)
-    @test quick.series_identity["time_axis"] === :elapsed
+    # the canonical identity of the quickstart series, written out by hand from
+    # configs/quickstart.toml and the defaults; the identifiers are the first eight
+    # digits of `printf '<text>' | sha256sum` of these texts
+    @test canonical_toml(quick.series_identity) ==
+          """
+          dataset = "dataset-eur_usd-closing_rate-a2656cab"
+          declared_gaps_sha256 = ""
+          digits = 4
+          epoch_unit = "second"
+          gap_cadence = 1
+          gap_detect = "cadence"
+          missing_policy = "drop"
+          steps = []
+          tie_policy = "error"
+          time_axis = "elapsed"
+          time_format = ""
+          time_unit = "sample"
+          """
+    @test quick.dataset_id == "dataset-eur_usd-closing_rate-a2656cab"
+    @test quick.series_id == "series-eur_usd-closing_rate-3f06e7bc"
+    mktempdir() do dir
+        handle = generate(load_settings(joinpath(CONFIGS, "quickstart.toml");
+            output_dir = dir))
+        @test handle.id == "collection-eur_usd-closing_rate-9cbbc32c"   # mode, series
+    end
 end
 
 @testset "Step defaults in the series identity" begin
@@ -862,6 +884,8 @@ end
               Dict{String, Any}("op" => "clip_sigma", "k" => 2, "center" => "mean",
             "scale" => "std", "splice" => false)
     end
+    @test_throws ArgumentError WaitingTimes.Config.resolved_step(Dict("op" => "nope"))
+    @test_throws ArgumentError WaitingTimes.Config.resolved_step(Dict("k" => 2))
     # the defaults a resolved step writes out are the ones the step is applied with
     rs = RawSeries(Union{Missing, Float64}[1.0, 5.0, 2.0, 40.0, 3.0, 2.5, 4.0, 0.5, 6.0],
         collect(Int64, 1:9), :sample, nothing, PreparationRecord("steps"))
@@ -1211,6 +1235,11 @@ end
             @test joinpath(dirname(first_run.dir), record["source"]) |> normpath ==
                   normpath(file)
             @test record["steps"][1]["summary"]["bytes"] == filesize(file)
+            # an output root that shares only the filesystem root with the input: the
+            # relative path would spell out the absolute one, so the file name alone
+            elsewhere = load_settings(joinpath(dir, "wider.toml");
+                output_dir = "/nonexistent-root/out")
+            @test prepare(elsewhere).series.record.source == "x.csv"
         end
     end
 

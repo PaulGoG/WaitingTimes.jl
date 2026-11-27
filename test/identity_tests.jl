@@ -245,6 +245,10 @@ end
               joinpath(workspace, "outsider", "Manifest.toml")
     end
 
+    # the code identity is read from the directory of the loaded code; the constant
+    # fixed at precompilation is gone
+    @test WaitingTimes.package_root() == pkgdir(WaitingTimes)
+    @test !isdefined(WaitingTimes, :PACKAGE_ROOT)
     id = package_identity()
     @test all(haskey(id, k) for k in IDENTITY_FIELDS)
     @test id["identity_source"] in ("work_tree", "manifest", "directory")

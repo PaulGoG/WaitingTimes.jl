@@ -13,9 +13,12 @@ serialisation of its identity fields (keys sorted, values only).
 | `collection` | series identifier, distribution mode |
 
 The identity covers what determines the series, as the configuration states
-it, with the defaults it leaves implicit written out: a step given with or
-without its defaults names the same series, and a later change of a default
-names another. Kernel, backend, machine and commit are recorded in the session
+it, with the defaults of the preprocessing steps written out and the keys a
+step's operation ignores left out: a step given with or without its defaults
+names the same series, and a later change of a default names another. Values
+are hashed as written, so `k = 3` and `k = 3.0`, or a reader option that a
+format does not use (`header` of an Arrow file), give one series two
+identifiers; two different series never share one. Kernel, backend, machine and commit are recorded in the session
 and not hashed, since every kernel must give the same result; the thresholds
 are left out too, so that a collection can be extended later. The version of
 the preprocessing code is not hashed: a session that extends a collection
@@ -31,15 +34,22 @@ descriptor, the `[source]` section when `[input].source_descriptor` is set,
 `[producer]`, `[environment]` and the `[[sessions]]` list of the sessions
 that completed.
 
-- `[series]`: the full preparation record (the input file by its path
-  relative to `[output].root`, the directory that holds the collection, with
-  its size and SHA-256, and every step), digits
+- `[series]`: the full preparation record (the input file, with its size and
+  SHA-256, and every step), digits
   and value type, the time
   axis (`elapsed` or `index`) with the time unit of the series and the time
   unit and epoch of the input's clock (`time_unit_original`,
   `epoch_original`), the number of observations and gaps, the gaps by kind,
   and the record structure: sampling step, record length in sampling steps,
-  number of segments.
+  number of segments. The input file is named by its path relative to
+  `[output].root`, the directory that holds the collection, with `/`
+  separators: `normpath(joinpath(dirname(collection), source))` names the
+  input as long as the two keep their places (the path is resolved lexically,
+  so a symbolic link on the way is not followed). When the input and the
+  output root share no directory below the filesystem root, or lie on
+  different drives, the record names the file alone, and its size and SHA-256
+  identify it. Collections of 0.6.2 record the path as the configuration
+  wrote it, earlier ones the absolute path.
 - `[source]`: the descriptor's table, its file `source.toml` and its
   SHA-256, and the normalised summary of the producer's identity
   ([Source descriptors](@ref)).

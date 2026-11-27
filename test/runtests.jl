@@ -361,6 +361,15 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         @test WT.support(d_elapsed) == [1, 4, 5] && WT.counts(d_elapsed) == [1, 1, 1]
         @test WT.support(d_exact) == [1] && WT.counts(d_exact) == [1]
         @test d_elapsed.n_gap_crossing == 2 && d_exact.n_gap_crossing == 2
+        # horizon 3: the gap-crossing waits 5 and 4 are censored, the exact wait 1 is
+        # kept, index 4 was censored already; the classes handed in stay as they were
+        before = copy(class)
+        for mode in (:elapsed, :exact)
+            cut = empirical_distribution(τ, threshold(3, s), s, class; mode, horizon = 3)
+            @test class == before
+            @test (cut.n_exact, cut.n_gap_crossing, cut.n_right_censored) == (1, 0, 3)
+            @test WT.support(cut) == [1] && WT.counts(cut) == [1]
+        end
         # gaps that begin right after the first observation and end at the last:
         # times 1 | gap [2, 4) | 4 5 | gap [6, 7) | 7 ; A = 1 | 3 2 | 5
         ends = QuantizedSeries([1.0, missing, missing, 3.0, 2.0, missing, 5.0], 0)

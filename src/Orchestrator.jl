@@ -263,16 +263,22 @@ $(TYPEDSIGNATURES)
 
 Path of the input file of `settings` as the preparation record names it:
 relative to `[output].root`, the directory that holds the collection, with `/`
-as separator, so that the record resolves from the collection's place
-(`joinpath(dirname(collection), path)`) and does not name the machine's
-directories above the common ancestor. An input on another drive than the
-output root, which has no relative path to it, keeps the path written in the
-configuration.
+as separator, so that `normpath(joinpath(dirname(collection), path))` names the
+input (resolved lexically, symbolic links not followed). When the input and the
+root share no directory below the filesystem root, or lie on different drives,
+the relative path would spell out the input's absolute path, and the file name
+alone is recorded.
 """
 function recorded_input_path(settings::Settings)
-    input, root = abspath(settings.input_path), abspath(settings.output_root)
-    first(splitdrive(input)) == first(splitdrive(root)) ||
-        return String(settings.raw["input"]["path"])
+    input = normpath(abspath(settings.input_path))
+    root = normpath(abspath(settings.output_root))
+    a, b = splitpath(input), splitpath(root)
+    same(x, y) = Sys.iswindows() ? uppercase(x) == uppercase(y) : x == y
+    shared = 0
+    while shared < min(length(a), length(b)) && same(a[shared + 1], b[shared + 1])
+        shared += 1
+    end
+    shared <= 1 && return basename(input)
     return join(splitpath(relpath(input, root)), "/")
 end
 
