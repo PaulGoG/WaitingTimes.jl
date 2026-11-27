@@ -44,6 +44,7 @@ WaitingTimes.Provenance.dict_to_record
 WaitingTimes.Provenance.toml_ready
 WaitingTimes.Provenance.git_output
 WaitingTimes.Provenance.work_tree_identity
+WaitingTimes.Provenance.package_git_state
 WaitingTimes.Provenance.manifest_identity
 WaitingTimes.Provenance.identity_record
 WaitingTimes.Provenance.merge_config

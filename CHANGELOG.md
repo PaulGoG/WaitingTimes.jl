@@ -21,13 +21,22 @@ generator on the Trieste record; timings measured again.
   the identity (`format`, `delimiter`, `header`) or another version of the
   preprocessing can give another series under the same identifier: `generate`
   compares the series it prepared with the stored one and stops when they
-  differ, also when the collection has lost its `series.toml`.
+  differ, also when the collection has lost its `series.toml`. A session
+  refused by the identity, the stored series or the memory bound writes
+  nothing into the collection but its log; it used to leave its configuration
+  snapshot, and on a new collection the metadata and the series files.
 - The index files are rewritten when a session stops on an error or an
   interrupt, not only at the checkpoints, and a partition file that the index
   does not list (left by a killed process) is backed up as `<name>#k.<ext>`
   before its threshold is written again; it used to be replaced. When the
   index cannot be written, the failure is logged and the error that stopped
-  the session is the one raised.
+  the session is the one raised. Under `[output].overwrite` a threshold leaves
+  the index before its files are backed up and written again; after an error
+  while they were written, the index named a file that had been moved aside,
+  and the next session skipped the threshold. A disagreement of a reference
+  check after the last threshold removes every threshold of the session from
+  the index, so that the next session computes them again; those indexed at a
+  checkpoint were kept.
 - `parse_threshold` refuses a literal beyond the `Int64` grid; `"20000"` with
   15 decimals wrapped around to another threshold. `narrow_integer` accepts
   `typemin(Int64)`, where `abs` failed.
@@ -42,12 +51,16 @@ generator on the Trieste record; timings measured again.
   detected gap overlapping it, and `declare_gaps` refused the result.
 - Configuration values that validated and failed later are refused on load:
   `select_range` with `from > to`, an `[input].dataset` without its
-  descriptor file, a section that is not a table, and tick files given an
-  empty time column. The `chunk_size` warning is no longer raised while the
-  reference kernel uses the key.
+  descriptor file, and a section that is not a table. Tick files given an
+  empty time column are refused as well: the reader put the defaults
+  (`time_ns`, nanoseconds) in its place while the identity recorded the time
+  unit `sample`; omit both keys for the defaults. The `chunk_size` warning is
+  no longer raised while the reference kernel uses the key.
 - Floating-point time stamps from 2^53 on (nanosecond epochs written as
   `…789.0`), where one float stands for two or more integers, are refused;
-  they were rounded to the nearest representable integer.
+  they were rounded to the nearest representable integer. The refusal holds
+  for every such stamp, also one that happens to be exact (whole seconds in
+  nanoseconds); write these stamps as integers.
 - `detrend_moving_average` sums its windows with compensated partial sums
   restarted every `window` values, so that the rounding error of a window
   comes from its neighbourhood alone; on a long series at a high level the
@@ -80,18 +93,25 @@ generator on the Trieste record; timings measured again.
   left the heap. Under a horizon such an index is now evicted; without one, a
   sample that would resolve it raises an `OverflowError` before any state
   changes. `StreamingState` records the time of its first sample
-  (`first_time`, a new field).
+  (`first_time`, a new field, so that its positional default constructor takes
+  one argument more).
 - `detrend_moving_average` takes an unsigned `window` as the same signed one;
   the index arithmetic wrapped around (`BoundsError`).
 - The code identity of a session is read from the directory of the loaded
   code, so a depot moved after precompilation still records it; the
   precompiled `PACKAGE_ROOT` named the old location, and `generate` stopped
-  with an `ArgumentError`. `git_state` of a package inside another
-  repository (a depot under version control) is `"unknown"`, not the state of
-  that repository.
+  with an `ArgumentError`. A session records the git state `"unknown"` for a
+  package directory inside a repository with another top level (a depot under
+  version control), not the state of that repository; `git_state` itself is
+  unchanged.
 
 ### Changed
 
+- A collection written by 0.6.1 whose series changes under these fixes
+  (`clip_extremes` on a series with missing values, `detrend_moving_average`
+  where the rounding of a window sum flips a value at the grid, declared gaps
+  that now merge) is not extended by a session of this version, which stops
+  with an `ArgumentError`; generate it again in another directory.
 - The preparation record names the input file as the configuration does, not
   by its absolute path, and records its size in bytes.
 - `threshold_list` builds its thresholds from the grid integers.

@@ -396,7 +396,8 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         cut = empirical_distribution(τ, δ, s, class; horizon = 10)
         @test cut.n_right_censored > d.n_right_censored
         @test sum(last(WT.censoring_counts(class, lower))) == cut.n_right_censored
-        @test cut == empirical_distribution(τ, δ, s; horizon = 10)
+        # censored: no target in the record (τ = 0) or a wait beyond the horizon
+        @test cut.n_right_censored == count(t -> t == 0 || t > 10, τ[1:(end - 1)])
     end
 
     @testset "Fast kernels equal the reference kernel" begin
@@ -633,8 +634,12 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         @test clock.n_seen == 1 && pending(clock) == [1, 1]
         @test push!(clock, 147_483_647, 1.0) == 1
         @test WT.support(first(snapshot(clock))) == [typemax(Int32)]
+        # the wait resolved at δ = 0 fits and the one at δ = 5 does not: neither state
+        # takes the sample
         @test_throws OverflowError push!(clock, 2_000_000_000, 5.0)
         @test clock.n_seen == 2 && pending(clock) == [1, 2]
+        @test all(state -> state.n_seen == 2, clock.states)
+        @test WT.nsamples.(snapshot(clock)) == [1, 0]
         # under a horizon the stream spans more than typemax(Int32): every index
         # resolves one sample later, 10^6 time units on
         long = OnlineWaitingTimes([0.0], 0; time_type = Int32, horizon = 2_000_000)

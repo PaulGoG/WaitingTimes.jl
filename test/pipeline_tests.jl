@@ -869,6 +869,36 @@ function WaitingTimes.waiting_times!(τ::AbstractVector, s::QuantizedSeries, δ:
     return waiting_times!(τ, s, δ, NaiveSearch())
 end
 
+# puts a directory where the censoring file of threshold `key` is written
+struct CensoringBlockingSearch <: WaitingTimes.AbstractSearch
+    root::String
+    key::String
+end
+WaitingTimes.workspace(::CensoringBlockingSearch, ::QuantizedSeries) = nothing
+WaitingTimes.workspace_bytes(::CensoringBlockingSearch, ::QuantizedSeries) = 0
+function WaitingTimes.waiting_times!(τ::AbstractVector, s::QuantizedSeries, δ::Threshold,
+        alg::CensoringBlockingSearch; workspace = nothing)
+    if format_threshold(δ) == alg.key
+        path = joinpath(alg.root, "censoring", "delta=" * alg.key * ".csv")
+        rm(path; force = true)
+        mkdir(path)
+    end
+    return waiting_times!(τ, s, δ, NaiveSearch())
+end
+
+# the reference kernel's result with one index off at the threshold of grid integer `d`
+struct WrongAtSearch <: WaitingTimes.AbstractSearch
+    d::Int64
+end
+WaitingTimes.workspace(::WrongAtSearch, ::QuantizedSeries) = nothing
+WaitingTimes.workspace_bytes(::WrongAtSearch, ::QuantizedSeries) = 0
+function WaitingTimes.waiting_times!(τ::AbstractVector, s::QuantizedSeries, δ::Threshold,
+        alg::WrongAtSearch; workspace = nothing)
+    waiting_times!(τ, s, δ, NaiveSearch())
+    δ.d == alg.d && (τ[1] += 1)
+    return τ
+end
+
 struct WrongSearch <: WaitingTimes.AbstractSearch end
 WaitingTimes.workspace(::WrongSearch, ::QuantizedSeries) = nothing
 WaitingTimes.workspace_bytes(::WrongSearch, ::QuantizedSeries) = 0
@@ -980,6 +1010,29 @@ end
         end
     end
 
+    @testset "A threshold rewritten under overwrite leaves the index first" begin
+        mktempdir() do dir
+            settings = load_settings(quickstart_variant(dir, "first"))
+            generate(settings)
+            cdir = only_collection(dir)
+            raw = TOML.parsefile(joinpath(dir, "first.toml"))
+            raw["output"]["overwrite"] = true
+            again = joinpath(dir, "again.toml")
+            open(io -> TOML.print(io, raw), again, "w")
+            # the censoring file of 0.0010 cannot be written once its partition has been
+            # backed up and written again
+            @test_throws Exception generate(load_settings(again);
+                kernel = CensoringBlockingSearch(cdir, "0.0010"))
+            index = read_index(cdir)
+            @test [e["delta"] for e in index] == ["0.0005", "0.0015", "0.0020"]
+            @test all(
+                e -> WaitingTimes.Provenance.file_sha256(joinpath(cdir, e["file"])) ==
+                     e["sha256"], index)
+            rm(joinpath(cdir, "censoring", "delta=0.0010.csv"))
+            @test generate(settings).computed == ["0.0010"]
+        end
+    end
+
     @testset "A collection is not extended by another series" begin
         mktempdir() do dir
             file = joinpath(dir, "x.csv")
@@ -1067,6 +1120,28 @@ end
             @test early["early"] == true && early["delta"] == "0.0010" && early["equal"]
             @test late["delta"] == "0.0020" && late["skipped"]
         end
+        # a disagreement after the last threshold removes the session's thresholds from
+        # the index, so the next session computes them with its own kernel
+        mktempdir() do dir
+            settings = load_settings(quickstart_variant(dir, "late";
+                values = [0.0005, 0.001], reference_checks = 2))
+            err = try
+                generate(settings; kernel = WrongAtSearch(5))
+                nothing
+            catch e
+                e
+            end
+            @test err isa ErrorException && occursin("0.0005", err.msg)
+            cdir = only_collection(dir)
+            @test isempty(read_index(cdir))
+            handle = generate(settings)
+            @test sort(handle.computed) == ["0.0005", "0.0010"]
+            c = load_collection(cdir)
+            series = load_series(c)
+            δ = Threshold(5, 4)
+            @test distribution(c, δ) ==
+                  empirical_distribution(waiting_times(series, δ, NaiveSearch()), δ, series)
+        end
     end
 
     @testset "Memory accounting" begin
@@ -1115,6 +1190,12 @@ end
                 e
             end
             @test err isa ArgumentError && occursin("max_ram_gb", err.msg)
+            # the refused session has written nothing but its log
+            cdir = only_collection(dir)
+            @test isempty(readdir(joinpath(cdir, "sessions")))
+            @test !isfile(joinpath(cdir, "config.toml")) &&
+                  !isfile(joinpath(cdir, "metadata.toml")) &&
+                  !isfile(joinpath(cdir, "series.toml"))
         end
     end
 

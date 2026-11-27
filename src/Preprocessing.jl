@@ -633,7 +633,8 @@ $(TYPEDSIGNATURES)
 
 Remove the rows selected by `remove` (a mask over the rows of `rs`) and record
 the step `op` with `parameters` and `summary`, the latter extended by
-`n_removed`, `fraction_removed` and `positions`. With `splice = false` the
+`n_removed`, `fraction_removed` (the share of all rows of `rs`, missing ones
+included) and `positions`. With `splice = false` the
 value is set to `missing` and its time position remains: the measurement is
 discarded as invalid but its time has passed, and the cut is a recorded gap.
 The 2024 analysis did this (its time column kept the original row indices),

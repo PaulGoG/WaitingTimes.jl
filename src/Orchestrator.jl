@@ -24,7 +24,7 @@ using ..WaitingTimes: WaitingTimes, AbstractSearch, DeviceSearch, FenwickSweep, 
 using ..Config: Settings, load_settings, step_tag, threshold_decimals, threshold_list
 using ..Provenance: SourceSummary, active_manifest, artefact_id, backup_existing!,
                     content_hash,
-                    file_sha256, git_state, hardware_fingerprint, package_identity,
+                    file_sha256, hardware_fingerprint, package_git_state, package_identity,
                     read_toml, record_to_dict, session_id, slugify, source_summary,
                     toml_ready, write_hardware_fingerprint, write_toml
 using ..Preprocessing: RawSeries, apply_steps, index_series, quantized_series,
@@ -687,15 +687,20 @@ The session is resumable: `index.toml` and `summary.csv` are rewritten after a
 chunk of thresholds once `[run].checkpoint_seconds` have passed since the
 previous rewrite (after every chunk when it is 0), and once more when the
 session ends by an error or an interrupt. A threshold enters the index once all
-its files are written, so a killed process, or an error while the files of one
-threshold are written, leaves those files out of the index. The next run
-computes what the index does not list, and backs up a file it finds in the
-place of a partition before writing it. The session record is written with `status = "running"`
-before the first threshold and rewritten with `status = "completed"` at the
-end. With `[algorithm].reference_checks > 0` the kernel is compared with the
-reference kernel on the largest pending threshold within
-`[limits].max_reference_work` before any partition is written; a disagreement
-raises there.
+its files are written, and a threshold rewritten under `[output].overwrite`
+leaves it before its files are backed up, so a killed process, or an error while
+the files of one threshold are written, leaves those files out of the index. The
+next run computes what the index does not list, and backs up a file it finds in
+the place of a partition before writing it. The identity, the stored series and
+the memory bound are checked before the session writes anything but its log. The
+session record is written with `status = "running"` before the first threshold
+and rewritten with `status = "completed"` at the end. With
+`[algorithm].reference_checks > 0` the kernel is compared with the reference
+kernel on the largest pending threshold within `[limits].max_reference_work`
+before any partition is written, and on further thresholds after the last one; a
+disagreement raises, and after the last threshold it first removes every
+threshold of the session from the index, so that the next run computes them
+again.
 """
 function generate(settings::Settings; kernel::AbstractSearch = make_kernel(settings))
     p = prepare(settings)
@@ -704,7 +709,7 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
     dir = joinpath(settings.output_root, id)
     mkpath(joinpath(dir, "distributions"))
     mkpath(joinpath(dir, "sessions"))
-    git = git_state(WaitingTimes.package_root())
+    git = package_git_state(WaitingTimes.package_root())
     identity = package_identity()
     code = isempty(identity["git_commit"]) ? identity["git_tree_sha1"] :
            identity["git_commit"]
@@ -718,7 +723,7 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
     checks = Dict{String, Any}[]
     with_run_logging(joinpath(dir, "run.log"); level = settings.log_level) do
         @info "collection" id dir session series=p.series_id observations=length(s) gaps=length(s.gaps)
-        # identity and series are checked before the session writes anything
+        # identity, series and memory bound are checked before the session writes anything
         meta_path = joinpath(dir, "metadata.toml")
         meta = isfile(meta_path) ? read_toml(meta_path) : initial_metadata(id, p, settings)
         toml_ready(meta["identity"]) == toml_ready(collection_identity(p, settings)) ||
@@ -730,20 +735,6 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
         stored = isfile(joinpath(dir, "series.toml")) ||
                  (isdir(partitions) && !isempty(readdir(partitions)))
         stored && check_stored_series(dir, s)
-        config_snapshot = joinpath(dir, "config.toml")
-        isfile(config_snapshot) || write_toml(config_snapshot, settings.raw)
-        write_toml(joinpath(dir, "sessions", session * ".config.toml"), settings.raw)
-        p.source === nothing || isfile(joinpath(dir, SOURCE_FILE)) ||
-            cp(p.source.path, joinpath(dir, SOURCE_FILE))
-        isfile(meta_path) || write_toml(meta_path, meta)   # loadable from the first session on
-        if !stored
-            @timeit timer "series files" begin
-                write_series_files(dir, s, settings.output_format; rows = p.rows,
-                    time_original = p.time_original,
-                    gaps_original = p.time_axis === :index ? p.gaps_original : nothing)
-                write_toml(joinpath(dir, "series.toml"), series_summary(p))
-            end
-        end
 
         alg = kernel
         thresholds = threshold_list(settings, s)
@@ -765,6 +756,22 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
             held_bytes = Base.summarysize(p) - Base.summarysize(s))
         @info "thresholds" total=length(thresholds) existing=length(existing) kernel=kernel_name(alg) memory_gib=round(
             budget.bytes/2^30; digits = 3)
+
+        config_snapshot = joinpath(dir, "config.toml")
+        isfile(config_snapshot) || write_toml(config_snapshot, settings.raw)
+        write_toml(joinpath(dir, "sessions", session * ".config.toml"), settings.raw)
+        p.source === nothing || isfile(joinpath(dir, SOURCE_FILE)) ||
+            cp(p.source.path, joinpath(dir, SOURCE_FILE))
+        isfile(meta_path) || write_toml(meta_path, meta)   # loadable from the first session on
+        if !stored
+            @timeit timer "series files" begin
+                write_series_files(dir, s, settings.output_format; rows = p.rows,
+                    time_original = p.time_original,
+                    gaps_original = p.time_axis === :index ? p.gaps_original : nothing)
+                write_toml(joinpath(dir, "series.toml"), series_summary(p))
+            end
+        end
+
         ws = @timeit timer "workspace" workspace(alg, s)
         ws_ref = reference === nothing ? nothing :
                  @timeit timer "workspace" workspace(reference, s)
@@ -790,7 +797,7 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
         progress = run_progress(length(thresholds))
         foreach(_ -> next!(progress), skipped)
         last_checkpoint = time()
-        n_indexed = 0   # partitions of this session that the index files already list
+        unindexed = false   # whether `existing` differs from the index files
         try
             for chunk in Iterators.partition(todo, batch)
                 outs = τs[1:length(chunk)]
@@ -802,11 +809,15 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
                     end
                 end
                 for (δ, τ) in zip(chunk, outs)
+                    # a threshold rewritten under [output].overwrite leaves the index
+                    # before its files are backed up
+                    key = format_threshold(δ)
+                    haskey(existing, key) && (delete!(existing, key); unindexed = true)
                     entry = write_partition!(
                         timer, dir, id, session, δ, τ, s, settings, alg,
                         search_seconds / length(chunk))
-                    key = entry["delta"]
                     existing[key] = entry
+                    unindexed = true
                     push!(computed, key)
                     next!(progress)
                 end
@@ -815,13 +826,13 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
                 if time() - last_checkpoint >= settings.checkpoint_seconds
                     @timeit timer "write" write_index_files(dir, existing, s.digits)
                     last_checkpoint = time()
-                    n_indexed = length(computed)
+                    unindexed = false
                 end
             end
         catch
             # an error or an interrupt between two checkpoints still leaves an index of
             # every partition written; failing to write it does not replace the error
-            if n_indexed != length(computed)
+            if unindexed
                 try
                     write_index_files(dir, existing, s.digits)
                 catch index_error
@@ -831,14 +842,16 @@ function generate(settings::Settings; kernel::AbstractSearch = make_kernel(setti
             end
             rethrow()
         end
-        n_indexed == length(computed) || write_index_files(dir, existing, s.digits)
+        unindexed && write_index_files(dir, existing, s.digits)
         finish!(progress)
 
         if reference !== nothing && !isempty(computed)
             early_key = isempty(checks) ? nothing : checks[1]["delta"]
             append!(checks,
                 reference_check!(timer, s, thresholds, computed, alg, ws, reference,
-                    ws_ref, settings; exclude = early_key))
+                    ws_ref, settings; exclude = early_key,
+                    on_disagreement = () -> unindex_session!(dir, existing, computed,
+                        s.digits)))
         end
 
         ctx = (; id, dir, session, session_path, created, git, identity, manifest,
@@ -993,11 +1006,12 @@ Recompute `settings.reference_checks` thresholds among those just computed with
 the reference kernel (always including the largest, see
 `reference_thresholds`) and compare exactly (`compare_with_reference`); the
 threshold `exclude`, already compared by the early check, is not repeated. A
-disagreement is logged, then raises; a check whose scan work ([`scan_work`](@ref), in element
-comparisons) exceeds `[limits].max_reference_work` is skipped with a warning.
+disagreement is logged, `on_disagreement()` is called, and the error is raised; a check
+whose scan work ([`scan_work`](@ref), in element comparisons) exceeds
+`[limits].max_reference_work` is skipped with a warning.
 """
 function reference_check!(timer, s, thresholds, computed, alg, ws, reference, ws_ref,
-        settings::Settings; exclude = nothing)
+        settings::Settings; exclude = nothing, on_disagreement = () -> nothing)
     by_key = Dict(format_threshold(δ) => δ for δ in thresholds)
     keys_ = sort(computed; by = k -> parse_threshold(k, s.digits).d)
     chosen = reference_thresholds([by_key[k] for k in keys_], settings.reference_checks,
@@ -1015,9 +1029,29 @@ function reference_check!(timer, s, thresholds, computed, alg, ws, reference, ws
         end
         @info "reference check" delta=key kernel=kernel_name(reference) equal=r.equal seconds=round(
             r.seconds; digits = 3)
-        r.equal || reference_disagreement(key, alg, reference)
+        r.equal || (on_disagreement(); reference_disagreement(key, alg, reference))
     end
     return checks
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Remove the thresholds `computed` in a session from the index entries `existing` and
+rewrite the index files of `dir`, after the session's kernel disagreed with the
+reference kernel: a later session computes them again instead of keeping partitions
+of a kernel shown wrong. A failure to write the index is logged.
+"""
+function unindex_session!(dir::AbstractString, existing::AbstractDict,
+        computed::AbstractVector, digits::Integer)
+    foreach(key -> delete!(existing, key), computed)
+    try
+        write_index_files(dir, existing, digits)
+    catch index_error
+        @error "index files not written after a reference disagreement" exception=(
+            index_error, catch_backtrace())
+    end
+    return nothing
 end
 
 """

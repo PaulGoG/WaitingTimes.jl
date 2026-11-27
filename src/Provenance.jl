@@ -120,16 +120,26 @@ file_sha256(path::AbstractString) = open(io -> bytes2hex(sha256(io)), path)
 """
 $(TYPEDSIGNATURES)
 
-`git describe --tags --always --dirty` of the repository whose top level is
-`root`, or `"unknown"` without git, outside a repository, or when `root` lies
-inside a repository with another top level (a depot under version control),
-whose state is not that of `root`.
+`git describe --tags --always --dirty` of the repository at `root`, or
+`"unknown"` outside a repository or without git.
 """
 function git_state(root::AbstractString)
-    top = git_output(root, "rev-parse", "--show-toplevel")
-    (top === nothing || !isdir(top) || !samefile(top, root)) && return "unknown"
     desc = git_output(root, "describe", "--tags", "--always", "--dirty")
     return desc === nothing || isempty(desc) ? "unknown" : String(desc)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+[`git_state`](@ref) of the package directory `root` when it is the top level of
+its repository, `"unknown"` otherwise: a package inside a repository with
+another top level (a depot under version control) does not have that
+repository's state.
+"""
+function package_git_state(root::AbstractString)
+    top = git_output(root, "rev-parse", "--show-toplevel")
+    (top === nothing || !isdir(top) || !samefile(top, root)) && return "unknown"
+    return git_state(root)
 end
 
 # --- source identity -----------------------------------------------------------
