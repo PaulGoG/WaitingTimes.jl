@@ -151,6 +151,13 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
 
         @test_throws ArgumentError QuantizedSeries([1.0, 2.0], 0; times = [1, 1])
         @test_throws ArgumentError QuantizedSeries([1.0, 2.0], 0; times = [2, 1])
+        # a record whose span does not fit the time type, where every batch kernel
+        # wrapped t_m - t_n; a span of exactly typemax fits
+        @test_throws ArgumentError QuantizedSeries(
+            Int64[0, 1], Int32[-2_000_000_000, 2_000_000_000], 0)
+        @test only(waiting_times(
+            QuantizedSeries(Int64[0, 1], Int32[-1, typemax(Int32) - 1], 0), 0,
+            NaiveSearch())[1:1]) == typemax(Int32)
         @test_throws DimensionMismatch QuantizedSeries([1.0, 2.0], 0; times = [1])
         @test_throws ArgumentError QuantizedSeries([missing, missing], 0)
         @test_throws ArgumentError QuantizedSeries(Int32[1, 2], [1, 2], 0; time_unit = :fortnight)
@@ -390,12 +397,11 @@ rounded_walk(rng, N; digits = 2) = round.(cumsum(randn(rng, N)); digits = digits
         @test occursin("0.10", sprint(show, threshold(0.1, 2)))
         empty = empirical_distribution(zeros(Int64, length(s)), δ, s)
         @test WT.nsamples(empty) == 0 && isnan(mean(empty))
-        # the classes handed in take the waits a horizon censors, as documented, so
-        # that censoring_counts counts them with the other right-censored indices
-        class, lower, _ = classify(τ, s)
+        # the classes handed in are left as they were when a horizon censors waits
+        class, _, _ = classify(τ, s)
+        before = copy(class)
         cut = empirical_distribution(τ, δ, s, class; horizon = 10)
-        @test cut.n_right_censored > d.n_right_censored
-        @test sum(last(WT.censoring_counts(class, lower))) == cut.n_right_censored
+        @test class == before && cut.n_right_censored > d.n_right_censored
         # censored: no target in the record (τ = 0) or a wait beyond the horizon
         @test cut.n_right_censored == count(t -> t == 0 || t > 10, τ[1:(end - 1)])
     end

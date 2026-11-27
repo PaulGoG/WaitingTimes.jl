@@ -3,6 +3,51 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog and the project adheres to Semantic Versioning.
 
+## [0.7.0] - 2026-11-27
+
+The identifiers name the series they stand for: the reader options and the
+defaults of the preprocessing steps enter the identity, so every identifier
+changes. Collections of 0.6 load as before; generate them again to extend them.
+
+### Changed
+
+- The dataset identity hashes the reader options `format`, `delimiter` and
+  `header`; the same file read with and without a header row gave two series
+  under one identifier. The series identity hashes the time format and the
+  time axis always (they entered only when set away from their defaults), and
+  every preprocessing step with the default of each key it omits and without
+  the keys its operation ignores (`Config.resolved_step`, the form in which
+  the step is applied): a step written with or without its defaults names the
+  same series, and a later change of a default names another. Every dataset,
+  series and collection identifier changes.
+- The four-argument `empirical_distribution` leaves `class` unchanged. Under a
+  `horizon` it used to mark the waits it censors in `class`, so that
+  `censoring_counts(class, lower)` counted them with their observed waiting
+  time as bound instead of the horizon; the result's `n_right_censored`
+  counts them, censored at the horizon.
+- The preparation record names the input file by its path relative to
+  `[output].root`, the directory that holds the collection, instead of the
+  path written in the configuration, which was relative to a configuration
+  directory that is not recorded.
+- A `QuantizedSeries` whose record spans more than `typemax` of its time type
+  is refused. Every batch kernel wrapped `t_m − t_n` around on such a series
+  (possible with `Int32` times built directly), while the streaming kernel
+  raised.
+
+### Removed
+
+- `PACKAGE_ROOT`: it named the package directory at precompilation, which a
+  moved depot or a system image leaves behind. The code identity reads the
+  directory of the loaded code (`pkgdir(WaitingTimes)`).
+
+### Added
+
+- `Config.resolved_step`.
+- Tests: reader options in the dataset identity; a step with and without its
+  defaults and with an ignored key names one series; for every operation, the
+  resolved step gives the series the configured step gives; the record span
+  against the time type.
+
 ## [0.6.2] - 2026-11-27
 
 Fixes found in an audit of the whole package, among them the pruned share of

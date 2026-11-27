@@ -66,9 +66,8 @@ Rerunning with a wider threshold grid adds partitions and appends a session;
 existing partitions are skipped unless `[output].overwrite = true`, in which
 case they are backed up as `<name>#k.<ext>` first. Before it extends a
 collection, a session compares the series it prepared with the stored one and
-stops if they differ: the identifiers hash the configuration, and a reader
-option outside the identity (`format`, `delimiter`, `header`) or another
-version of the preprocessing can give another series under the same
+stops if they differ: the identifiers hash the configuration, and another
+version of the preprocessing code can give another series under the same
 identifier.
 
 `index.toml` and `summary.csv` are rewritten at every checkpoint

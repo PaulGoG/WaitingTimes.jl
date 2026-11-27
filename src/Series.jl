@@ -122,6 +122,12 @@ struct QuantizedSeries{Tv <: Integer, Tt <: Integer}
                 "(t[$(i - 1)] = $(times[i - 1]), t[$i] = $(times[i]))",
             ))
         end
+        # every waiting time t_m - t_n lies within the record, so the record must fit Tt
+        Base.Checked.sub_with_overflow(last(times), first(times))[2] &&
+            throw(ArgumentError(
+                "the record spans $(widen(last(times)) - first(times)) time units, " *
+                "beyond typemax($Tt) = $(typemax(Tt))",
+            ))
         validate_gaps(gaps, times)
         length(gap_kinds) == length(gaps) == length(gap_sources) || throw(DimensionMismatch(
             "$(length(gaps)) gaps with $(length(gap_kinds)) kinds and $(length(gap_sources)) sources",

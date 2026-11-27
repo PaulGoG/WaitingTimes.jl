@@ -17,16 +17,9 @@ using DocStringExtensions: TYPEDFIELDS, TYPEDSIGNATURES
 using OhMyThreads: tforeach
 using Statistics: Statistics
 
-"""
-Package directory at precompilation, the parent of `src/`. A depot moved after
-precompilation keeps the compiled code and leaves this constant at the old
-location; `pkgdir(WaitingTimes)` is the directory of the loaded code, which the
-code identity hashes.
-"""
-const PACKAGE_ROOT = normpath(joinpath(@__DIR__, ".."))
-
-# the directory of the loaded code, also after the depot has been moved
-package_root() = something(pkgdir(@__MODULE__), PACKAGE_ROOT)
+# the directory of the loaded code, also after a depot moved since precompilation
+# (`@__DIR__` is fixed when the code is compiled)
+package_root() = something(pkgdir(@__MODULE__), normpath(joinpath(@__DIR__, "..")))
 
 include("Quantization.jl")
 include("Series.jl")
@@ -170,7 +163,7 @@ public support, counts, probabilities, cumulative, survival, nsamples, mean_wait
 public GAP_KINDS, with_step, sampling_step, record_length, observed_mask, segment_lengths,
        segment_table, describe, SeriesDescription, censoring_histogram, source_summary
 public discrete_distribution, plot_series, plot_distribution, plot_values, save_figure,
-       figure_theme, stroke_color, decade_ticks, PACKAGE_ROOT
+       figure_theme, stroke_color, decade_ticks
 public Synthetic, Backends, Provenance, Config, Preprocessing, Storage, Orchestrator
 
 include("precompile.jl")

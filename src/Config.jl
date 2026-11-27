@@ -11,7 +11,7 @@ using ..Provenance: effective_config
 using TOML: TOML
 
 export Settings, load_settings, threshold_list, threshold_decimals, KNOWN_KEYS,
-       PREPROCESSING_OPS, step_tag
+       PREPROCESSING_OPS, step_tag, resolved_step
 
 """
     Settings
@@ -314,6 +314,29 @@ Tag that the preprocessing step table `step` contributes to the series slug,
 e.g. `"trailing30"` for `{op = "trailing_mean_fluctuations", window = 30}`.
 """
 step_tag(step::AbstractDict) = PREPROCESSING_OPS[String(step["op"])].tag(step)
+
+"""
+$(TYPEDSIGNATURES)
+
+The preprocessing step table `step` as it is applied and as it enters the series
+identity: its operation, every key the operation accepts with the configured
+value or else the default, and no other key. A step written with or without its
+defaults, or with a key the operation ignores, names the same series; a change
+of a default would name another.
+"""
+function resolved_step(step::AbstractDict)
+    name = String(step["op"])
+    op = PREPROCESSING_OPS[name]
+    out = Dict{String, Any}("op" => name)
+    for key in op.keys
+        if haskey(step, key)
+            out[key] = step[key]
+        elseif haskey(op.defaults, key)
+            out[key] = op.defaults[key]
+        end
+    end
+    return out
+end
 
 """
 Validate preprocessing step `k`: the operation `name` must be one of

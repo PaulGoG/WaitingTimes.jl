@@ -8,18 +8,19 @@ serialisation of its identity fields (keys sorted, values only).
 
 | Kind | Identity |
 |---|---|
-| `dataset` | SHA-256 of the raw file, value column, time column, and the SHA-256 of the source descriptor when one is configured |
-| `series` | dataset identifier, time unit and epoch unit, missing and tie policies, preprocessing steps, digits, gap declaration and detection settings, the time format when one is set, and the time axis when it is `index` |
+| `dataset` | SHA-256 of the raw file, value column, time column, the reader options `format`, `delimiter` and `header`, and the SHA-256 of the source descriptor when one is configured |
+| `series` | dataset identifier, time unit and epoch unit, time format, time axis, missing and tie policies, preprocessing steps with the default of every key they omit ([`resolved_step`](@ref WaitingTimes.Config.resolved_step)), digits, gap declaration and detection settings |
 | `collection` | series identifier, distribution mode |
 
 The identity covers what determines the series, as the configuration states
-it. Kernel, backend, machine and commit are recorded in the session and not
-hashed, since every kernel must give the same result; the thresholds are left
-out too, so that a collection can be extended later. The reader options
-`format`, `delimiter` and `header` are not hashed, and neither is the version
-of the preprocessing code: a session that extends a collection therefore
-compares the series it prepared with the stored one and stops when they
-differ ([Pipeline](pipeline.md)).
+it, with the defaults it leaves implicit written out: a step given with or
+without its defaults names the same series, and a later change of a default
+names another. Kernel, backend, machine and commit are recorded in the session
+and not hashed, since every kernel must give the same result; the thresholds
+are left out too, so that a collection can be extended later. The version of
+the preprocessing code is not hashed: a session that extends a collection
+therefore compares the series it prepared with the stored one and stops when
+they differ ([Pipeline](pipeline.md)).
 
 ## Files
 
@@ -30,8 +31,9 @@ descriptor, the `[source]` section when `[input].source_descriptor` is set,
 `[producer]`, `[environment]` and the `[[sessions]]` list of the sessions
 that completed.
 
-- `[series]`: the full preparation record (the input file as the
-  configuration names it, with its size and SHA-256, and every step), digits
+- `[series]`: the full preparation record (the input file by its path
+  relative to `[output].root`, the directory that holds the collection, with
+  its size and SHA-256, and every step), digits
   and value type, the time
   axis (`elapsed` or `index`) with the time unit of the series and the time
   unit and epoch of the input's clock (`time_unit_original`,

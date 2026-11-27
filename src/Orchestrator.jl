@@ -21,7 +21,8 @@ using ..WaitingTimes: WaitingTimes, AbstractSearch, DeviceSearch, FenwickSweep, 
                       parse_threshold, record_length, sampling_step, scan_work,
                       segment_lengths, support, waiting_times!, with_step, workspace,
                       workspace_bytes
-using ..Config: Settings, load_settings, step_tag, threshold_decimals, threshold_list
+using ..Config: Settings, load_settings, resolved_step, step_tag, threshold_decimals,
+                threshold_list
 using ..Provenance: SourceSummary, active_manifest, artefact_id, backup_existing!,
                     content_hash,
                     file_sha256, hardware_fingerprint, package_git_state, package_identity,
@@ -260,6 +261,24 @@ end
 """
 $(TYPEDSIGNATURES)
 
+Path of the input file of `settings` as the preparation record names it:
+relative to `[output].root`, the directory that holds the collection, with `/`
+as separator, so that the record resolves from the collection's place
+(`joinpath(dirname(collection), path)`) and does not name the machine's
+directories above the common ancestor. An input on another drive than the
+output root, which has no relative path to it, keeps the path written in the
+configuration.
+"""
+function recorded_input_path(settings::Settings)
+    input, root = abspath(settings.input_path), abspath(settings.output_root)
+    first(splitdrive(input)) == first(splitdrive(root)) ||
+        return String(settings.raw["input"]["path"])
+    return join(splitpath(relpath(input, root)), "/")
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Read, preprocess and quantise the series described by `settings`. Returns a
 [`PreparedSeries`](@ref): the series on the configured time axis, its
 identifiers and slugs, and what the collection stores beside it (the row
@@ -274,9 +293,10 @@ function prepare(settings::Settings)
         epoch_unit = settings.epoch_unit, delimiter = settings.delimiter,
         header = settings.header, missing_policy = settings.missing_policy,
         tie_policy = settings.tie_policy)
-    # the record names the input as the configuration does, not by its place on this machine
+    # the record names the input relative to the output root, which holds the
+    # collection, not by its place on this machine
     rs = RawSeries(rs.values, rs.times, rs.time_unit, rs.epoch,
-        PreparationRecord(String(settings.raw["input"]["path"]), rs.record.source_sha256,
+        PreparationRecord(recorded_input_path(settings), rs.record.source_sha256,
             rs.record.steps))
     if descriptor !== nothing && haskey(descriptor, "sha256") &&
        !isempty(descriptor["sha256"])
@@ -302,7 +322,9 @@ function prepare(settings::Settings)
 
     source = source_record(settings)
     dataset_identity = Dict{String, Any}("sha256" => rs.record.source_sha256,
-        "value_column" => settings.value_column, "time_column" => settings.time_column)
+        "value_column" => settings.value_column, "time_column" => settings.time_column,
+        "format" => settings.input_format, "delimiter" => settings.delimiter,
+        "header" => settings.header)
     source === nothing || (dataset_identity["source_sha256"] = source.sha256)
     dataset_slug = String(descriptor === nothing ?
                           slugify(splitext(basename(settings.input_path))[1] * "-" *
@@ -312,13 +334,12 @@ function prepare(settings::Settings)
     series_identity = Dict{String, Any}("dataset" => dataset_id,
         "time_unit" => settings.time_unit, "epoch_unit" => settings.epoch_unit,
         "missing_policy" => settings.missing_policy, "tie_policy" => settings.tie_policy,
-        "steps" => settings.steps, "digits" => digits,
+        "steps" => resolved_step.(settings.steps), "digits" => digits,
         "declared_gaps_sha256" =>
             isempty(settings.declared_gaps) ? "" :
             file_sha256(settings.declared_gaps),
-        "gap_detect" => settings.gap_detect, "gap_cadence" => settings.gap_cadence)
-    settings.time_axis === :elapsed || (series_identity["time_axis"] = settings.time_axis)
-    isempty(settings.time_format) || (series_identity["time_format"] = settings.time_format)
+        "gap_detect" => settings.gap_detect, "gap_cadence" => settings.gap_cadence,
+        "time_axis" => settings.time_axis, "time_format" => settings.time_format)
     series_slug = String(isempty(settings.steps) ? dataset_slug :
                          dataset_slug * "+" * join(step_tag.(settings.steps), "+"))
     series_id = artefact_id("series", series_slug, series_identity)
@@ -635,9 +656,9 @@ $(TYPEDSIGNATURES)
 
 Refuse to extend the collection in `dir` when the series `s` prepared in this
 session differs from the one stored there in values, times or gap intervals.
-The identifiers hash the configuration, not the series: a reader option
-outside the identity, or a change of the preprocessing code between two
-sessions, can give another series under the same identifier, and its
+The identifiers hash the configuration, not the series: a change of the
+preprocessing code between two sessions can give another series under the same
+identifier, and its
 distributions must not join those already written. Throws `ArgumentError`.
 """
 function check_stored_series(dir::AbstractString, s::QuantizedSeries)

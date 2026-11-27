@@ -129,10 +129,10 @@ WaitingTimes.Orchestrator.ComparisonResult
 WaitingTimes.Orchestrator.KernelSummary
 run_pipeline
 CollectionHandle
-WaitingTimes.PACKAGE_ROOT
 WaitingTimes.Config.KNOWN_KEYS
 WaitingTimes.Config.PREPROCESSING_OPS
 WaitingTimes.Config.step_tag
+WaitingTimes.Config.resolved_step
 ```
 
 ## Preprocessing

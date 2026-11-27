@@ -69,7 +69,9 @@ end
 $(TYPEDSIGNATURES)
 
 Empirical distribution from waiting times whose classes ([`classify`](@ref))
-are already known; `class` is modified when a `horizon` reclassifies waits.
+are already known. `class` is left unchanged: the waits a `horizon` censors are
+counted in `n_right_censored` of the result, censored at the horizon, while
+[`censoring_counts`](@ref) of `class` describes the record without one.
 """
 function empirical_distribution(
         τ::AbstractVector{Tt}, δ::Threshold, s::QuantizedSeries{Tv, Tt},
@@ -81,12 +83,7 @@ function empirical_distribution(
         throw(ArgumentError("horizon must be at least 1, got $horizon"))
     length(class) == length(τ) ||
         throw(DimensionMismatch("$(length(class)) classes for $(length(τ)) waiting times"))
-    if horizon !== nothing
-        @inbounds for n in 1:(length(τ) - 1)
-            class[n] != CLASS_RIGHT_CENSORED && τ[n] > horizon &&
-                (class[n] = CLASS_RIGHT_CENSORED)
-        end
-    end
+    class = horizon === nothing ? class : censor_beyond(class, τ, horizon)
     acc = class_totals(class)
     keep = mode === :elapsed ? (CLASS_EXACT, CLASS_GAP_CROSSING) : (CLASS_EXACT,)
     N = length(τ)
@@ -103,6 +100,15 @@ function empirical_distribution(
     return WaitingTimeDistribution{Tt}(δ, s.time_unit, mode,
         support, counts, pmf, cdf, acc.n_candidates, acc.n_exact, acc.n_gap_crossing,
         acc.n_right_censored, horizon === nothing ? nothing : Int64(horizon))
+end
+
+"copy of `class` with the waits longer than `horizon` marked right-censored"
+function censor_beyond(class::AbstractVector{UInt8}, τ::AbstractVector, horizon::Integer)
+    censored = Vector{UInt8}(class)
+    @inbounds for n in 1:(length(τ) - 1)
+        τ[n] > horizon && (censored[n] = CLASS_RIGHT_CENSORED)
+    end
+    return censored
 end
 
 "distinct values and their multiplicities of a sorted vector"

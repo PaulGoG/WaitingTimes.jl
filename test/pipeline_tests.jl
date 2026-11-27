@@ -806,20 +806,77 @@ end
         # the same time axis, recorded as obtained from another rule
         @test formatted.series.times == iso.series.times ==
               [0, 1, 2, 3] .+ iso.series.times[1]
-        @test !haskey(iso.series_identity, "time_format")
+        @test iso.series_identity["time_format"] == ""
         @test formatted.series_identity["time_format"] == "yyyy-mm-ddTHH:MM:SS"
         @test formatted.series_id != iso.series_id
         @test formatted.dataset_id == iso.dataset_id
     end
-    # the quickstart identifiers computed by WaitingTimes 0.5.1, before the time
-    # format could enter the identity
+    # the identity fields of the quickstart dataset, as the Provenance page lists them
+    quick = prepare(load_settings(joinpath(CONFIGS, "quickstart.toml")))
+    @test toml_ready(quick.dataset_identity) ==
+          Dict{String, Any}(   # sha256sum of test/fixtures/fiatEURUSD.dat
+        "sha256" => "f4238c5d29f2867ba536ab51db8360f7a1e4561e87e3ffb16202418efcabfcac",
+        "value_column" => "Data", "time_column" => "", "format" => "dat",
+        "delimiter" => "", "header" => true)
+    @test quick.dataset_id ==
+          "dataset-eur_usd-closing_rate-" * first(content_hash(quick.dataset_identity), 8)
+    @test quick.series_identity["time_axis"] === :elapsed
+end
+
+@testset "Step defaults in the series identity" begin
     mktempdir() do dir
-        quick = prepare(load_settings(joinpath(CONFIGS, "quickstart.toml")))
-        @test quick.dataset_id == "dataset-eur_usd-closing_rate-7375e35b"
-        @test quick.series_id == "series-eur_usd-closing_rate-f515da9d"
-        handle = generate(load_settings(joinpath(CONFIGS, "quickstart.toml");
-            output_dir = dir))
-        @test handle.id == "collection-eur_usd-closing_rate-d64d59f9"
+        file = joinpath(dir, "x.csv")
+        write(file,
+            "value\n" *
+            join(
+                string.(round.(cumsum(randn(StableRNG(11), 400)) .+ 50;
+                    digits = 2)), "\n") * "\n")
+        function config(name, steps)
+            path = joinpath(dir, name * ".toml")
+            open(path, "w") do io
+                TOML.print(io,
+                    Dict{String, Any}(
+                        "input" => Dict{String, Any}("path" => "x.csv",
+                            "value_column" => "value"),
+                        "preprocessing" => Dict{String, Any}("steps" => steps),
+                        "quantization" => Dict{String, Any}("digits" => 2),
+                        "thresholds" => Dict{String, Any}("mode" => "explicit",
+                            "values" => [0.5])))
+            end
+            return prepare(load_settings(path))
+        end
+        sigma = Dict{String, Any}("op" => "clip_sigma", "k" => 2)
+        implicit = config("implicit", [sigma])
+        explicit = config("explicit",
+            [merge(sigma, Dict{String, Any}("center" => "mean", "scale" => "std",
+                "splice" => false))])
+        ignored = (@test_logs (:warn, r"unknown preprocessing step key") match_mode=:any config(
+            "ignored", [merge(sigma, Dict{String, Any}("centre" => "median"))]))
+        other = config("other", [merge(sigma, Dict{String, Any}("scale" => "mad"))])
+        # with or without its defaults, or with a key the operation ignores, a step
+        # names the series it gives; another value names another series
+        @test implicit.series_id == explicit.series_id == ignored.series_id
+        @test implicit.series.values == explicit.series.values == ignored.series.values
+        @test other.series_id != implicit.series_id
+        @test only(implicit.series_identity["steps"]) ==
+              Dict{String, Any}("op" => "clip_sigma", "k" => 2, "center" => "mean",
+            "scale" => "std", "splice" => false)
+    end
+    # the defaults a resolved step writes out are the ones the step is applied with
+    rs = RawSeries(Union{Missing, Float64}[1.0, 5.0, 2.0, 40.0, 3.0, 2.5, 4.0, 0.5, 6.0],
+        collect(Int64, 1:9), :sample, nothing, PreparationRecord("steps"))
+    for (name, op) in WaitingTimes.Config.PREPROCESSING_OPS
+        step = Dict{String, Any}("op" => name)
+        name == "exclude_intervals" && (step["intervals"] = [[2, 3]])
+        name == "round" && (step["digits"] = 1)
+        name == "trailing_mean_fluctuations" && (step["window"] = 3)
+        name == "detrend_moving_average" && (step["window"] = 3)
+        name == "clip_quantile" && (step["q"] = 0.2)
+        name == "clip_extremes" && (step["digits"] = 0)
+        name == "collapse_ties" && (step["policy"] = "first")
+        resolved = WaitingTimes.Config.resolved_step(step)
+        @test Set(keys(resolved)) ⊆ Set([op.keys; "op"])
+        @test isequal(apply_steps(rs, [step]).values, apply_steps(rs, [resolved]).values)
     end
 end
 
@@ -1112,15 +1169,24 @@ end
                 end
                 return path
             end
-            # header = true takes the first row for the column name: another series
-            # under the same identifiers, since the reader options are not hashed
+            # header = true takes the first row for the column name: another series,
+            # and the reader options are part of the identity
             whole = load_settings(config("whole", false, [0.5]))
             short = load_settings(config("short", true, [0.5, 1.0]))
-            @test prepare(whole).series_id == prepare(short).series_id
             @test length(prepare(whole).series) == 4 && length(prepare(short).series) == 3
+            @test prepare(whole).dataset_id != prepare(short).dataset_id
+            @test prepare(whole).series_id != prepare(short).series_id
             first_run = generate(whole)
+            # a stored series that differs from the one prepared, as another version of
+            # the preprocessing code would have written it under the same identifier
+            series_file = joinpath(first_run.dir, "series.csv")
+            table = CSV.read(series_file, DataFrame)
+            table.values[end] += 1
+            CSV.write(series_file, table)
+            stored = read(series_file)
+            wider = load_settings(config("wider", false, [0.5, 1.0]))
             err = try
-                generate(short)
+                generate(wider)
                 nothing
             catch e
                 e
@@ -1130,17 +1196,20 @@ end
             # the refused session leaves no configuration of its own in the collection
             sessions = readdir(joinpath(first_run.dir, "sessions"))
             @test count(endswith(".config.toml"), sessions) == 1
-            # the same series extends the collection as before
-            wider = generate(load_settings(config("wider", false, [0.5, 1.0])))
-            @test wider.id == first_run.id && wider.computed == ["1.0"]
             # without series.toml the stored series still guards the distributions
             rm(joinpath(first_run.dir, "series.toml"))
-            stored = read(joinpath(first_run.dir, "series.csv"))
-            @test_throws ArgumentError generate(short)
-            @test read(joinpath(first_run.dir, "series.csv")) == stored
-            # the record names the input as the configuration does, with its size
+            @test_throws ArgumentError generate(wider)
+            @test read(series_file) == stored
+            # the stored series restored, the collection is extended as before
+            table.values[end] -= 1
+            CSV.write(series_file, table)
+            extended = generate(wider)
+            @test extended.id == first_run.id && extended.computed == ["1.0"]
+            # the record names the input relative to the output root, with its size
             record = load_collection(first_run.dir).metadata["series"]["record"]
-            @test record["source"] == "x.csv"
+            @test record["source"] == "../x.csv"
+            @test joinpath(dirname(first_run.dir), record["source"]) |> normpath ==
+                  normpath(file)
             @test record["steps"][1]["summary"]["bytes"] == filesize(file)
         end
     end
