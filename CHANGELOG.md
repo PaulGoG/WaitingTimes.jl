@@ -7,9 +7,9 @@ Keep a Changelog and the project adheres to Semantic Versioning.
 
 The identifiers name the series they stand for: the reader options and the
 defaults of the preprocessing steps enter the identity, so every identifier
-changes. Collections of 0.6 load as before (except one whose record spans more
-than `typemax` of its time type, see below); generate them again to extend
-them. Every entry under Changed and Removed is breaking.
+changes. Collections of 0.6 load as before (except the series of one whose
+record spans more than `typemax` of its time type, see below); generate them
+again to extend them. Every entry under Changed and Removed is breaking.
 
 ### Changed
 
@@ -22,8 +22,8 @@ them. Every entry under Changed and Removed is breaking.
   the step is applied): a step written with or without its defaults names the
   same series, and a later change of a default names another. Values are
   hashed as written, so `k = 3` and `k = 3.0`, or a reader option a format
-  does not use, still give one series two identifiers; two series never share
-  one. Every dataset, series and collection identifier changes.
+  does not use, still give one series two identifiers. Every dataset, series
+  and collection identifier changes.
 - The four-argument `empirical_distribution` leaves `class` unchanged. Under a
   `horizon` it used to mark the waits it censors in `class`, so that
   `censoring_counts(class, lower)` counted them at their lower bound (the
@@ -39,7 +39,8 @@ them. Every entry under Changed and Removed is breaking.
   is refused. Every batch kernel wrapped `t_m − t_n` around on such a series,
   while the streaming kernel raised. It arises with `Int32` times built
   directly, or from a configuration with nanosecond times over more than 292
-  years; a collection of 0.6 holding such a series no longer loads.
+  years; the series of a collection of 0.6 holding one no longer loads
+  (`load_series`), and the collection cannot be extended.
 
 ### Removed
 
@@ -55,7 +56,8 @@ them. Every entry under Changed and Removed is breaking.
   with and without its defaults and with an ignored key names one series; for
   every operation, the resolved step gives the series the configured step
   gives; the record span against the time type; the horizon on a gapped series
-  in both modes.
+  in both modes; `resolved_step` on a step without a valid op; the removed
+  `PACKAGE_ROOT`; the recorded input path for an output root on another tree.
 
 ## [0.6.2] - 2026-11-27
 

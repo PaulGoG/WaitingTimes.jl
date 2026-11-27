@@ -333,7 +333,8 @@ resolved_step(Dict("op" => "clip_sigma", "k" => 2))
 ```
 """
 function resolved_step(step::AbstractDict)
-    haskey(step, "op") || throw(ArgumentError("preprocessing step without an op key"))
+    haskey(step, "op") && step["op"] isa AbstractString ||
+        throw(ArgumentError("preprocessing step without an op key naming an operation"))
     name = String(step["op"])
     haskey(PREPROCESSING_OPS, name) || throw(ArgumentError(
         "preprocessing op $(repr(name)) is not one of $(join(sort(collect(keys(PREPROCESSING_OPS))), ", "))",

@@ -818,9 +818,19 @@ end
         "sha256" => "f4238c5d29f2867ba536ab51db8360f7a1e4561e87e3ffb16202418efcabfcac",
         "value_column" => "Data", "time_column" => "", "format" => "dat",
         "delimiter" => "", "header" => true)
-    # the canonical identity of the quickstart series, written out by hand from
-    # configs/quickstart.toml and the defaults; the identifiers are the first eight
-    # digits of `printf '<text>' | sha256sum` of these texts
+    # the canonical identities of the quickstart dataset, series and collection,
+    # written out by hand from configs/quickstart.toml and the defaults; the
+    # identifiers are the first eight digits of `printf '<text>' | sha256sum` of these
+    # texts
+    @test canonical_toml(quick.dataset_identity) ==
+          """
+          delimiter = ""
+          format = "dat"
+          header = true
+          sha256 = "f4238c5d29f2867ba536ab51db8360f7a1e4561e87e3ffb16202418efcabfcac"
+          time_column = ""
+          value_column = "Data"
+          """
     @test canonical_toml(quick.series_identity) ==
           """
           dataset = "dataset-eur_usd-closing_rate-a2656cab"
@@ -838,10 +848,16 @@ end
           """
     @test quick.dataset_id == "dataset-eur_usd-closing_rate-a2656cab"
     @test quick.series_id == "series-eur_usd-closing_rate-3f06e7bc"
+    @test canonical_toml(WaitingTimes.Orchestrator.collection_identity(quick,
+        load_settings(joinpath(CONFIGS, "quickstart.toml")))) ==
+          """
+          mode = "elapsed"
+          series = "series-eur_usd-closing_rate-3f06e7bc"
+          """
     mktempdir() do dir
         handle = generate(load_settings(joinpath(CONFIGS, "quickstart.toml");
             output_dir = dir))
-        @test handle.id == "collection-eur_usd-closing_rate-9cbbc32c"   # mode, series
+        @test handle.id == "collection-eur_usd-closing_rate-9cbbc32c"
     end
 end
 
@@ -886,6 +902,7 @@ end
     end
     @test_throws ArgumentError WaitingTimes.Config.resolved_step(Dict("op" => "nope"))
     @test_throws ArgumentError WaitingTimes.Config.resolved_step(Dict("k" => 2))
+    @test_throws ArgumentError WaitingTimes.Config.resolved_step(Dict("op" => 1))
     # the defaults a resolved step writes out are the ones the step is applied with
     rs = RawSeries(Union{Missing, Float64}[1.0, 5.0, 2.0, 40.0, 3.0, 2.5, 4.0, 0.5, 6.0],
         collect(Int64, 1:9), :sample, nothing, PreparationRecord("steps"))

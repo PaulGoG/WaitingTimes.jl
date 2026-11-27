@@ -279,7 +279,8 @@ function recorded_input_path(settings::Settings)
         shared += 1
     end
     shared <= 1 && return basename(input)
-    return join(splitpath(relpath(input, root)), "/")
+    # built from the components compared above, so the rule and the path agree
+    return join([fill("..", length(b) - shared); a[(shared + 1):end]], "/")
 end
 
 """

@@ -18,7 +18,9 @@ step's operation ignores left out: a step given with or without its defaults
 names the same series, and a later change of a default names another. Values
 are hashed as written, so `k = 3` and `k = 3.0`, or a reader option that a
 format does not use (`header` of an Arrow file), give one series two
-identifiers; two different series never share one. Kernel, backend, machine and commit are recorded in the session
+identifiers. The converse holds within one version of the preprocessing code,
+up to the eight hexadecimal digits of the hash: configurations that give
+different series do not share an identifier. Kernel, backend, machine and commit are recorded in the session
 and not hashed, since every kernel must give the same result; the thresholds
 are left out too, so that a collection can be extended later. The version of
 the preprocessing code is not hashed: a session that extends a collection
